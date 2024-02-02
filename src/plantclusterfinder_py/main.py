@@ -1,0 +1,1459 @@
+from argparse import ArgumentParser, RawTextHelpFormatter
+from scipy.io import savemat, loadmat
+import re
+import os
+import logging
+
+
+def save(filename, *args, caller_locals={}):
+    parser = ArgumentParser(prog="SaveFunction", exit_on_error=False)
+    parser.add_argument("-regexp", type=str)
+    parser.add_argument("-v7.3", action="store_true", dest="version")
+    parsed_args = parser.parse_args(args)
+    if isinstance(filename, list):
+        filename = "".join(filename)
+    if parsed_args.regexp is not None:
+        savemat(
+            filename,
+            {
+                x: y
+                for x, y in caller_locals.items()
+                if re.search(parsed_args.regexp, x)
+            },
+            ling_field_names=True,
+        )
+    else:
+        raise Exception("Does not support non-regexp save functions")
+
+
+def load(filename, *variables):
+    if isinstance(filename, list):
+        filename = "".join(filename)
+    if len(variables) == 0:
+        return loadmat(filename)
+    else:
+        return {x: y for x, y in loadmat(filename).items if x in variables}
+
+
+def tempsaves(caller_locals: dict):
+    ret = caller_locals["vPartFinished"]
+    temp_filename = caller_locals.get(
+        "vGeneLocation_File", "TEMP") + "_tempsave.mat"
+    if caller_locals.get("vTempsavesOverwrite", 0) == 1:
+        save(
+            temp_filename,
+            "-regexp",
+            "^(?!vRunAfterPart$).",
+            "-v7.3",
+            caller_locals=caller_locals,
+        )
+    elif not os.path.isfile(temp_filename):
+        save(
+            temp_filename,
+            "-regexp",
+            "^(?!vRunAfterPart$).",
+            "-v7.3",
+            caller_locals=caller_locals,
+        )
+    elif os.path.isfile(temp_filename):
+        vPartFinished_old_1 = ret
+        ret = load(temp_filename, "vPartFinished")["vPartFinished"]
+        if vPartFinished_old_1 > ret:
+            ret = vPartFinished_old_1
+            del vPartFinished_old_1
+            save(
+                temp_filename,
+                "-regexp",
+                "^(?!vRunAfterPart$).",
+                "-v7.3",
+                caller_locals=caller_locals,
+            )
+    return ret
+
+
+def main():
+    """
+    PlantClusterFinder 1.3
+    PlantClusterFinder (PCF) detects metabolic gene clusters in a sequenced
+    genome. It uses a gene location file provided by the user (see below) and
+    a PGDB created with Pathway Tools as well as further information (see
+    below) to identify enzyme-coding genes (metabolic genes) located together
+    on a chromosome. Initially only continous stretches of metabolic genes
+    lying directly next to each other are allowed. This condition is relaxed
+    by iteratively increasing the intervening (non-metabolic) gene size by
+    one. Several criteria to select for clusters are provided. In addition to
+    this, clusters can be prevented from forming by a section of criteria.
+    Details of PCF (version 1.0) can be found in PMID: 28228535.
+
+    The major differences between this version (1.3) and previous versions
+    (1.0 and 1.2) are:
+
+      1) Physical breaks of the genome or sequencing gaps of unknown size are
+         typically encoded by stretches of Ns in the genome assembly fasta
+         file. Previously we inserted N hypothetical genes. This however
+         diluted the background of low quality genomes with non-enzymes, and
+         hence the likelyhood of a cluster to be classified as top x%% of
+         enzyme dense regions was better than in a genome that had good
+         quality. In version 1.3 we identify these breaks and prevent
+         formation of a cluster over these gaps.
+      2) Any sequencing information that is missing is typically hard masked
+         with Ns. Previously, any intergenic region affected by at least one
+         N was evaluated for its length, and hypothetical genes were inserted
+         accordingly (See Schlapfer et al, PMID: 28228535). This led
+         sometimes to unrealistic prevention of detecting gene clusters. It
+         is unlikely that missing information about a single nucleotide would
+         (if it would be known) lead to the finding of multiple gene models.
+         Thus here we changed the code to insert 2 hypothetical genes only if
+         a strech of unknown sequence is larger than nth percentile of gene
+         sequences (set to 5). We also provide the option to NOT insert any
+         hypothetical genes all together. Instead we by default we use
+         MaxSeqGapSize set to 100000 and MaxInterGeneDistByMedian set to 50
+         resulting in similar clusters as in PCF version 1.0.
+      3) Large gene poor intergenic regions are present in genomes. In this
+         version we provide the option of several parameters to prevent
+         clusters from spanning such large gene poor regions.
+
+    Authors: Pascal Schlapfer, December 2017
+             Bo Xue, December 2017
+
+    """
+    print(main.__doc__)
+    log = logging.getLogger()
+    help_epilog = """ Outputs:
+         None (Two files are generated: vGeneOutputFile, containing all the
+              information about genes and vClusterOutputFile, containing all
+              the information about clusters)"""
+    # Note, PGDBIdsToMap is only needed here because the pgdb
+    # contains protein Ids in place of gene identifiers.
+
+    parser = ArgumentParser(
+        prog="PlantClusterFinder", description="Find Metabolic Gene Clusters in Plant Genomes", epilog=help_epilog,
+        formatter_class=RawTextHelpFormatter
+    )
+    # Mandatory inputs: all files need full path, order does not matter.
+    parser.add_argument(
+        "-pgdb",
+        required=True,
+        type=str,
+        help="Give full path of PGDB flat file folder, where the flat files of the species pgdb is stored.",
+    )
+    parser.add_argument(
+        "-rmdf",
+        required=True,
+        type=str,
+        help="""
+        TSV file of the metabolic domains of reactions. Check
+         if file is outdated (needs to contain all reactions
+         that are present in the PGDB that have genes
+         annotated to.""",
+    )
+    parser.add_argument(
+        "-md",
+        required=True,
+        action="extend",
+        nargs="+",
+        type=str,
+        help="""
+         A list of Metabolic domains that should be analyzed.
+          For example {'Amines and Polyamines Metabolism'; 'Amino Acids '}""",
+    )
+    parser.add_argument(
+        "-psf",
+        required=True,
+        type=str,
+        help="""
+        Protein sequence file of the genome.
+         Can only contain Protein IDs as header e.g. >protein1-ID""",
+    )
+    parser.add_argument(
+        "-gtpf",
+        required=True,
+        type=str,
+        help="""
+        TSV file with a header describing gene, transcript,
+         and protein identifier and then for all the
+         identfiers the listings (gene-ID, transcript-ID,
+         protein-ID). This is used to map information
+         regarding transcripts (currently not used) and
+         proteins (used for MCL clustering, potentially also
+         used in PGDBs) to the genes (e.g. the gene location
+         information).""",
+    )
+    parser.add_argument(
+        "-glof",
+        required=True,
+        type=str,
+        help="""
+        Gene Location (position) TSV file with gene ID, start bp, end bp,
+         chromosome / scaffold, strand (encoded as 1 or -1).
+         This file can be generated with a biomart or out of a gff3 file.""",
+    )
+    parser.add_argument(
+        "-dnaf",
+        required=True,
+        type=str,
+        help="""
+        Fasta file of the HARDMASKED genome nucleotide sequences.""",
+    )
+    parser.add_argument(
+        "-sitf",
+        required=True,
+        type=str,
+        help="""
+        Signature and tailoring reactions TSV file describing the classes
+         of enzymes that should be classified as signature or tailoring
+         enzymes to identify clusters containing such.""",
+    )
+    parser.add_argument(
+        "-gout",
+        required=True,
+        type=str,
+        help="""
+        Path and file name to the gene-Outputfile,
+         make sure you have access to the file and folder.
+         This is the first results output file that will be generated.""",
+    )
+    parser.add_argument(
+        "-cout",
+        required=True,
+        type=str,
+        help="""
+        Path and file name to the cluster-Outputfile,
+         make sure you have access to the file and folder.
+        This is the second Results output file that will be generated.""",
+    )
+    # Optional Inputs:
+    parser.add_argument(
+        "--GenesDat_GeneInfo",
+        nargs="+",
+        default=["Unique-ID", "Accession-1", "Accession-2"],
+        type=str,
+        action="extend",
+        help="""
+        Needs to be followed by a list of Attributes in
+         genes.dat. Defines where gene ID information
+         should be searched for.
+         Default is 'Unique-ID', 'Accession-1', 'Accession-2'""",
+    )
+    parser.add_argument(
+        "--MCLClusterFile",
+        type=int,
+        choices=[0, 1],
+        default=0,
+        help="""
+        Needs to be followed by either 1 or 0. With a default
+         of 0. 1 indicates that the input file is not a
+         protein fasta file, but a precomputed MCL
+         clustering file (precomputing can be usefull for
+         speed). If such a file is used, then nothing but
+         gene IDs and tabs and new lines are allowed in this
+         file.""",
+    )
+    parser.add_argument(
+        "--HypoGenePercentile",
+        type=int,
+        default=5,
+        help="""
+        Needs to be followed by a number. Defines the
+         length of sequencing gap that should be
+         populated by two hypothetical genes. If this is
+         10, then two hypothetical genes are introduced
+         as soon as the sequencing gap exceeds the
+         (100-10) lower percentile of the background
+         size of all genes of the genome (default is 5).""",
+    )
+    parser.add_argument(
+        "--MaxSeqGapSize",
+        type=int,
+        default=100000,
+        help="""
+        Needs to be followed by a number. Maximal masked
+         nucleotide region (in bp) that a cluster is allowed
+         to bridge (default is 100000). """,
+    )
+    parser.add_argument(
+        "--MaxInterGeneDist",
+        type=int,
+        default=-1,
+        help="""
+        Needs to be followed by a number. Maximal
+         intergenic distance ( in bp) that still can be
+         crossed by a gene cluster. (default is -1, thus
+         inactive).""",
+    )
+    parser.add_argument(
+        "--MaxInterGeneDistByMedian",
+        type=int,
+        default=50,
+        help="""
+        Needs to be followed by a number. Maximal
+         intergenic distance that still can be
+         crossed by a gene cluster, here defined
+         by this number times the median of the
+         gene sizes. (default is 50. Set it to -1
+         if it should be inactive).""",
+    )
+    parser.add_argument(
+        "--PercentileForMaxInterGeneDist",
+        type=int,
+        default=-1,
+        help="""
+        Needs to be followed by a number.
+         Calculates the maximal intergenic
+         distance that still can be crossed
+         by a gene cluster. This number
+         determines the percentile to choose
+         from all the distances. If this is
+         99.9, then a cluster is allowed to
+         bridge if the largest intergenic
+         distance in the cluster is below
+         99.9%% of the background size of all
+         intergenic distances of the genome
+         (default is -1,thus inactive).""",
+    )
+    parser.add_argument(
+        "--SeqGapSizesChromBreak",
+        type=int,
+        nargs="+",
+        action="extend",
+        default=[],
+        help="""
+        Needs to be followed by a list of numbers.
+         The masked nucleotides sequences of these
+         specific lengths will prevent cluster
+         formation (Default is an empty list: []).""",
+    )
+    parser.add_argument(
+        "--PreScreenGaps",
+        type=int,
+        choices=[0, 1],
+        default=0,
+        help="""
+        Needs to be followed by either 1 or zero. Defines if
+         sequencing gaps should be prescreened to delete them
+         if they are anyway too small to matter. (default is 0)""",
+    )
+    parser.add_argument(
+        "--OverwriteSeqGapInfo",
+        type=int,
+        choices=[0, 1],
+        default=0,
+        help="""
+        Needs to be followed by either 1 or 0. Forces
+         masked nucleotide analysis for finding
+         sequencing gaps (default is 0, no enforcement).""",
+    )
+    parser.add_argument(
+        "--OverwriteMCLClustering",
+        type=int,
+        choices=[0, 1],
+        default=0,
+        help="""
+        Needs to be followed by either 1 or 0.
+         Forces (if set to 1) that the MCL
+         clustering is redone even if the result
+         files are already present (default is 0).""",
+    )
+    parser.add_argument(
+        "--Verbose",
+        type=int,
+        default=0,
+        help="""
+        Needs to be followed by a number (0 is default, 1 gives
+         more screen-output, 2 gives exhaustive screen-output).""",
+    )
+    parser.add_argument(
+        "--EnzMinForClusters",
+        type=int,
+        default=3,
+        help="""
+        Needs to be followed by a number: Defines the
+         minimum number of enyzmes that need to be
+         present in a cluster (default is 3).""",
+    )
+    parser.add_argument(
+        "--KbRangeLD",
+        type=int,
+        default=100000,
+        help=""" 
+        Needs to be followed by a number. Genes that are
+         separated by more than this size (in bp) are not
+         considered as local duplicates. (default is 100000)""",
+    )
+    parser.add_argument(
+        "--GeneRangeLD",
+        type=int,
+        default=10,
+        help="""
+        Needs to be followed by a number. Number of
+         intervening genes that are allowed to separate two
+         local duplicated genes. Two genes that are separated
+         by more than this many intervening genes are not
+         called local duplicates. (default is 10)""",
+    )
+    parser.add_argument(
+        "--TopPercentClusters",
+        type=int,
+        default=5,
+        help="""
+        Needs to be followed by a number. Clusters are
+         labeled if they are within this top X%% of
+         enzyme dense clusters compared to the
+         background. (default is 5)""",
+    )
+    parser.add_argument(
+        "--MinStepSize",
+        type=int,
+        default=5,
+        help="""
+        Needs to be followed by a number. Minimal intervening
+         gene size that should be computed (default is 5).""",
+    )
+    parser.add_argument(
+        "--MaxStepSize",
+        type=int,
+        default=20,
+        help=""" 
+        Needs to be followed by a number. Maximal intervening
+         gene size that should be computed (default is 20).""",
+    )
+    parser.add_argument(
+        "--Criterion",
+        type=int,
+        default=2,
+        choices=[1, 2, 3, 4],
+        help="""
+        Needs to be followed by a number. Criterion after which
+              stepsize (intervening gene size) is chosen (default is 2).
+         1: as published in Schlapfer et al 2017 (PMID:28228535)''
+                 sum(enzymes in clusters) - sum(non-enzymes in clusters) > 0.
+         2: stepsize 3 (because most organisms take this one)
+         3: sum(enzymes in clusters) - sum(non-enzymes in clusters, without hypo genes) -2*sum(hypogenes)
+         4: sum(clusters in stepsize n) > sum(clusters in stepsize n+1).""",
+    )
+    parser.add_argument(
+        "-para",
+        type=int,
+        default=1,
+        help="""
+        How many cpus can be used by the algorithm
+         (used for MCL clustering and Sequencing gap search).
+         The default is 1.""",
+    )
+    parser.add_argument(
+        "--UnmaskedDNA",
+        type=int,
+        default=0,
+        help=""" 
+        Needs to be followed by a number. Defines if plant
+         Cluster finder should continue despite a non-masked
+         genome sequence file was used (default is 0, not
+         continue).""",
+    )
+    parser.add_argument(
+        "--PGDBIdsToMap",
+        type=str,
+        default="G",
+        choices=["G", "T", "P"],
+        help=""" 
+        Needs to be followed by a string. Can contain the
+         Letters G and/or T and/or P. In that case (the pgdb
+         is mapped to Gene (G) and/or Transcript (T) and/or
+         Protein (P) Ids of the Gene conversion file. 
+         The default value is 'G'.""",
+    )
+    parser.add_argument(
+        "--RunAfterPart",
+        type=int,
+        default=0,
+        help="""
+        Needs to be followed by a number. Sets the parts of
+         the algorithm that should be recomputed. (default is 0)""",
+    )
+    parser.add_argument(
+        "--Tempsaves",
+        type=int,
+        default=0,
+        choices=[0, 1],
+        help="""Defines if Temporary saves should be made. (default is 0)""",
+    )
+    parser.add_argument(
+        "--TempsavesOverwrite",
+        type=int,
+        default=0,
+        choices=[0, 1],
+        help="""Defines if Temporary saves should be overwritten. (Default is 0).""",
+    )
+    parser.add_argument(
+        "--RemoveNonProtLocations",
+        type=int,
+        default=0,
+        choices=[0, 1],
+        help="""
+        Defines if the protein-fasta file should be
+         used to clean out the gene position file
+         from sequences that do not show up on the
+         protein fasta file, and thus do not have
+         had a chance to be predicted to be an
+         enzyme. (Default 0)""",
+    )
+    parser.add_argument(
+        "--InsertHypos",
+        type=int,
+        default=0,
+        choices=[0, 1],
+        help="""
+        Needs to be followed by 0 or 1 (can be extended with
+         code). Defines if the genome should be populated by
+         hypothetical genes in sequencing gaps that are not
+         physical breaks. (Default 0)""",
+    )
+    parser.add_argument(
+        "--HypoAmount",
+        type=int,
+        default=0,
+        help=""" 
+        Needs to be followed by a number. Defines by how many
+         hypothetical genes a sequencing gap that is not a
+         physical break should be populated by artificial genes
+         to punish such sequencing gaps from becoming clusters.
+         (Default 0)""",
+    )
+    parser.add_argument(
+        "--OutputType",
+        type=str,
+        default="simple",
+        choices=["simple", "old", "verbose"],
+        help="""
+        Defines the format of the Outputfiles: 'old' is using
+         the old format to report all clusters of all stepsizes,
+         'verbose' defines that top percent clusters of all
+         stepsizes are reported. 'simple' just reports the top
+         percent clusters of the chosen stepsize (default
+         simple).""",
+    )
+    args = parser.parse_args()
+
+    """
+
+   #% Display parameters:
+   vc = 1
+   if ispc():
+       for vi = 1:size(varargin,2)
+           if vc == 1:
+               log.info('Parameter %i: %s\n', (vi-1)/2+1, varargin{1,vi})
+               vc = vc + 1
+           else
+               if ischar(varargin{1,vi}):
+                   log.info('Value: %s\n', varargin{1,vi})
+                   vc = 1
+               elseif isnumeric(varargin{1,vi})
+                   log.info('Value: %i\n', varargin{1,vi})
+                   vc = 1
+               else
+                   log.info('Value: can not be displayed\n')
+                   vc = 1
+               end
+           end
+       end
+   else
+       for vi = 1:size(varargin,2)
+           if vc == 1:
+               log.info('Parameter %i: %s\n', (vi-1)/2+1, varargin{1,vi})
+               vc = vc + 1
+           else
+               log.info('Value: %s\n', varargin{1,vi})
+               vc = 1
+           end
+       end
+   end
+
+   #% Initializing parameters
+  log.info('Initializing parameters and running PlantClusterFinder\n')
+    """
+
+    vVerbose = args.Verbose
+    vMD_to_annotate = args.md
+    # Verify is directory
+    vPGDB_FlatFileFolder = os.path.dirname(args.pgdb)
+    # Verify is file
+    vMD_reactions_File = args.rmdf
+    vProtein_sequence_FastaFile = args.psf
+    vGeneTranscriptProtein_mapping_File = args.gtpf
+    vGeneLocation_File = args.glof
+    vDNA_FastaFile = args.dnaf
+    vSignatureTailorFile = args.sitf
+    # Verify Writable
+    vGeneOutputFile = args.gout
+    vClusterOutputFile = args.cout
+
+    vGenesDat_GeneInfo = args.GenesDat_GeneInfo
+    vHypoGenePercentile = args.HypoGenePercentile
+    vMaxSeqGapSize = args.MaxSeqGapSize
+    vMaxInterGeneDist = args.MaxInterGeneDist
+    vMaxInterGeneDistByMedian = args.MaxInterGeneDistByMedian
+    vPercentileForMaxInterGeneDist = args.PercentileForMaxInterGeneDist
+    vSeqGapSizesChromBreak = args.SeqGapSizesChromBreak
+    vTopPercentClusters = args.TopPercentClusters
+    vMinStepSize = args.MinStepSize
+    vMaxStepSize = args.MaxStepSize
+    vCriterion = args.Criterion
+    # Change to Boolean
+    vMCLClusterFile = args.MCLClusterFile
+    vPreScreenGaps = args.PreScreenGaps
+    vOverwriteSeqGapInfo = args.OverwriteSeqGapInfo
+    vOverwriteMCLClustering = args.OverwriteMCLClustering
+    vUnmaskedDNA = args.UnmaskedDNA
+    vTempsaves = args.Tempsaves
+    vTempsavesOverwrite = args.TempsavesOverwrite
+    vRemoveNonProtLocations = args.RemoveNonProtLocations
+    vInsertHypos = args.InsertHypos
+
+    vKbRangeLD = args.KbRangeLD
+    vGeneRangeLD = args.GeneRangeLD
+    vEnzMinForClusters = args.EnzMinForClusters
+    # validate if computer has `para` CPUs. -1 = auto?
+    vPara = args.para
+    vPGDBIdsToMap = args.PGDBIdsToMap
+    vRunAfterPart = args.RunAfterPart
+    vHypoAmount = args.HypoAmount
+    vOutputType = args.OutputType
+
+    error_message = ""
+    if not os.path.isdir(vPGDB_FlatFileFolder):
+        error_message += f"Argument -pgdb {
+            vPGDB_FlatFileFolder} was not a dirctory\n"
+    test_file = {
+        vMD_reactions_File: "Metabolic domains reaction file (-rmdf)",
+        vProtein_sequence_FastaFile: "Protein Sequence FASTA file (-psf)",
+        vGeneTranscriptProtein_mapping_File: "Gene transcript-protein mapping file (-gtpf)",
+        vGeneLocation_File: "Gene Location File (-glof)",
+        vDNA_FastaFile: "DNA FASTA File (-dnaf)",
+        vSignatureTailorFile: "Signature & Tailoring File (-sitf)",
+    }
+    test_writable_file = {
+        vGeneOutputFile: "Gene Output file (-gout)",
+        vClusterOutputFile: "Cluster Output file (-cout)",
+    }
+    log.info("Check files for reading and writing\n")
+    for filename, err in test_file.items():
+        if not os.path.isfile(filename):
+            error_message += f"Could not find {err} at {filename}.\n"
+            continue
+        try:
+            with open(filename, "r") as f:
+                pass
+        except FileNotFoundError as e:
+            error_message += f"File {
+                filename} is a file that could not be found. How did you get here?\n"
+        except PermissionError:
+            error_message += f"You do not have permission to read the {
+                err} file at {filename}\n"
+        except OSError as e:
+            error_message += f"Cannot read {err} {filename} because of {e}.\n"
+    test_writable_file = {
+        vGeneOutputFile: "Gene Output file (-gout)",
+        vClusterOutputFile: "Cluster Output file (-cout)",
+    }
+    for filename, err in test_writable_file.items():
+        if not os.path.isfile(filename):
+            error_message += f"Could not find {err} at {filename}.\n"
+            continue
+        try:
+            with open(filename, "a") as f:
+                pass
+        except FileNotFoundError as e:
+            error_message += f"File {
+                filename} is a file that could not be found. How did you get here?\n"
+        except PermissionError:
+            error_message += f"You do not have permission to write to the {
+                err} file at {filename}\n"
+        except OSError as e:
+            error_message += f"Cannot write to {
+                err} {filename} because of {e}.\n"
+    if error_message != "":
+        log.error(error_message)
+        exit(1)
+
+    vPartFinished = 0
+    # Save temporary
+    # Using scipy.io.savemat to save .mat files
+    # Matlab save(filename,)
+    if vTempsaves == 1:
+        vPartFinished = tempsaves(locals())
+    if os.path.is_file(vGeneLocation_File + "_tempsave.mat") and vRunAfterPart != 0:
+        vPartFinished_old = vPartFinished
+        vPartFinished = load([vGeneLocation_File, "_tempsave.mat"], "vPartFinished")[
+            "vPartFinished"
+        ]
+        if vPartFinished >= vRunAfterPart:
+            locals().update(load([vGeneLocation_File, "_tempsave.mat"]))
+            vPartFinished = vRunAfterPart
+        elif vTempsavesOverwrite == 1:
+            vPartFinished = vPartFinished_old
+            del vPartFinished_old
+        else:
+            locals.update(load([vGeneLocation_File, "_tempsave.mat"]))
+            del vPartFinished_old
+
+    # Read in Gene-Transcript-Protein File
+    if vPartFinished < 1:
+        if vVerbose >= 1:
+            log.info(
+                "Read in file describing gene-ID, transcript-ID, and protein-ID conversion\n"
+            )
+        (vMapG, vMapT, vMapP, vMapG_MapT, vMapG_MapP) = f_read_in_ConversionFile(
+            vGeneTranscriptProtein_mapping_File, vVerbose
+        )
+        vPartFinished = 1
+        if vTempsaves == 1:
+            vPartFinished = tempsaves(locals())
+
+    # Map PGDB Gene-ids to reactions
+    if vPartFinished < 2:
+        if vVerbose >= 1:
+            log.info("Read in pgdb flat files\n")
+        (
+            vGenes_all,
+            _,
+            vReactions_all,
+            vReactions_all_Att,
+            vG2R,
+        ) = f_map_pgdb_reactions_to_genes(vPGDB_FlatFileFolder, vVerbose)
+        vPartFinished = 2
+        if vTempsaves == 1:
+            vPartFinished = tempsaves(locals())
+
+    # Map PGDB reactions to metabolic domains
+    if vPartFinished < 3:
+        if vVerbose >= 1:
+            log.info("Read in and map metabolic domains\n")
+        [vRxnMetaDom, vRxnMetaDom_Att, vR_MD] = f_get_metabolic_domains(
+            vMD_reactions_File, vMD_to_annotate
+        )
+        # Match PGDBs to MDs
+        [vRpgdb_Rmd] = f_matchPGDBs_to_MDs(
+            vG2R,
+            vR_MD,
+            vReactions_all,
+            vReactions_all_Att,
+            vRxnMetaDom,
+            vRxnMetaDom_Att,
+        )
+        vPartFinished = 3
+        if vTempsaves == 1:
+            vPartFinished = tempsaves(locals())
+
+    # % Label Reactions with signature and tailoring
+    if vPartFinished < 4:
+        if vVerbose >= 1:
+            log.info(
+                ["Label reactions with signature and tailoring information\n"])
+        [
+            vSTClasses,
+            vSigOrTail,
+            vR_STClasses,
+            vR_SigOrTail,
+        ] = f_lable_Reactions_withSigandTail(
+            vReactions_all, vReactions_all_Att, vSignatureTailorFile
+        )
+        vPartFinished = 4
+        if vTempsaves == 1:
+            vPartFinished = tempsaves(locals())
+
+    # % Map PGDB genes to Maping genes
+    if vPartFinished < 5:
+        if vVerbose >= 1:
+            log.info("Map pgdb genes to conversion file gene-IDs\n")
+        # FIXME: What does this do?
+        vGenesDat_GeneInfo = regexprep(vGenesDat_GeneInfo, "-", "_").upper()
+        vMapG_Gpgdb = f_map_PGDBs_to_conversion_file(
+            vMapG,
+            vMapT,
+            vMapP,
+            vMapG_MapT,
+            vMapG_MapP,
+            vGenes_all,
+            vGenesDat_GeneInfo,
+            vPGDBIdsToMap,
+            vVerbose,
+        )
+        vPartFinished = 5
+        if vTempsaves == 1:
+            vPartFinished = tempsaves(locals())
+
+    # % Create MCL clustering mapped to Maping genes
+    if vPartFinished < 6:
+        if vMCLClusterFile == 0:
+            if vVerbose >= 1:
+                log.info(
+                    [
+                        "Create MCL clustering based on protein file and map cluster IDs to conversion gene-IDs\n"
+                    ]
+                )
+            [vG_MCL, vProtein_IDs] = f_get_MCL_clustering(
+                vProtein_sequence_FastaFile,
+                vMapG,
+                vMapP,
+                vMapG_MapP,
+                vPara,
+                vOverwriteMCLClustering,
+                vRemoveNonProtLocations,
+                vVerbose,
+            )
+        else:
+            if vVerbose >= 1:
+                log.info(
+                    [
+                        "Read in MCL clustering and map cluster IDs to conversion gene-IDs\n"
+                    ]
+                )
+            [vG_MCL, vProtein_IDs] = f_read_MCL_clustering_File(
+                vProtein_sequence_FastaFile,
+                vMapG,
+                vMapP,
+                vMapG_MapP,
+                vRemoveNonProtLocations,
+                vVerbose,
+            )
+        vPartFinished = 6
+        if vTempsaves == 1:
+            vPartFinished = tempsaves(locals())
+
+    # % Read in Gene Position File
+    if vPartFinished < 7:
+        if vVerbose >= 1:
+            log.info("Read in gene position file\n")
+        [vGeneLocation, vGeneLocation_Att] = f_extract_results_with_header(
+            vGeneLocation_File
+        )
+        if vVerbose >= 2:
+            log.debug("Gene Location File Attributes:\n")
+            # FIXME: Validate vGeneLocation_Att
+            for vi in range(1, len(vGeneLocation_Att)):
+                if not iscell(vGeneLocation_Att(1, vi)):
+                    log.debug("Attribute %i is broken.\n", vi)
+                else:
+                    log.debug("Attribute %i: %s\n", vi,
+                              char(vGeneLocation_Att(1, vi)))
+            # Remove protein or transcript information
+            log.debug("Remove transcript information\n")
+
+        [vGeneLocation] = f_remove_protein_transcript_info_from_genepositionfile(
+            vGeneLocation,
+            vGeneLocation_Att,
+            vMapG,
+            vMapT,
+            vMapP,
+            vMapG_MapT,
+            vMapG_MapP,
+            vVerbose,
+        )
+        # Consolidate gene information (one entry per gene)
+        if vVerbose >= 2:
+            log.debug("Consolidate gene information\n")
+        [vUniqueChrom, vGeneLocation2] = f_consolidate_gene_info(
+            vGeneLocation, vGeneLocation_Att, vVerbose
+        )
+        # Sort genes according to their physical positon on the chromosomes
+        if vVerbose >= 2:
+            log.debug("Sort genes on the chromosomes\n")
+        [vGeneLocation2] = f_sort_genes(
+            vGeneLocation2, vGeneLocation_Att, vUniqueChrom, vVerbose
+        )
+        vPartFinished = 7
+        if vTempsaves == 1:
+            vPartFinished = tempsaves(locals())
+
+    # % Map Biomartfile to Gene Map
+    if vPartFinished < 8:
+        if vVerbose >= 1:
+            log.info("Map gene location to conversion gene-IDs\n")
+        [vBiomG_G] = f_map_GeneLocation_to_conversion_file(
+            vGeneLocation2, vGeneLocation_Att, vMapG, vVerbose
+        )
+
+        # If chosen, remove gene position information about genes that are
+        # not present in the protein fasta file.
+        if vRemoveNonProtLocations == 1:
+            if vVerbose >= 2:
+                log.debug("Remove non-protein coding genes in gene locations.\n")
+            [vGeneLocation2, vBiomG_G] = f_Remove_non_protein_fasta_gene_locations(
+                vGeneLocation2,
+                vGeneLocation_Att,
+                vMapP,
+                vMapG_MapP,
+                vBiomG_G,
+                vProtein_IDs,
+            )
+
+        vPartFinished = 8
+        if vTempsaves == 1:
+            vPartFinished = tempsaves(locals())
+
+        # % Get places on genome that do not have genes encoded:
+    if vPartFinished < 9:
+        if vVerbose >= 1:
+            log.info("Find intergenic regions\n")
+        [vInterChrom] = f_find_intergenic_regions(
+            vGeneLocation2, vGeneLocation_Att, vUniqueChrom, vVerbose
+        )
+        vPartFinished = 9
+        if vTempsaves == 1:
+            vPartFinished = tempsaves(locals())
+
+        # % Calculate percentile of gene size that should yield hypo genes
+    if vPartFinished < 10:
+        if vVerbose >= 1:
+            log.info(
+                "Calculate size of sequence gap that should be populated by hypothetical genes\n"
+            )
+        vGeneLengthHypoMin = ceil(
+            prctile(
+                int(
+                    char(vGeneLocation2(charvGeneLocation_Att[1, 3])[:, 1])
+                    - int(vGeneLocation2char(vGeneLocation_Att[1, 2]))[:, 1]
+                ),
+                vHypoGenePercentile,
+            )
+        )
+        vPartFinished = 10
+        if vTempsaves == 1:
+            vPartFinished = tempsaves(locals())
+
+    # % Get sequencing gaps
+    if vPartFinished < 11:
+        if vVerbose >= 1:
+            log.info("Identify sequencing gaps (bases encoded by N)\n")
+        if vGeneLengthHypoMin > 0 and vPreScreenGaps == 1:
+            vSeqGaps = f_annotate_Sequencing_Gaps(
+                vDNA_FastaFile,
+                vInterChrom,
+                vUniqueChrom,
+                vOverwriteSeqGapInfo,
+                vPara,
+                vUnmaskedDNA,
+                vVerbose,
+                "GeneLengthHypoMin",
+                vGeneLengthHypoMin,
+                "SeqGapSizesChromBreak",
+                vSeqGapSizesChromBreak,
+            )
+        else:
+            vSeqGaps = f_annotate_Sequencing_Gaps(
+                vDNA_FastaFile,
+                vInterChrom,
+                vUniqueChrom,
+                vOverwriteSeqGapInfo,
+                vPara,
+                vUnmaskedDNA,
+                vVerbose,
+            )
+        vPartFinished = 11
+        if vTempsaves == 1:
+            vPartFinished = tempsaves(locals())
+
+            # % Introduce Hardbreaks (split chromosomes)
+    if vPartFinished < 12:
+        if vVerbose >= 1:
+            if (
+                vMaxInterGeneDist != -1
+                or vMaxSeqGapSize != -1
+                or len(vSeqGapSizesChromBreak, 2) != 0
+                or vPercentileForMaxInterGeneDist != -1
+                or vMaxInterGeneDistByMedian != -1
+            ):
+                log.info("Prevent clusters:\n")
+            if vMaxSeqGapSize != -1:
+                log.info(
+                    "Prevent clusters spanning sequencing gaps longer or equal than %ibp\n",
+                    vMaxSeqGapSize,
+                )
+        if size(vSeqGapSizesChromBreak, 2) != 0:
+            vNumbers = num2str(vSeqGapSizesChromBreak(1, 1))
+            # FIXME: Validate vi is being set correctly
+            for vi in range(2, len(vSeqGapSizesChromBreak), 2):
+                vNumbers = vNumbers + ", " + str(vSeqGapSizesChromBreak(1, vi))
+                if vVerbose >= 1:
+                    log.info(
+                        "Prevent clusters spanning sequencing gaps of length %sbp\n",
+                        vNumbers,
+                    )
+        if vMaxInterGeneDist != -1:
+            log.info(
+                "Prevent clusters spanning intergenic distances longer or equal than %ibp\n",
+                vMaxInterGeneDist,
+            )
+        if vPercentileForMaxInterGeneDist != -1:
+            log.info(
+                "Prevent clusters spanning the top %i%% intergenic distances\n",
+                vPercentileForMaxInterGeneDist,
+            )
+        if vMaxInterGeneDistByMedian != -1:
+            log.info(
+                "Prevent clusters spanning intergenic distances longer or equal than %i * the median of gene sizes\n",
+                vMaxInterGeneDistByMedian,
+            )
+        [
+            vGeneLocation2,
+            vGeneLocation_Att,
+            vSeqGaps,
+            vInterChrom,
+            vBiomG_G,
+        ] = f_introduce_HardB(
+            vGeneLocation2,
+            vGeneLocation_Att,
+            vUniqueChrom,
+            vInterChrom,
+            vSeqGaps,
+            vSeqGapSizesChromBreak,
+            vMaxSeqGapSize,
+            vMaxInterGeneDist,
+            vPercentileForMaxInterGeneDist,
+            vMaxInterGeneDistByMedian,
+            vBiomG_G,
+        )
+
+        vPartFinished = 12
+        if vTempsaves == 1:
+            vPartFinished = tempsaves(locals())
+
+        # % Populate Hypothetical genes
+    if vPartFinished < 13:
+        if vVerbose >= 1:
+            log.info(
+                ["Introduce Hypothetical genes for gap" "s longer than %i bp\n"],
+                vGeneLengthHypoMin,
+            )
+        if vInsertHypos > 0:
+            if vInsertHypos == 1:
+                if "vHypoAmount" not in locals():
+                    log.error(
+                        "vHypoAmount does not exist. Needs to be set as an Argument."
+                    )
+        [vGeneLocation2, vGeneLocation_Att, _, vBiomG_G] = f_introduceHypoGenes(
+            vGeneLocation2,
+            vGeneLocation_Att,
+            vInterChrom,
+            vSeqGaps,
+            vGeneLengthHypoMin,
+            vBiomG_G,
+            vInsertHypos,
+            vVerbose,
+            "HypoAmount",
+            vHypoAmount,
+        )
+
+        vPartFinished = 13
+        if vTempsaves == 1:
+            vPartFinished = tempsaves(locals())
+
+            # % Annotate Biomartfile with Enzymes (use Gene-protein mapping)
+    if vPartFinished < 14:
+        if vVerbose >= 1:
+            log.info("Annotate gene location file with enzyme information\n")
+        [vBiomG_E] = f_annotate_enyme_info_to_gene_location(
+            vGeneLocation2, vGeneLocation_Att, vBiomG_G, vMapG_Gpgdb, vG2R, vVerbose
+        )
+        if vVerbose >= 2:
+            log.debug(
+                "Number of genes in location file identified as enzymes: %i\n",
+                sum(vBiomG_E),
+            )
+        vPartFinished = 14
+        if vTempsaves == 1:
+            vPartFinished = tempsaves(locals())
+
+        # % Compute LD information
+    if vPartFinished < 15:
+        if vVerbose >= 1:
+            log.info("Compute local gene duplication per gene location\n")
+        [vG_LD, vG_LD_ClustIDs] = f_compute_LocalDuplication(
+            vGeneLocation2,
+            vGeneLocation_Att,
+            vG_MCL,
+            vBiomG_G,
+            vKbRangeLD,
+            vGeneRangeLD,
+            vVerbose,
+        )
+        vPartFinished = 15
+        if vTempsaves == 1:
+            vPartFinished = tempsaves(locals())
+
+        # % Perform clustering
+    if vPartFinished < 16:
+        if vVerbose >= 1:
+            log.info("Perform clustering\n")
+        [
+            vClusters,
+            vClusterBackground,
+            vFinalStepsize,
+            vStepSize_Max,
+        ] = f_perform_clustering(
+            vMinStepSize,
+            vMaxStepSize,
+            vGeneLocation2,
+            vGeneLocation_Att,
+            vBiomG_E,
+            vEnzMinForClusters,
+            vKbRangeLD,
+            vGeneRangeLD,
+            vG_MCL,
+            vBiomG_G,
+            vG2R,
+            vMapG_Gpgdb,
+            vCriterion,
+            vVerbose,
+        )
+        vPartFinished = 16
+        if vTempsaves == 1:
+            vPartFinished = tempsaves(locals())
+
+        # % Perform cutoff
+    if vPartFinished < 17:
+        if vVerbose >= 1:
+            log.info("Perform cuttof at %i%%\n", vTopPercentClusters)
+        [vClusters_Top] = f_perform_cutoff(
+            vClusters, vClusterBackground, vTopPercentClusters
+        )
+        vPartFinished = 17
+        if vTempsaves == 1:
+            vPartFinished = tempsaves(locals())
+
+        # % Produce Gene Outputfile
+    if vPartFinished < 18:
+        if vVerbose >= 1:
+            log.info("Produce GeneOutputFile\n")
+        f_write_Gene_Output(
+            vGeneOutputFile,
+            vGeneLocation2,
+            vGeneLocation_Att,
+            vFinalStepsize,
+            vStepSize_Max,
+            vTopPercentClusters,
+            vMD_to_annotate,
+            vG2R,
+            vMapG_Gpgdb,
+            vBiomG_G,
+            vReactions_all,
+            vReactions_all_Att,
+            vBiomG_E,
+            vG_LD_ClustIDs,
+            vG_LD,
+            vClusters,
+            vClusters_Top,
+            vR_MD,
+            vRpgdb_Rmd,
+            vSTClasses,
+            vR_STClasses,
+            vSigOrTail,
+            vR_SigOrTail,
+            vVerbose,
+            vOutputType,
+        )
+        vPartFinished = 18
+        if vTempsaves == 1:
+            vPartFinished = tempsaves(locals())
+
+        # % Print cluster File
+    if vPartFinished < 19:
+        if vVerbose >= 1:
+            log.info("Produce ClusterOutputFile\n")
+        f_write_Cluster_Output(
+            vClusterOutputFile,
+            vClusters,
+            vClusters_Top,
+            vGeneLocation2,
+            vGeneLocation_Att,
+            vVerbose,
+            vFinalStepsize,
+            vOutputType,
+        )
+        vPartFinished = 19
+        if vTempsaves == 1:
+            vPartFinished = tempsaves(locals())
+
+
+def f_help_content():
+    """%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+     Function that defines the help output
+
+    #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+     Inputs:
+       None
+
+     Outputs:
+       vCellHelp: A cell array matrix containing the text that should be
+                  printed out by the function f_display_help()
+    vCellHelp = {'%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%';
+                 '% ';
+                 '% PlantClusterFinder 1.3';
+                 '% PlantClusterFinder (PCF) detects metabolic gene clusters in a sequenced';
+                 '% genome. It uses a gene location file provided by the user (see below) and';
+                 '% a PGDB created with Pathway Tools as well as further information (see';
+                 '% below) to identify enzyme-coding genes (metabolic genes) located together';
+                 '% on a chromosome. Initially only continous stretches of metabolic genes ';
+                 '% lying directly next to each other are allowed. This condition is relaxed';
+                 '% by iteratively increasing the intervening (non-metabolic) gene size by';
+                 '% one. Several criteria to select for clusters are provided. In addition to';
+                 '% this, clusters can be prevented from forming by a section of criteria.';
+                 '% Details of PCF (version 1.0) can be found in PMID: 28228535.  ';
+                 '% ';
+                 '% The major differences between this version (1.3) and previous versions ';
+                 '% (1.0 and 1.2) are:';
+                 '% ';
+                 '%   1) Physical breaks of the genome or sequencing gaps of unknown size are';
+                 '%      typically encoded by stretches of Ns in the genome assembly fasta';
+                 '%      file. Previously we inserted N hypothetical genes. This however ';
+                 '%      diluted the background of low quality genomes with non-enzymes, and ';
+                 '%      hence the likelyhood of a cluster to be classified as top x% of ';
+                 '%      enzyme dense regions was better than in a genome that had good ';
+                 '%      quality. In version 1.3 we identify these breaks and prevent ';
+                 '%      formation of a cluster over these gaps. ';
+                 '%   2) Any sequencing information that is missing is typically hard masked ';
+                 '%      with Ns. Previously, any intergenic region affected by at least one ';
+                 '%      N was evaluated for its length, and hypothetical genes were inserted ';
+                 '%      accordingly (See Schlapfer et al, PMID: 28228535). This led ';
+                 '%      sometimes to unrealistic prevention of detecting gene clusters. It';
+                 '%      is unlikely that missing information about a single nucleotide would ';
+                 '%      (if it would be known) lead to the finding of multiple gene models. ';
+                 '%      Thus here we changed the code to insert 2 hypothetical genes only if ';
+                 '%      a strech of unknown sequence is larger than nth percentile of gene ';
+                 '%      sequences (set to 5). We also provide the option to NOT insert any ';
+                 '%      hypothetical genes all together. Instead we by default we use ';
+                 '%      MaxSeqGapSize set to 100000 and MaxInterGeneDistByMedian set to 50 ';
+                 '%      resulting in similar clusters as in PCF version 1.0.';
+                 '%   3) Large gene poor intergenic regions are present in genomes. In this ';
+                 '%      version we provide the option of several parameters to prevent ';
+                 '%      clusters from spanning such large gene poor regions.  ';
+                 '% ';
+                 '% Authors: Pascal Schlapfer, December 2017';
+                 '%          Bo Xue, December 2017';
+                 '% ';
+                 '%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%';
+                 '% ';
+                 '% Mandatory inputs: all files need full path, order does not matter.';
+                 '%  ';
+                 '%     -pgdb fullpath: Give full path of PGDB flat file folder, where the';
+                 '%                     flat files of the species pgdb is stored.';
+                 '%     -rmdf fullpath: TSV file of the metabolic domains of reactions. Check';
+                 '%                     if file is outdated (needs to contain all reactions';
+                 '%                     that are present in the PGDB that have genes';
+                 '%                     annotated to).';
+                 '%     -md list: A list of Metabolic domains that should be analyzed. For';
+                 '%               example {''Amines and Polyamines Metabolism''; ''Amino Acids Metabolism''}';
+                 '%     -psf fullpath: Protein sequence file of the genome. Can only contain';
+                 '%                    Protein IDs as header e.g. >protein1-ID';
+                 '%     -gtpf fullpath: TSV file with a header describing gene, transcript,';
+                 '%                     and protein identifier and then for all the';
+                 '%                     identfiers the listings (gene-ID, transcript-ID,';
+                 '%                     protein-ID). This is used to map information';
+                 '%                     regarding transcripts (currently not used) and';
+                 '%                     proteins (used for MCL clustering, potentially also';
+                 '%                     used in PGDBs) to the genes (e.g. the gene location';
+                 '%                     information).';
+                 '%     -glof fullpath: TSV file with gene ID, start bp, end bp, chromosome /';
+                 '%                     scaffold, strand (encoded as 1 or -1). This file can';
+                 '%                     be generated with a biomart or out of a gff3 file.';
+                 '%     -dnaf fullpath: Fasta file of the HARDMASKED genome nucleotide';
+                 '%                     sequences.';
+                 '%     -sitf fullpath: TSV file describing the classes of enzymes that';
+                 '%                     should be classified as signature or tailoring';
+                 '%                     enzymes to identify clusters containing such.';
+                 '%     -gout fullpath: Path and file name to the gene-Outputfile, make sure';
+                 '%                     you have access to the file and folder. This is the';
+                 '%                     first results output file that will be generated.';
+                 '%     -cout fullpath: Path and file name to the cluster-Outputfile, make';
+                 '%                     sure you have access to the file and folder. This is';
+                 '%                     the second Results output file that will be';
+                 '%                     generated.';
+                 '%  ';
+                 '% Optional Inputs:';
+                 '%     ''GenesDat_GeneInfo'': needs to be followed by a list of Attributes in';
+                 '%                          genes.dat. Defines where gene ID information';
+                 '%                          should be searched for. Default is ''Unique-ID'',';
+                 '%                          ''Accession-1'', ''Accession-2''';
+                 '%     ''MCLClusterFile'': needs to be followed by either 1 or 0. With a default';
+                 '%                       of 0. 1 indicates that the input file is not a';
+                 '%                       protein fasta file, but a precomputed MCL';
+                 '%                       clustering file (precomputing can be usefull for';
+                 '%                       speed). If such a file is used, then nothing but';
+                 '%                       gene IDs and tabs and new lines are allowed in this';
+                 '%                       file.';
+                 '%     ''HypoGenePercentile'': needs to be followed by a number. Defines the';
+                 '%                           length of sequencing gap that should be';
+                 '%                           populated by two hypothetical genes. If this is';
+                 '%                           10, then two hypothetical genes are introduced';
+                 '%                           as soon as the sequencing gap exceeds the';
+                 '%                           (100-10) lower percentile of the background';
+                 '%                           size of all genes of the genome (default is 5).';
+                 '%     ''MaxSeqGapSize'': needs to be followed by a number. Maximal masked';
+                 '%                      nucleotide region (in bp) that a cluster is allowed';
+                 '%                      to bridge (default is 100000). ';
+                 '%     ''MaxInterGeneDist'': needs to be followed by a number. Maximal';
+                 '%                         intergenic distance ( in bp) that still can be';
+                 '%                         crossed by a gene cluster. (default is -1, thus';
+                 '%                         inactive).';
+                 '%     ''MaxInterGeneDistByMedian'': needs to be followed by a number. Maximal';
+                 '%                                 intergenic distance that still can be';
+                 '%                                 crossed by a gene cluster, here defined';
+                 '%                                 by this number times the median of the';
+                 '%                                 gene sizes. (default is 50. Set it to -1';
+                 '%                                 if it should be inactive).';
+                 '%     ''PercentileForMaxInterGeneDist'': needs to be followed by a number.';
+                 '%                                      Calculates the maximal intergenic';
+                 '%                                      distance that still can be crossed';
+                 '%                                      by a gene cluster. This number';
+                 '%                                      determines the percentile to choose';
+                 '%                                      from all the distances. If this is';
+                 '%                                      99.9, then a cluster is allowed to';
+                 '%                                      bridge if the largest intergenic';
+                 '%                                      distance in the cluster is below';
+                 '%                                      99.9% of the background size of all';
+                 '%                                      intergenic distances of the genome';
+                 '%                                      (default is -1, thus inactive).';
+                 '%     ''SeqGapSizesChromBreak'': needs to be followed by a list of numbers.';
+                 '%                              The masked nucleotides sequences of these';
+                 '%                              specific lengths will prevent cluster';
+                 '%                              formation (Default is an empty list: []).';
+                 '%     ''PreScreenGaps'': needs to be followed by either 1 or zero. Defines if';
+                 '%                      sequencing gaps should be prescreened to delete them';
+                 '%                      if they are anyway too small to matter. (default is';
+                 '%                      0)';
+                 '%     ''OverwriteSeqGapInfo'': needs to be followed by either 1 or 0. Forces';
+                 '%                            masked nucleotide analysis for finding';
+                 '%                            sequencing gaps (default is 0, no';
+                 '%                            enforcement).';
+                 '%     ''OverwriteMCLClustering'': needs to be followed by either 1 or 0.';
+                 '%                               Forces (if set to 1) that the MCL';
+                 '%                               clustering is redone even if the result';
+                 '%                               files are already present (default is 0).';
+                 '%     ''Verbose'': needs to be followed by a number (0 is default, 1 gives';
+                 '%                more screen-output, 2 gives exhaustive screen-output).';
+                 '%     ''EnzMinForClusters'': needs to be followed by a number: Defines the';
+                 '%                          minimum number of enyzmes that need to be';
+                 '%                          present in a cluster (default is 3).';
+                 '%     ''KbRangeLD'': needs to be followed by a number. Genes that are';
+                 '%                  separated by more than this size (in bp) are not';
+                 '%                  considered as local duplicates. (default is 100000)';
+                 '%     ''GeneRangeLD'': needs to be followed by a number. Number of';
+                 '%                    intervening genes that are allowed to separate two';
+                 '%                    local duplicated genes. Two genes that are separated';
+                 '%                    by more than this many intervening genes are not';
+                 '%                    called local duplicates. (default is 10)';
+                 '%     ''TopPercentClusters'': needs to be followed by a number. Clusters are';
+                 '%                           labeled if they are within this top X% of';
+                 '%                           enzyme dense clusters compared to the';
+                 '%                           background. (default is 5)';
+                 '%     ''MinStepSize'': needs to be followed by a number. Minimal intervening';
+                 '%                    gene size that should be computed (default is 5).';
+                 '%     ''MaxStepSize'': needs to be followed by a number. Maximal intervening';
+                 '%                    gene size that should be computed (default is 20).';
+                 '%     ''Criterion'': needs to be followed by a number. Criterion after which';
+                 '%                  stepsize (intervening gene size) is chosen (default is';
+                 '%                  2).';
+                 '%         1: as published in Schlapfer et al 2017 (PMID:28228535)';
+                 '%             sum(enzymes in clusters) - sum(non-enzymes in clusters) > 0.';
+                 '%         2: stepsize 3 (because most organisms take this one)';
+                 '%         3: sum(enzymes in clusters) - sum(non-enzymes in clusters, without hypo genes) -2*sum(hypogenes)';
+                 '%         4: sum(clusters in stepsize n) > sum(clusters in stepsize n+1).';
+                 '%     -help: Display help';
+                 '%     -para: needs to be followed by a number: how many cpus can be used by';
+                 '%            the algorithm (used for MCL clustering and Sequencing gap';
+                 '%            search). The default is 1.';
+                 '%     ''UnmaskedDNA'': needs to be followed by a number. Defines if plant';
+                 '%                    Cluster finder should continue despite a non-masked';
+                 '%                    genome sequence file was used (default is 0, not';
+                 '%                    continue).';
+                 '%     ''PGDBIdsToMap'': needs to be followed by a string. Can contain the';
+                 '%                     Letters G and/or T and/or P. In that case (the pgdb';
+                 '%                     is mapped to Gene (G) and/or Transcript (T) and/or';
+                 '%                     Protein (P) Ids of the Gene conversion file. The';
+                 '%                     default value is ''G''.';
+                 '%     ''RunAfterPart'': Needs to be followed by a number. Sets the parts of';
+                 '%                     the algorithm that should be recomputed. (default is';
+                 '%                     0)';
+                 '%     ''Tempsaves'': Defines if Temporary saves should be made. (default is';
+                 '%                  0)';
+                 '%     ''TempsavesOverwrite'': Defines if Temporary saves should be';
+                 '%                           overwritten. (Default is 0).';
+                 '%     ''RemoveNonProtLocations'': Defines if the protein-fasta file should be';
+                 '%                               used to clean out the gene position file';
+                 '%                               from sequences that do not show up on the';
+                 '%                               protein fasta file, and thus do not have';
+                 '%                               had a chance to be predicted to be an';
+                 '%                               enzyme. (Default 0)';
+                 '%     ''InsertHypos'': needs to be followed by 0 or 1 (can be extended with';
+                 '%                    code). Defines if the genome should be populated by';
+                 '%                    hypothetical genes in sequencing gaps that are not';
+                 '%                    physical breaks. (Default 0)';
+                 '%     ''HypoAmount'': needs to be followed by a number. Defines by how many';
+                 '%                   hypothetical genes a sequencing gap that is not a';
+                 '%                   physical break should be populated by artificial genes';
+                 '%                   to punish such sequencing gaps from becoming clusters.';
+                 '%                   (Default 0)';
+                 '%     ''OutputType'': Defines the format of the Outputfiles: ''old'' is using';
+                 '%                   the old format to report all clusters of all stepsizes,';
+                 '%                   ''verbose'' defines that top percent clusters of all';
+                 '%                   stepsizes are reported. ''simple'' just reports the top';
+                 '%                   percent clusters of the chosen stepsize (default';
+                 '%                   simple).';
+                 '% ';
+                 '%  Outputs:';
+                 '%     None (Two files are generated: vGeneOutputFile, containing all the';
+                 '%          information about genes and vClusterOutputFile, containing all';
+                 '%          the information about clusters)';
+                 '% ';
+                 '%  USAGE:';
+                 '%  ';
+                 '%     MATLAB (paths with windows, please be aware that certain parts need';
+                 '%            to be run in linux!):';
+                 '%         PlantClusterFinder(''-pgdb'', vPGDB_FlatFileFolder, ''-rmdf'', ...';
+                 '%                            vMD_reactions_File, ''-md'', ...';
+                 '%                            vMD_to_annotate, ''-psf'', ...';
+                 '%                            vProtein_sequence_FastaFile, ''-gtpf'', ...';
+                 '%                            vGeneTranscriptProtein_mapping_File, ...';
+                 '%                            ''-glof'', vGeneLocation_File, ''-dnaf'', ...';
+                 '%                            vDNA_FastaFile, ''-sitf'', ...';
+                 '%                            vSignatureTailorFile, ''-gout'', ...';
+                 '%                            vGeneOutputFile, ''-cout'', ...';
+                 '%                            vClusterOutputFile, varargin)';
+                 '%     ';
+                 '%     Example: (use absolute paths!)';
+                 '%         PlantClusterFinder(''-pgdb'', ''[PlantClusterFinder]\\csubellipsoidea\\pgdb\\csubellipsoideacyc\\1.0\\data\\'', ...';
+                 '%         ''-rmdf'', ''[PlantClusterFinder]\\Inputs\\ReactionMetabolicDomainClassification.txt'', ...';
+                 '%         ''-md'', {''Amines and Polyamines Metabolism''; ''Amino Acids Metabolism''; ''Carbohydrates Metabolism''; ''Cofactors Metabolism''; ''Detoxification Metabolism''; ''Energy Metabolism''; ''Fatty Acids and Lipids Metabolism''; ''Hormones Metabolism''; ''Inorganic Nutrients Metabolism''; ''Nitrogen-Containing Compounds''; ''Nucleotides Metabolism''; ''Phenylpropanoid Derivatives''; ''Polyketides''; ''Primary-Specialized Interface Metabolism''; ''Redox Metabolism''; ''Specialized Metabolism''; ''Sugar Derivatives''; ''Terpenoids''}, ...';
+                 '%         ''-psf'', ''[PlantClusterFinder]\\csubellipsoidea\\CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa'', ...';
+                 '%         ''-gtpf'', ''[PlantClusterFinder]\\csubellipsoidea\\gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt'', ...';
+                 '%         ''-glof'', ''[PlantClusterFinder]\\csubellipsoidea\\glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt'', ...';
+                 '%         ''-dnaf'', ''[PlantClusterFinder]\\csubellipsoidea\\CsubellipsoideaC_169_227_v2.0.hardmasked.fa'', ...';
+                 '%         ''-sitf'', ''[PlantClusterFinder]\\Inputs\\scaffold-tailoring-reactions-05082016.tab'', ...';
+                 '%         ''-gout'', ''[PlantClusterFinder]\\csubellipsoidea\\csubellipsoidea_Gene_v1_3.txt'', ...';
+                 '%         ''-cout'', ''[PlantClusterFinder]\\csubellipsoidea\\csubellipsoidea_Clust_v1_3.txt'', ...';
+                 '%         ''SeqGapSizesChromBreak'', [10000], ''PGDBIdsToMap'', ''GTP'');';
+                 '%         % Note, PGDBIdsToMap is only needed here because the pgdb';
+                 '%         % contains protein Ids in place of gene identifiers.';
+                 '%         ';
+                 '%     Shell, standalone (linux, but you can compile a windows version, see';
+                 '%                       how to compile new version file):';
+                 '%         To use standalone, download matlab runtime from matlab website.';
+                 '%         Make sure, you download the v91. Then replace';
+                 '%         "/share/apps/MATLAB/MATLAB_Runtime/v91" int the example with your';
+                 '%         path to your runtime.';
+                 '%         ';
+                 '%         USE ABSOLUTE PATHS!';
+                 '% ';
+                 '%         ./run_PlantClusterFinder.sh /share/apps/MATLAB/MATLAB_Runtime/v91 -pgdb "./csubellipsoidea/pgdb/csubellipsoideacyc/1.0/data/" -rmdf "./Inputs/ReactionMetabolicDomainClassification.txt" -md "{''Amines and Polyamines Metabolism''; ''Amino Acids Metabolism''; ''Carbohydrates Metabolism''; ''Cofactors Metabolism''; ''Detoxification Metabolism''; ''Energy Metabolism''; ''Fatty Acids and Lipids Metabolism''; ''Hormones Metabolism''; ''Inorganic Nutrients Metabolism''; ''Nitrogen-Containing Compounds''; ''Nucleotides Metabolism''; ''Phenylpropanoid Derivatives''; ''Polyketides''; ''Primary-Specialized Interface Metabolism''; ''Redox Metabolism''; ''Specialized Metabolism''; ''Sugar Derivatives''; ''Terpenoids''}" -psf "./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa" -gtpf "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt" -glof "./csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt" -dnaf "./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.hardmasked.fa" -sitf "./Inputs/scaffold-tailoring-reactions-05082016.tab" -gout "./csubellipsoidea/ARAGene1_3_memex.txt" -cout "./csubellipsoidea/ARAClust1_3_memex.txt" SeqGapSizesChromBreak ''[10000]'' PGDBIdsToMap GTP';
+                 '%         % Note, PGDBIdsToMap is only needed here because the pgdb';
+                 '%         % contains protein Ids in place of gene identifiers. ';
+                 '% '}
+    end
+    """
+    pass
+
+
+if __name__ == "__main__":
+    main()

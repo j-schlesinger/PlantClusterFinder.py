@@ -14,8 +14,6 @@ The major differences between this version (1.3) and previous versions (1.0 and 
 
 Authors: Pascal Schlapfer, December 2017
          Bo Xue, December 2017
-
-
  
  Mandatory inputs: all files need full path, order does not matter.
  
