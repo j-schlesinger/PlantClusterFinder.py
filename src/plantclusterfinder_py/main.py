@@ -3,9 +3,43 @@ from scipy.io import savemat, loadmat
 import re
 import os
 import logging
+from plantclusterfinder_py.cluster import f_Remove_non_protein_fasta_gene_locations
+from plantclusterfinder_py.cluster import f_annotate_Sequencing_Gaps
+from plantclusterfinder_py.cluster import f_annotate_enyme_info_to_gene_location
+from plantclusterfinder_py.cluster import f_compute_LocalDuplication
+from plantclusterfinder_py.cluster import f_consolidate_gene_info
+from plantclusterfinder_py.cluster import f_extract_results_with_header
+from plantclusterfinder_py.cluster import f_find_intergenic_regions
+from plantclusterfinder_py.cluster import f_get_MCL_clustering
+from plantclusterfinder_py.cluster import f_get_metabolic_domains
+from plantclusterfinder_py.cluster import f_introduceHypoGenes
+from plantclusterfinder_py.cluster import f_introduce_HardB
+from plantclusterfinder_py.cluster import f_label_Reactions_withSigandTail
+from plantclusterfinder_py.cluster import f_map_genelocation_to_conversion_file
+from plantclusterfinder_py.cluster import f_map_PGDBs_to_conversion_file
+from plantclusterfinder_py.cluster import f_map_pgdb_reactions_to_genes
+from plantclusterfinder_py.cluster import f_matchPGDBs_to_MDs
+from plantclusterfinder_py.cluster import f_perform_clustering
+from plantclusterfinder_py.cluster import f_perform_cutoff
+from plantclusterfinder_py.cluster import f_read_MCL_clustering_File
+from plantclusterfinder_py.cluster import f_read_in_ConversionFile
+from plantclusterfinder_py.cluster import (
+    f_remove_protein_transcript_info_from_genepositionfile,
+)
+from plantclusterfinder_py.cluster import f_sort_genes
+from plantclusterfinder_py.cluster import f_write_Cluster_Output
+from plantclusterfinder_py.cluster import f_write_Gene_Output
 
 
-def save(filename, *args, caller_locals={}):
+def save(filename: str, *args, caller_locals: dict = {}):
+    """
+    ---
+    Save the state of PlantClusterFinder as a Matlab object
+    ---
+    Args:
+        filename: name of file where object is being stored
+        caller_locals: result of locals() from calling function
+    """
     parser = ArgumentParser(prog="SaveFunction", exit_on_error=False)
     parser.add_argument("-regexp", type=str)
     parser.add_argument("-v7.3", action="store_true", dest="version")
@@ -26,7 +60,17 @@ def save(filename, *args, caller_locals={}):
         raise Exception("Does not support non-regexp save functions")
 
 
-def load(filename, *variables):
+def load(filename: str, *variables):
+    """
+    ---
+    Load list of variables from a PlantClusterFinder MATLAB file
+    ---
+    Args:
+        filename: name of file where object is stored
+        *variables: variable names to load
+    Returns:
+        Dict of saved variables loaded from file.
+    """
     if isinstance(filename, list):
         filename = "".join(filename)
     if len(variables) == 0:
@@ -35,7 +79,15 @@ def load(filename, *variables):
         return {x: y for x, y in loadmat(filename).items if x in variables}
 
 
-def tempsaves(caller_locals: dict):
+def _tempsaves(caller_locals: dict):
+    """
+    Perfrom temporary save for PlantClusterFinder between steps
+    Args:
+        caller_locals: locals() of calling function
+    Returns:
+        If the existing temp save is further along than the caller,
+        the vPartFinished from that, otherwise the caller's vPartFinished
+    """
     ret = caller_locals["vPartFinished"]
     temp_filename = caller_locals.get(
         "vGeneLocation_File", "TEMP") + "_tempsave.mat"
@@ -127,8 +179,10 @@ def main():
     # contains protein Ids in place of gene identifiers.
 
     parser = ArgumentParser(
-        prog="PlantClusterFinder", description="Find Metabolic Gene Clusters in Plant Genomes", epilog=help_epilog,
-        formatter_class=RawTextHelpFormatter
+        prog="PlantClusterFinder",
+        description="Find Metabolic Gene Clusters in Plant Genomes",
+        epilog=help_epilog,
+        formatter_class=RawTextHelpFormatter,
     )
     # Mandatory inputs: all files need full path, order does not matter.
     parser.add_argument(
@@ -644,11 +698,12 @@ def main():
             with open(filename, "r") as f:
                 pass
         except FileNotFoundError as e:
-            error_message += f"File {
-                filename} is a file that could not be found. How did you get here?\n"
+            error_message += f"File {filename} is a file that could not be found.\n"
         except PermissionError:
-            error_message += f"You do not have permission to read the {
-                err} file at {filename}\n"
+            error_message += (
+                f"You do not have permission to read the {err}"
+                + " file at {filename}\n"
+            )
         except OSError as e:
             error_message += f"Cannot read {err} {filename} because of {e}.\n"
     test_writable_file = {
@@ -663,11 +718,12 @@ def main():
             with open(filename, "a") as f:
                 pass
         except FileNotFoundError as e:
-            error_message += f"File {
-                filename} is a file that could not be found. How did you get here?\n"
+            error_message += f"File {filename} is a file that could not be found.\n"
         except PermissionError:
-            error_message += f"You do not have permission to write to the {
-                err} file at {filename}\n"
+            error_message += (
+                f"You do not have permission to write to the {err}"
+                + " file at {filename}\n"
+            )
         except OSError as e:
             error_message += f"Cannot write to {
                 err} {filename} because of {e}.\n"
@@ -680,7 +736,7 @@ def main():
     # Using scipy.io.savemat to save .mat files
     # Matlab save(filename,)
     if vTempsaves == 1:
-        vPartFinished = tempsaves(locals())
+        vPartFinished = _tempsaves(locals())
     if os.path.is_file(vGeneLocation_File + "_tempsave.mat") and vRunAfterPart != 0:
         vPartFinished_old = vPartFinished
         vPartFinished = load([vGeneLocation_File, "_tempsave.mat"], "vPartFinished")[
@@ -707,7 +763,7 @@ def main():
         )
         vPartFinished = 1
         if vTempsaves == 1:
-            vPartFinished = tempsaves(locals())
+            vPartFinished = _tempsaves(locals())
 
     # Map PGDB Gene-ids to reactions
     if vPartFinished < 2:
@@ -722,7 +778,7 @@ def main():
         ) = f_map_pgdb_reactions_to_genes(vPGDB_FlatFileFolder, vVerbose)
         vPartFinished = 2
         if vTempsaves == 1:
-            vPartFinished = tempsaves(locals())
+            vPartFinished = _tempsaves(locals())
 
     # Map PGDB reactions to metabolic domains
     if vPartFinished < 3:
@@ -742,7 +798,7 @@ def main():
         )
         vPartFinished = 3
         if vTempsaves == 1:
-            vPartFinished = tempsaves(locals())
+            vPartFinished = _tempsaves(locals())
 
     # % Label Reactions with signature and tailoring
     if vPartFinished < 4:
@@ -754,18 +810,18 @@ def main():
             vSigOrTail,
             vR_STClasses,
             vR_SigOrTail,
-        ] = f_lable_Reactions_withSigandTail(
+        ] = f_label_Reactions_withSigandTail(
             vReactions_all, vReactions_all_Att, vSignatureTailorFile
         )
         vPartFinished = 4
         if vTempsaves == 1:
-            vPartFinished = tempsaves(locals())
+            vPartFinished = _tempsaves(locals())
 
     # % Map PGDB genes to Maping genes
     if vPartFinished < 5:
         if vVerbose >= 1:
             log.info("Map pgdb genes to conversion file gene-IDs\n")
-        # FIXME: What does this do?
+        # FIXME: What does matlab function regexprep do?
         vGenesDat_GeneInfo = regexprep(vGenesDat_GeneInfo, "-", "_").upper()
         vMapG_Gpgdb = f_map_PGDBs_to_conversion_file(
             vMapG,
@@ -780,7 +836,7 @@ def main():
         )
         vPartFinished = 5
         if vTempsaves == 1:
-            vPartFinished = tempsaves(locals())
+            vPartFinished = _tempsaves(locals())
 
     # % Create MCL clustering mapped to Maping genes
     if vPartFinished < 6:
@@ -818,7 +874,7 @@ def main():
             )
         vPartFinished = 6
         if vTempsaves == 1:
-            vPartFinished = tempsaves(locals())
+            vPartFinished = _tempsaves(locals())
 
     # % Read in Gene Position File
     if vPartFinished < 7:
@@ -863,13 +919,13 @@ def main():
         )
         vPartFinished = 7
         if vTempsaves == 1:
-            vPartFinished = tempsaves(locals())
+            vPartFinished = _tempsaves(locals())
 
     # % Map Biomartfile to Gene Map
     if vPartFinished < 8:
         if vVerbose >= 1:
             log.info("Map gene location to conversion gene-IDs\n")
-        [vBiomG_G] = f_map_GeneLocation_to_conversion_file(
+        [vBiomG_G] = f_map_genelocation_to_conversion_file(
             vGeneLocation2, vGeneLocation_Att, vMapG, vVerbose
         )
 
@@ -889,7 +945,7 @@ def main():
 
         vPartFinished = 8
         if vTempsaves == 1:
-            vPartFinished = tempsaves(locals())
+            vPartFinished = _tempsaves(locals())
 
         # % Get places on genome that do not have genes encoded:
     if vPartFinished < 9:
@@ -900,7 +956,7 @@ def main():
         )
         vPartFinished = 9
         if vTempsaves == 1:
-            vPartFinished = tempsaves(locals())
+            vPartFinished = _tempsaves(locals())
 
         # % Calculate percentile of gene size that should yield hypo genes
     if vPartFinished < 10:
@@ -908,6 +964,7 @@ def main():
             log.info(
                 "Calculate size of sequence gap that should be populated by hypothetical genes\n"
             )
+        # FIXME: MATLAB functions ceil, prctile, and char
         vGeneLengthHypoMin = ceil(
             prctile(
                 int(
@@ -919,7 +976,7 @@ def main():
         )
         vPartFinished = 10
         if vTempsaves == 1:
-            vPartFinished = tempsaves(locals())
+            vPartFinished = _tempsaves(locals())
 
     # % Get sequencing gaps
     if vPartFinished < 11:
@@ -951,7 +1008,7 @@ def main():
             )
         vPartFinished = 11
         if vTempsaves == 1:
-            vPartFinished = tempsaves(locals())
+            vPartFinished = _tempsaves(locals())
 
             # % Introduce Hardbreaks (split chromosomes)
     if vPartFinished < 12:
@@ -970,6 +1027,7 @@ def main():
                     vMaxSeqGapSize,
                 )
         if size(vSeqGapSizesChromBreak, 2) != 0:
+            # FIXME: matlab function num2str
             vNumbers = num2str(vSeqGapSizesChromBreak(1, 1))
             # FIXME: Validate vi is being set correctly
             for vi in range(2, len(vSeqGapSizesChromBreak), 2):
@@ -1016,7 +1074,7 @@ def main():
 
         vPartFinished = 12
         if vTempsaves == 1:
-            vPartFinished = tempsaves(locals())
+            vPartFinished = _tempsaves(locals())
 
         # % Populate Hypothetical genes
     if vPartFinished < 13:
@@ -1046,7 +1104,7 @@ def main():
 
         vPartFinished = 13
         if vTempsaves == 1:
-            vPartFinished = tempsaves(locals())
+            vPartFinished = _tempsaves(locals())
 
             # % Annotate Biomartfile with Enzymes (use Gene-protein mapping)
     if vPartFinished < 14:
@@ -1062,7 +1120,7 @@ def main():
             )
         vPartFinished = 14
         if vTempsaves == 1:
-            vPartFinished = tempsaves(locals())
+            vPartFinished = _tempsaves(locals())
 
         # % Compute LD information
     if vPartFinished < 15:
@@ -1079,7 +1137,7 @@ def main():
         )
         vPartFinished = 15
         if vTempsaves == 1:
-            vPartFinished = tempsaves(locals())
+            vPartFinished = _tempsaves(locals())
 
         # % Perform clustering
     if vPartFinished < 16:
@@ -1108,7 +1166,7 @@ def main():
         )
         vPartFinished = 16
         if vTempsaves == 1:
-            vPartFinished = tempsaves(locals())
+            vPartFinished = _tempsaves(locals())
 
         # % Perform cutoff
     if vPartFinished < 17:
@@ -1119,7 +1177,7 @@ def main():
         )
         vPartFinished = 17
         if vTempsaves == 1:
-            vPartFinished = tempsaves(locals())
+            vPartFinished = _tempsaves(locals())
 
         # % Produce Gene Outputfile
     if vPartFinished < 18:
@@ -1154,7 +1212,7 @@ def main():
         )
         vPartFinished = 18
         if vTempsaves == 1:
-            vPartFinished = tempsaves(locals())
+            vPartFinished = _tempsaves(locals())
 
         # % Print cluster File
     if vPartFinished < 19:
@@ -1172,22 +1230,24 @@ def main():
         )
         vPartFinished = 19
         if vTempsaves == 1:
-            vPartFinished = tempsaves(locals())
+            vPartFinished = _tempsaves(locals())
 
 
 def f_help_content():
-    """%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
+    """
+    ---------------------------------------------------------------------------
      Function that defines the help output
-
-    #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-     Inputs:
+    -------------------------------------------------------------------------
+    Args:
        None
 
-     Outputs:
+    Returns:
        vCellHelp: A cell array matrix containing the text that should be
                   printed out by the function f_display_help()
+    """
+
+    """
+    %Matlab code
     vCellHelp = {'%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%';
                  '% ';
                  '% PlantClusterFinder 1.3';
