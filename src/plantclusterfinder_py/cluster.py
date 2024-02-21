@@ -1,3 +1,6 @@
+import pythoncyc
+
+
 def f_label_Reactions_withSigandTail(
     vReactions_all, vReactions_all_Att, vSignatureTailorFile
 ):
@@ -115,7 +118,7 @@ def f_compute_LocalDuplication(
     """
     ---------------------------------------------------------------------------
 
-      Function that computes wether a genes is locally duplicated, and if so,
+      Function that computes wheather a gene is locally duplicated, and if so,
       which MCL cluster it is associated with.
 
     ---------------------------------------------------------------------------
@@ -125,9 +128,9 @@ def f_compute_LocalDuplication(
                         generated in PlantClusterFinder function.
         vGeneLocation_Att: Describing the fields attributes of the Matlab
                            structure vGeneLocation and vGeneLocation2.
-        vG_MCL: Maping between the genes in the conversion-ID file and the
+        vG_MCL: Mapping between the genes in the conversion-ID file and the
                 MCL-clustering file.
-        vBiomG_G: Maping between the Gene location file and the gene-IDs in the
+        vBiomG_G: Mapping between the Gene location file and the gene-IDs in the
                   conversion file.
         vKbRangeLD: Genes that are encoded more than this bp apart, are not
                     called local duplicates.
@@ -231,10 +234,11 @@ def f_introduceHypoGenes(
     varargin,
 ):
     """
-    ---------------------------------------------------------------------------
+    ---
       Function that introduces Hypothetical genes if a sequencing gap reached a
       critical size vGeneLengthHypoMin.
-    ---------------------------------------------------------------------------
+
+    ---
     Args:
         vGeneLocation2: Matlab structure about the gene location information,
                         generated in PlantClusterFinder function.
@@ -251,7 +255,7 @@ def f_introduceHypoGenes(
         vGeneLengthHypoMin: The minimal length of bp of masked DNA that should
                             be populated by two hypothetical genes (one minus,
                             and one plus strand)
-        vBiomG_G: Maping between the Gene location file and the gene-IDs in the
+        vBiomG_G: Mapping between the Gene location file and the gene-IDs in the
                   conversion file.
         vInsertHypos: [0,1, can be extended with more code] If set to 1, then
                       Hypothetical genes are introduced. Then vHypoAmount needs
@@ -457,7 +461,7 @@ def f_introduce_HardB(
         vMaxInterGeneDistByMedian: Maximal intergenic distance that still can
                                    be spanned by a gene cluster: this number
                                    times the median of the gene sizes.
-        vBiomG_G: Maping between the Gene location file and the gene-IDs in the
+        vBiomG_G: Mapping between the Gene location file and the gene-IDs in the
                   conversion file.
 
     Returns:
@@ -473,7 +477,7 @@ def f_introduce_HardB(
                   bp, corrected for maximal size (= intergenic region).
         vInterChrom: A matrix defining chromosome, start bp, end bp, gene
                      before and gene after a intergenic region.
-         for every occurence of bad gap or gap tat exeeds the max size, reform
+         for every occurence of bad gap or gap that exeeds the max size, reform
          the chromosome strand such that it is nomore the same as before (split
          chromosome
     """
@@ -743,6 +747,7 @@ def f_get_Sequencing_Gaps(vFile, vPara, vVerbose, vOverwriteSeqGapInfo, vUnmaske
     ---------------------------------------------------------------------------
       Function that screens a DNA fasta file for masked streches of DNA
       (masked by N).
+
     ---------------------------------------------------------------------------
     Args:
         vFile: Fasta file of the masked genome nucleotide sequences.
@@ -1007,7 +1012,7 @@ def f_get_metabolic_domains(vGenesMetabolicDomains_File, vMD_to_annotate):
                      domain file
         vRxnMetaDom_Att: Attributes of vRxnMetaDom (lets you access vRxnMetaDom
                          with vRxnMetaDom.(char(vRxnMetaDom_Att(1,n))))
-        vR_MD: Maping between all Reactions stored in the Metabolic domain file
+        vR_MD: Mapping between all Reactions stored in the Metabolic domain file
                and the metabolic domains that were identified to be of interest
                in vMD_to_annotate.
     """
@@ -1057,12 +1062,12 @@ def f_read_MCL_clustering_File(
         vFile: MCL-clustering output file (I20).
         vMapG: Unique list of gene IDs stored in the conversion file.
         vMapP: Unique list of protein IDs stored in the conversion file.
-        vMapG_MapP: Maping between vMapG and vMapP
+        vMapG_MapP: Mapping between vMapG and vMapP
         vVerbose: Tells the code on how much of output should be printed out
                   the screen. (0 = nothing, 1 = little, 2 = more, ...)
 
     Returns:
-        vG_MCL: Maping between the genes in the conversion-ID file and the
+        vG_MCL: Mapping between the genes in the conversion-ID file and the
                 MCL-clustering file.
         vProtein_IDs: A cell array of all protein-IDs that are stored in the
                       protein fasta file. only active if
@@ -1162,14 +1167,14 @@ def f_get_MCL_clustering(
                                      Should only contain Protein IDs as
                                      header e.g. >protein1-ID
         vMapP: Unique list of protein IDs stored in the conversion file.
-        vMapG_MapP: Maping between vMapG and vMapP
+        vMapG_MapP: Mapping between vMapG and vMapP
         vPara: Defines if multiple cpus should be used for computation of parts
                of algorithm. Active if larger than 1.
         vVerbose: Tells the code on how much of output should be printed out to
                   the screen. (0 = nothing, 1 = little, 2 = more, ...)
 
     Returns:
-        vG_MCL: Maping between the genes in the conversion-ID file and the
+        vG_MCL: Mapping between the genes in the conversion-ID file and the
                 MCL-clustering file.
         vProtein_IDs: A cell array of all protein-IDs that are stored in the
                       protein fasta file. only active if
@@ -1300,7 +1305,7 @@ def f_map_pgdb_reactions_to_genes(vPGDB_FlatFileFolder, vVerbose, **kwargs):
                         of the pgdb.
         vReactions_all_Att: Attributes of vReactions_all, can be displayed by
                             vReactions_all.(char(vReactions_all_Att(1,n)))
-        vG2R: Maping of all genes in the Genes_all to the Reactions in
+        vG2R: Mapping of all genes in the Genes_all to the Reactions in
              Reactions_all
     """
 
@@ -1505,8 +1510,8 @@ def f_read_in_ConversionFile(
         vMapG: Unique list of gene IDs stored in the conversion file.
         vMapT: Unique list of transcript IDs stored in the conversion file.
         vMapP: Unique list of protein IDs stored in the conversion file.
-        vMapG_MapT: Maping between vMapG and vMapT
-        vMapG_MapP: Maping between vMapG and vMapP
+        vMapG_MapT: Mapping between vMapG and vMapT
+        vMapG_MapP: Mapping between vMapG and vMapP
           if vPara >= 1
               vPool = varargin{1,1};
           end
@@ -1618,9 +1623,9 @@ def f_matchPGDBs_to_MDs(
 
     ---------------------------------------------------------------------------
     Args:
-        vG2R: Maping of all genes in the Genes_all to the Reactions in
+        vG2R: Mapping of all genes in the Genes_all to the Reactions in
               Reactions_all
-        vR_MD: Maping between all Reactions stored in the Metabolic domain file
+        vR_MD: Mapping between all Reactions stored in the Metabolic domain file
                and the metabolic domains that were identified to be of interest
                in vMD_to_annotate.
         vReactions_all: Matlab structure containing all the information
@@ -1672,8 +1677,8 @@ def f_map_PGDBs_to_conversion_file(
         vMapG: Unique list of gene IDs stored in the conversion file.
         vMapT: Unique list of transcript IDs stored in the conversion file.
         vMapP: Unique list of protein IDs stored in the conversion file.
-        vMapG_MapT: Maping between vMapG and vMapT
-        vMapG_MapP: Maping between vMapG and vMapP
+        vMapG_MapT: Mapping between vMapG and vMapT
+        vMapG_MapP: Mapping between vMapG and vMapP
         vGenes_all: Matlab structure containing all the information
                     (Attributes)that was searched for (described in
                     vGenesAttributes, default is {'UNIQUE-ID','PRODUCT', ...
@@ -1773,8 +1778,8 @@ def f_remove_protein_transcript_info_from_genepositionfile(
         vMapG: Unique list of gene IDs stored in the conversion file.
         vMapT: Unique list of transcript IDs stored in the conversion file.
         vMapP: Unique list of protein IDs stored in the conversion file.
-        vMapG_MapT: Maping between vMapG and vMapT
-        vMapG_MapP: Maping between vMapG and vMapP
+        vMapG_MapT: Mapping between vMapG and vMapT
+        vMapG_MapP: Mapping between vMapG and vMapP
 
     Returns:
         vGeneLocation: Matlab structure about the gene location information,
@@ -2031,11 +2036,11 @@ def f_annotate_enyme_info_to_gene_location(
                         generated in PlantClusterFinder function.
         vGeneLocation_Att: Describing the fields attributes of the Matlab
                            structure vGeneLocation and vGeneLocation2.
-        vBiomG_G: Maping between the Gene location file and the gene-IDs in the
+        vBiomG_G: Mapping between the Gene location file and the gene-IDs in the
                   conversion file.
         vMapG_Gpgdb: A maping between Genes in the conversion file and genes
                      stored in the pgdb genes.dat file.
-        vG2R: Maping of all genes in the Genes_all to the Reactions in
+        vG2R: Mapping of all genes in the Genes_all to the Reactions in
               Reactions_all
         vVerbose: Tells the code on how much of output should be printed out to
                   the screen. (0 = nothing, 1 = little, 2 = more, ...)
@@ -2108,11 +2113,11 @@ def f_perform_clustering(
         vGeneRangeLD: Number of genes that space two genes from each other.
                       Genes that have more than this many intervening genes
                       between themare not called local duplicates.
-        vG_MCL: Maping between the genes in the conversion-ID file and the
+        vG_MCL: Mapping between the genes in the conversion-ID file and the
                 MCL-clustering file.
-        vBiomG_G: Maping between the Gene location file and the gene-IDs in the
+        vBiomG_G: Mapping between the Gene location file and the gene-IDs in the
                   conversion file.
-        vG2R: Maping of all genes in the Genes_all to the Reactions in
+        vG2R: Mapping of all genes in the Genes_all to the Reactions in
               Reactions_all
         vMapG_Gpgdb: A maping between Genes in the conversion file and genes
                      stored in the pgdb genes.dat file.
@@ -2515,11 +2520,11 @@ def f_write_Gene_Output(
         vMD_to_annotate: A list of Metabolic domains that should be analyzed.
                          For example {'Amines and Polyamines Metabolism'; ...
                          'Amino Acids Metabolism'
-        vG2R: Maping of all genes in the Genes_all to the Reactions in
+        vG2R: Mapping of all genes in the Genes_all to the Reactions in
               Reactions_all
         vMapG_Gpgdb: A maping between Genes in the conversion file and genes
                      stored in the pgdb genes.dat file.
-        vBiomG_G: Maping between the Gene location file and the gene-IDs in the
+        vBiomG_G: Mapping between the Gene location file and the gene-IDs in the
                   conversion file.
         vReactions_all: Matlab structure containing all the information
                         (Attributes)that was searched for (described in
@@ -2542,7 +2547,7 @@ def f_write_Gene_Output(
         vClusters_Top: Vector with size Number of Clusters x 1. It is zero if
                        the density of the cluster is above or the same as given
                        by the input argument vTopPercentClusters*100.
-        vR_MD: Maping between all Reactions stored in the Metabolic domain file
+        vR_MD: Mapping between all Reactions stored in the Metabolic domain file
                and the metabolic domains that were identified to be of interest
                in vMD_to_annotate.
         vRpgdb_Rmd: A maping between reactions stored in the pgdb and the
@@ -3187,8 +3192,8 @@ def f_Remove_non_protein_fasta_gene_locations(
         vGeneLocation_Att: Describing the fields attributes of the Matlab
                            structure vGeneLocation and vGeneLocation2.
         vMapP: Unique list of protein IDs stored in the conversion file.
-        vMapG_MapP: Maping between vMapG and vMapP
-        vBiomG_G: Maping between the Gene location file and the gene-IDs in the
+        vMapG_MapP: Mapping between vMapG and vMapP
+        vBiomG_G: Mapping between the Gene location file and the gene-IDs in the
                   conversion file.
         vProtein_IDs: A cell array of all protein-IDs that are stored in the
                       protein fasta file. only active if
@@ -3197,7 +3202,7 @@ def f_Remove_non_protein_fasta_gene_locations(
     Returns:
         vGeneLocation2: Matlab structure about the gene location information,
                         generated in PlantClusterFinder function.
-        vBiomG_G: Maping between the Gene location file and the gene-IDs in the
+        vBiomG_G: Mapping between the Gene location file and the gene-IDs in the
                   conversion file.
     """
 

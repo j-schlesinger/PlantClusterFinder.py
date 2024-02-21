@@ -21,6 +21,7 @@ numpy==1.26.3
 packaging==23.2
 pdoc==14.4.0
 pygments==2.17.2
+pythoncyc==2.0.2
 requests==2.31.0
 scipy==1.12.0
 snowballstemmer==2.2.0
