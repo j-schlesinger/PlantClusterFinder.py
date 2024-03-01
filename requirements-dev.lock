@@ -9,18 +9,25 @@
 
 -e file:.
 alabaster==0.7.16
+annotated-types==0.6.0
 babel==2.14.0
 certifi==2024.2.2
 charset-normalizer==3.3.2
 docutils==0.20.1
 idna==3.6
 imagesize==1.4.1
+iniconfig==2.0.0
 jinja2==3.1.3
 markupsafe==2.1.5
 numpy==1.26.3
 packaging==23.2
 pdoc==14.4.0
+pluggy==1.4.0
+polars==0.20.13
+pydantic==2.6.3
+pydantic-core==2.16.3
 pygments==2.17.2
+pytest==8.0.1
 pythoncyc==2.0.2
 requests==2.31.0
 scipy==1.12.0
@@ -32,4 +39,5 @@ sphinxcontrib-htmlhelp==2.0.5
 sphinxcontrib-jsmath==1.0.1
 sphinxcontrib-qthelp==1.0.7
 sphinxcontrib-serializinghtml==1.1.10
+typing-extensions==4.10.0
 urllib3==2.2.0

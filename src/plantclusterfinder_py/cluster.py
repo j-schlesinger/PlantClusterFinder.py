@@ -1,9 +1,12 @@
+from plantclusterfinder_py.cluster_datatypes import *
 import pythoncyc
+import polars as pl
+import logging
 
 
-def f_label_Reactions_withSigandTail(
-    vReactions_all, vReactions_all_Att, vSignatureTailorFile
-):
+def label_reactions_with_sig_and_tail(
+    vReactions_all: pl.DataFrame, vSignatureTailorFile
+) -> ReactionLabels:
     """
     ---------------------------------------------------------------------------
 
@@ -14,24 +17,18 @@ def f_label_Reactions_withSigandTail(
 
     ---------------------------------------------------------------------------
     Args:
-        vReactions_all: Matlab structure containing all the information
+        vReactions_all: DataFrame containing all the information
                         (Attributes)that was searched for (described in
                         vReactionsAttributes, default is {'UNIQUE-ID', ...
                         'ENZYMATIC-REACTION', 'EC-NUMBER'};) in reactions.dat
                         of the pgdb.
-        vReactions_all_Att: Attributes of vReactions_all, can be displayed by
-                            vReactions_all.(char(vReactions_all_Att(1,n)))
         vSignatureTailorFile: TSV file describing the classes of enzymes that
                               should be classified as signature or tailoring
                               enzymes to identify clusters containing such.
     Return:
-        vSTClasses: Is a list of signature and tailoring enzyme classes.
-        vSigOrTail: Is a list of types of enzymes, e.g. signature, tailoring
-                    and so on.
-        vR_STClasses: Mapping of Reactions in vReactions_all to the enzyme
-                      classes of vSTClasses.
-        vR_SigOrTail: Mapping of Reactions in vReactions_all to the enzyme
-                      types of vSigOrTail.
+        ReactionLabels object with the signature and tailoring enzyme classes,
+            list of types of enzymes, and mapping between reactions and
+            enzyme classes as well as signature or tailoring enymes
     """
 
     """
@@ -106,15 +103,14 @@ def f_label_Reactions_withSigandTail(
     end"""
 
 
-def f_compute_LocalDuplication(
+def compute_local_duplication(
     vGeneLocation2,
-    vGeneLocation_Att,
     vG_MCL,
     vBiomG_G,
     vKbRangeLD,
     vGeneRangeLD,
     vVerbose,
-):
+) -> pl.DataFrame:
     """
     ---------------------------------------------------------------------------
 
@@ -124,10 +120,8 @@ def f_compute_LocalDuplication(
     ---------------------------------------------------------------------------
 
     Args:
-        vGeneLocation2: Matlab structure about the gene location information,
+        vGeneLocation2: DataFrame about the gene location information,
                         generated in PlantClusterFinder function.
-        vGeneLocation_Att: Describing the fields attributes of the Matlab
-                           structure vGeneLocation and vGeneLocation2.
         vG_MCL: Mapping between the genes in the conversion-ID file and the
                 MCL-clustering file.
         vBiomG_G: Mapping between the Gene location file and the gene-IDs in the
@@ -141,12 +135,15 @@ def f_compute_LocalDuplication(
                   the screen. (0 = nothing, 1 = little, 2 = more, ...)
 
     Returns:
-        vG_LD: A vector of length of the number of Genes in vGeneLocation2,
-               being 1 if the gene was considered to be locally duplicated (a
+        DataFrame with the columns:
+
+        - GeneID: ID of Gene in GeneLocation2
+        - is_locally_duplicated: A vector of length of the number of Genes in vGeneLocation2,
+               being True if the gene was considered to be locally duplicated (a
                gene was within vKbRangeLD bp distance and not spaced more than
                with vGeneRangeLD genes from another gene with the same MCL
                clustering given by vG_MCL.
-        vG_LD_ClustIDs: The MCL clusters of the gene (comma separated if more
+        - ClusterIds: The MCL clusters of the gene (comma separated if more
                         than 1 peptide is associated to a gene
     """
 
@@ -222,17 +219,16 @@ def f_compute_LocalDuplication(
     """
 
 
-def f_introduceHypoGenes(
+def introduce_hypo_genes(
     vGeneLocation2,
-    vGeneLocation_Att,
     vInterChrom,
     vSeqGaps,
     vGeneLengthHypoMin,
     vBiomG_G,
     vInsertHypos,
-    vVerbose,
     varargin,
-):
+    vHypoAmount: int = 0,
+) -> HardBreaks:
     """
     ---
       Function that introduces Hypothetical genes if a sequencing gap reached a
@@ -240,10 +236,8 @@ def f_introduceHypoGenes(
 
     ---
     Args:
-        vGeneLocation2: Matlab structure about the gene location information,
+        vGeneLocation2: DataFrame about the gene location information,
                         generated in PlantClusterFinder function.
-        vGeneLocation_Att: Describing the fields attributes of the Matlab
-                           structure vGeneLocation and vGeneLocation2.
         vInterChrom: A matrix defining chromosome, start bp, end bp, gene
                      before and gene after a intergenic region.
         vSeqGaps: A string array (cell) matrix containing the
@@ -257,20 +251,17 @@ def f_introduceHypoGenes(
                             and one plus strand)
         vBiomG_G: Mapping between the Gene location file and the gene-IDs in the
                   conversion file.
-        vInsertHypos: [0,1, can be extended with more code] If set to 1, then
-                      Hypothetical genes are introduced. Then vHypoAmount needs
-                      to be set.
+        vInsertHypos: If set to True, then Hypothetical genes are introduced.
+            Then vHypoAmount needs to be set.
         vVerbose: Tells the code on how much of output should be printed out to
                   the screen. (0 = nothing, 1 = little, 2 = more, ...)%
+    Optional Args:
+        vHypoAmount: integer describing the number of hypothetical genes
+            a sequencing gap that is not a physical break should be populated
+            by artificial genes.
     Returns:
-        vGeneLocation2: Matlab structure about the gene location information,
-                        generated in PlantClusterFinder function.
-        vGeneLocation_Att: Describing the fields attributes of the Matlab
-                           structure vGeneLocation and vGeneLocation2.
-        vInterChrom: A matrix defining chromosome, start bp, end bp, gene
-                     before and gene after a intergenic region.
-        vHypoAmount: Number (0-n, default 2) of Hypothetical genes that should
-                     be inserted. Only needed if vInsertHypos is set to 1.
+        HardBreaks object containing the gene location information, the
+            inter-chromosomal matrix, and the HypoAmount populated.
     """
 
     """
@@ -411,9 +402,8 @@ def f_introduceHypoGenes(
     end"""
 
 
-def f_introduce_HardB(
+def introduce_hard_breaks(
     vGeneLocation2,
-    vGeneLocation_Att,
     vUniqueChrom,
     vInterChrom,
     vSeqGaps,
@@ -424,7 +414,7 @@ def f_introduce_HardB(
     vMaxInterGeneDistByMedian,
     vBiomG_G,
     varargin,
-):
+) -> HardBreaks:
     """
     ---------------------------------------------------------------------------
 
@@ -435,10 +425,8 @@ def f_introduce_HardB(
     ---------------------------------------------------------------------------
 
     Args:
-        vGeneLocation2: Matlab structure about the gene location information,
+        vGeneLocation2: DataFrame about the gene location information,
                         generated in PlantClusterFinder function.
-        vGeneLocation_Att: Describing the fields attributes of the Matlab
-                           structure vGeneLocation and vGeneLocation2.
         vUniqueChrom: A list with unique entries of all chromosome and scaffold
                       names.
         vInterChrom: A matrix defining chromosome, start bp, end bp, gene
@@ -465,21 +453,8 @@ def f_introduce_HardB(
                   conversion file.
 
     Returns:
-        vGeneLocation2: Matlab structure about the gene location information,
-                        generated in PlantClusterFinder function.
-        vGeneLocation_Att: Describing the fields attributes of the Matlab
-                           structure vGeneLocation and vGeneLocation2.
-        vSeqGaps: A string array (cell) matrix containing the
-                  chromosome/scaffold, the identification if it is coding (A)
-                  or masked (N) DNA, start bp and length of a masked region.
-                  In addition there is the information stored in with
-                  intergenic region the gap is encoded and its start and end
-                  bp, corrected for maximal size (= intergenic region).
-        vInterChrom: A matrix defining chromosome, start bp, end bp, gene
-                     before and gene after a intergenic region.
-         for every occurence of bad gap or gap that exeeds the max size, reform
-         the chromosome strand such that it is nomore the same as before (split
-         chromosome
+        HardBreaks object containing the gene location information, the
+            inter-chromosomal matrix, and the SeqGaps populated.
     """
 
     """
@@ -576,7 +551,7 @@ def f_introduce_HardB(
     end"""
 
 
-def f_annotate_Sequencing_Gaps(
+def annotate_sequencing_gaps(
     vFile,
     vInterGeneLocation,
     vUniqueChrom,
@@ -585,7 +560,7 @@ def f_annotate_Sequencing_Gaps(
     vUnmaskedDNA,
     vVerbose,
     varargin,
-):
+) -> pl.DataFrame:
     """
     ---------------------------------------------------------------------------
 
@@ -621,15 +596,19 @@ def f_annotate_Sequencing_Gaps(
                             among the list of vSeqGapSizesChromBreak, which
                             also needs to be set. Default is -1, not active.
     Returns:
-        vSeqGaps: A string array (cell) matrix containing the
-                  chromosome/scaffold, the identification if it is coding (A)
-                  or masked (N) DNA, start bp and length of a masked region.
+
+        DataFrame containing the
+                  - chromosome/scaffold
+                  - the identification if it is coding (A) or masked (N) DNA
+                  - start bp
+                  - length of a masked region
                   In addition there is the information stored in with
                   intergenic region the gap is encoded and its start and end
                   bp, corrected for maximal size (= intergenic region).
     """
 
-    """
+
+"""
         % MATLAB code
         vCurrNargin = 7;
         vGeneLengthHypoMin = -1;
@@ -742,7 +721,9 @@ def f_annotate_Sequencing_Gaps(
     end"""
 
 
-def f_get_Sequencing_Gaps(vFile, vPara, vVerbose, vOverwriteSeqGapInfo, vUnmaskedDNA):
+def get_sequencing_gaps(
+    vFile, vPara, vVerbose, vOverwriteSeqGapInfo, vUnmaskedDNA
+) -> None:
     """
     ---------------------------------------------------------------------------
       Function that screens a DNA fasta file for masked streches of DNA
@@ -762,6 +743,8 @@ def f_get_Sequencing_Gaps(vFile, vPara, vVerbose, vOverwriteSeqGapInfo, vUnmaske
     Returns:
         None (File is generated with the path of the first input argument,
              modifying the gene name)
+    Raises:
+        IOError: if file cannot be generated.
     """
 
     """
@@ -860,7 +843,7 @@ def f_get_Sequencing_Gaps(vFile, vPara, vVerbose, vOverwriteSeqGapInfo, vUnmaske
     end"""
 
 
-def f_run_awk_skripts(vFile, vAWK_install_path, vVerbose, vOverwriteSeqGapInfo):
+def run_awk_skripts(vFile, vAWK_install_path, vVerbose, vOverwriteSeqGapInfo) -> None:
     """
     ---------------------------------------------------------------------------
 
@@ -881,6 +864,9 @@ def f_run_awk_skripts(vFile, vAWK_install_path, vVerbose, vOverwriteSeqGapInfo):
     Returns:
         None (Temporary (_temp1, _temp2, _temp3, _temp4) and Gapouptu
              (_GAPOutput) files generated.
+    Raises:
+        Exception: If AWK scripts do not run successfully
+        IOError: If *_GAPOutput files cannot be generated
     """
 
     """
@@ -987,7 +973,9 @@ def f_run_awk_skripts(vFile, vAWK_install_path, vVerbose, vOverwriteSeqGapInfo):
     end"""
 
 
-def f_get_metabolic_domains(vGenesMetabolicDomains_File, vMD_to_annotate):
+def get_metabolic_domains(
+    vGenesMetabolicDomains_File, vMD_to_annotate
+) -> AnnotatedMetabolicDomains:
     """
     ---------------------------------------------------------------------------
 
@@ -1008,13 +996,8 @@ def f_get_metabolic_domains(vGenesMetabolicDomains_File, vMD_to_annotate):
                          'Amino Acids Metabolism'
 
     Returns:
-        vRxnMetaDom: Matlab structure of all the items stored in the Metabolic
-                     domain file
-        vRxnMetaDom_Att: Attributes of vRxnMetaDom (lets you access vRxnMetaDom
-                         with vRxnMetaDom.(char(vRxnMetaDom_Att(1,n))))
-        vR_MD: Mapping between all Reactions stored in the Metabolic domain file
-               and the metabolic domains that were identified to be of interest
-               in vMD_to_annotate.
+        AnnotatedMetabolicDomains object with all items stored in Metabolic domain file aw well as
+            mappings for metabolic domains of interest described in `MD_to_annotate`.
     """
 
     """
@@ -1046,9 +1029,14 @@ def f_get_metabolic_domains(vGenesMetabolicDomains_File, vMD_to_annotate):
     end"""
 
 
-def f_read_MCL_clustering_File(
-    vFile, vMapG, vMapP, vMapG_MapP, vRemoveNonProtLocations, vVerbose
-):
+def read_MCL_clustering_file(
+    vFile: str,
+    vMapG: set[str],
+    vMapP: set[str],
+    vMapG_MapP: dict,
+    vRemoveNonProtLocations: bool,
+    vVerbose,
+) -> MclClusterData:
     """
     ---------------------------------------------------------------------------
 
@@ -1063,15 +1051,15 @@ def f_read_MCL_clustering_File(
         vMapG: Unique list of gene IDs stored in the conversion file.
         vMapP: Unique list of protein IDs stored in the conversion file.
         vMapG_MapP: Mapping between vMapG and vMapP
+        vRemoveNonProteinLocations: True if protein-IDs should be stored
+            in return value.
         vVerbose: Tells the code on how much of output should be printed out
                   the screen. (0 = nothing, 1 = little, 2 = more, ...)
 
     Returns:
-        vG_MCL: Mapping between the genes in the conversion-ID file and the
-                MCL-clustering file.
-        vProtein_IDs: A cell array of all protein-IDs that are stored in the
-                      protein fasta file. only active if
-                      vRemoveNonProtLocations is 1. Else the array has no rows.
+        MclClusterData object which provides mapping between
+        genes in the conversion-ID file and the MCL-clustering file,
+        as well as a list of protein-IDs stored in the fasta file.
     """
 
     """
@@ -1143,16 +1131,16 @@ def f_read_MCL_clustering_File(
     end"""
 
 
-def f_get_MCL_clustering(
-    vProtein_sequence_FastaFile,
-    vMapG,
-    vMapP,
-    vMapG_MapP,
-    vPara,
-    vOverwriteMCLClustering,
-    vRemoveNonProtLocations,
-    vVerbose,
-):
+def get_MCL_clustering(
+    vProtein_sequence_FastaFile: str,
+    vMapG: set[str],
+    vMapP: set[str],
+    vMapG_MapP: dict,
+    vOverwriteMCLClustering: bool,
+    vRemoveNonProtLocations: bool,
+    vVerbose: int,
+    vPara: int = 1,
+) -> MclClusterData:
     """
     ---------------------------------------------------------------------------
 
@@ -1166,19 +1154,20 @@ def f_get_MCL_clustering(
         vProtein_sequence_FastaFile: Protein sequence file of the genome.
                                      Should only contain Protein IDs as
                                      header e.g. >protein1-ID
+        vMapG: Unique list of gene IDs stored in the conversion file.
         vMapP: Unique list of protein IDs stored in the conversion file.
         vMapG_MapP: Mapping between vMapG and vMapP
+        vOverwriteMCLClustering: Whether or not to overwrite the MCL clustering file
+        vRemoveNonProtLocations,
         vPara: Defines if multiple cpus should be used for computation of parts
                of algorithm. Active if larger than 1.
         vVerbose: Tells the code on how much of output should be printed out to
                   the screen. (0 = nothing, 1 = little, 2 = more, ...)
 
     Returns:
-        vG_MCL: Mapping between the genes in the conversion-ID file and the
-                MCL-clustering file.
-        vProtein_IDs: A cell array of all protein-IDs that are stored in the
-                      protein fasta file. only active if
-                      vRemoveNonProtLocations is 1. Else the array has no rows.
+        MclClusterData object which provides mapping between
+        genes in the conversion-ID file and the MCL-clustering file,
+        as well as a list of protein-IDs stored in the fasta file.
     """
 
     """
@@ -1254,12 +1243,14 @@ def f_get_MCL_clustering(
     end"""
 
 
-def f_map_pgdb_reactions_to_genes(vPGDB_FlatFileFolder, vVerbose, **kwargs):
+def map_pgdb_reactions_to_genes(
+    vPGDB_FlatFileFolder, vVerbose, **kwargs
+) -> GenesToReactions:
     """
     ---------------------------------------------------------------------------
 
       Function reading out information of pgdb flatfiles genes.dat,
-      proteins.dat, enzrxns.dat and reactions.dat, maping genes
+      proteins.dat, enzrxns.dat and reactions.dat, mapping genes
       to reactions directly.
 
     ---------------------------------------------------------------------------
@@ -1292,21 +1283,10 @@ def f_map_pgdb_reactions_to_genes(vPGDB_FlatFileFolder, vVerbose, **kwargs):
                which attributes in reactions.dat. Default is: [2,1];
 
     Returns:
-        vGenes_all: Matlab structure containing all the information
-                    (Attributes)that was searched for (described in
-                    vGenesAttributes, default is {'UNIQUE-ID','PRODUCT', ...
-                    'ACCESSION-1','ACCESSION-2'}) in genes.dat of the pgdb.
-        vGenes_all_Att: Attributes of the Matlab structure vGenes_all, can be
-                        displayed by vGenes_all.(char(vGenes_all_Att(1,n)))
-        vReactions_all: Matlab structure containing all the information
-                        (Attributes) that was searched for (described in
-                        vReactionsAttributes, default is {'UNIQUE-ID', ...
-                        'ENZYMATIC-REACTION', 'EC-NUMBER'}) in reactions.dat
-                        of the pgdb.
-        vReactions_all_Att: Attributes of vReactions_all, can be displayed by
-                            vReactions_all.(char(vReactions_all_Att(1,n)))
-        vG2R: Mapping of all genes in the Genes_all to the Reactions in
-             Reactions_all
+        GenesToReactions object containing
+            - GenesAll: the searched-for attributes of all genes in genes.dat of pgdb
+            - ReactionsAll: searched-for attributes of all reactions in reactions.dat of pgdb
+            - Gene2Rxn: Mapping between records in GenesAll and ReactionsAll
     """
 
     """
@@ -1380,19 +1360,19 @@ def f_map_pgdb_reactions_to_genes(vPGDB_FlatFileFolder, vVerbose, **kwargs):
         if vVerbose >= 1
             fprintf('Read in genes.dat\n');
         end
-        [vGenes_all, vGenes_all_Att] = f_read_in_PGDB_Flat([vPGDB_FlatFileFolder 'genes.dat'],vGenesAttributes);
+        [vGenes_all, vGenes_all_Att] = f_read_in_PGDB_flat([vPGDB_FlatFileFolder 'genes.dat'],vGenesAttributes);
         if vVerbose >= 1
             fprintf('Read in proteins.dat\n');
         end
-        [vProteins_all, vProteins_all_Att] = f_read_in_PGDB_Flat([vPGDB_FlatFileFolder 'proteins.dat'],vProteinsAttributes);
+        [vProteins_all, vProteins_all_Att] = f_read_in_PGDB_flat([vPGDB_FlatFileFolder 'proteins.dat'],vProteinsAttributes);
         if vVerbose >= 1
             fprintf('Read in enzrxns.dat\n');
         end
-        [vEnzrxns_all, vEnzrxns_all_Att] = f_read_in_PGDB_Flat([vPGDB_FlatFileFolder 'enzrxns.dat'],vEnzrxnsAttributes);
+        [vEnzrxns_all, vEnzrxns_all_Att] = f_read_in_PGDB_flat([vPGDB_FlatFileFolder 'enzrxns.dat'],vEnzrxnsAttributes);
         if vVerbose >= 1
             fprintf('Read in reactions.dat\n');
         end
-        [vReactions_all, vReactions_all_Att] = f_read_in_PGDB_Flat([vPGDB_FlatFileFolder 'reactions.dat'], vReactionsAttributes);
+        [vReactions_all, vReactions_all_Att] = f_read_in_PGDB_flat([vPGDB_FlatFileFolder 'reactions.dat'], vReactionsAttributes);
 
         %Match flat files to each other
         if vVerbose >= 1
@@ -1430,18 +1410,20 @@ def f_map_pgdb_reactions_to_genes(vPGDB_FlatFileFolder, vVerbose, **kwargs):
         if vVerbose >= 1
             fprintf('Match genes to to reactions\n');
         end
-        vG2R = false(size(vG2_P,1),size(vE_R2,2));
-        for Gene_all_ID = 1:size(vG2R,1)
+        Gene2Rxn = false(size(vG2_P,1),size(vE_R2,2));
+        for Gene_all_ID = 1:size(Gene2Rxn,1)
             vP_ID = vG2_P(Gene_all_ID,:)==1;
             vP2_ID = [sum(vP_P(vP_ID,:),1)>0]'; %#ok<NBRAK>
             vE_ID = [sum(vP_E(vP2_ID,:),1)>0]'; %#ok<NBRAK>
             vR_ID = [sum(vE_R2(vE_ID,:),1)>0]'; %#ok<NBRAK>
-            vG2R(Gene_all_ID,vR_ID) = 1;
+            Gene2Rxn(Gene_all_ID,vR_ID) = 1;
         end
     end"""
 
 
-def f_match_pgdb_flat(vFlat1, vFlatAttri1, vFlat2, vFlatAttri2, vMatchings, vVerbose):
+def match_pgdb_flat(
+    vFlat1, vFlatAttri1, vFlat2, vFlatAttri2, vMatchings, vVerbose
+) -> dict:
     """
     ---------------------------------------------------------------------------
 
@@ -1450,9 +1432,9 @@ def f_match_pgdb_flat(vFlat1, vFlatAttri1, vFlat2, vFlatAttri2, vMatchings, vVer
     ---------------------------------------------------------------------------
 
     Args:
-        vFlat1: Matlab structure of a read out pgdb Flat file.
+        vFlat1: DataFrame of a read out pgdb Flat file.
         vFlatAttri1: Attributes of the first structure
-        vFlat2: Matlab structure of a read out pgdb Flat file.
+        vFlat2: DataFrame of a read out pgdb Flat file.
         vFlatAttri2: Attributes of the second structure
         vMatchings: Definition of which attributes in structure 1 should be
                     matched to which attributes of structure 2
@@ -1486,14 +1468,14 @@ def f_match_pgdb_flat(vFlat1, vFlatAttri1, vFlat2, vFlatAttri2, vMatchings, vVer
     end"""
 
 
-def f_read_in_ConversionFile(
-    vGeneTranscriptProtein_mapping_File, vVerbose
-):  # , vPara, varargin):
+def read_in_conversion_file(
+    vGeneTranscriptProtein_mapping_File: str, vVerbose
+) -> Conversion:  # , vPara, varargin):
     """
     ---------------------------------------------------------------------------
 
       Function that reads in the gene, transcript, and protein ID conversion
-      file and stores the IDs as unique lists and mapings between genes and
+      file and stores the IDs as unique lists and mapping between genes and
       transcripts aswell as genes and proteins.
 
     ---------------------------------------------------------------------------
@@ -1507,14 +1489,7 @@ def f_read_in_ConversionFile(
                   the screen. (0 = nothing, 1 = little, 2 = more, ...)
 
     Returns:
-        vMapG: Unique list of gene IDs stored in the conversion file.
-        vMapT: Unique list of transcript IDs stored in the conversion file.
-        vMapP: Unique list of protein IDs stored in the conversion file.
-        vMapG_MapT: Mapping between vMapG and vMapT
-        vMapG_MapP: Mapping between vMapG and vMapP
-          if vPara >= 1
-              vPool = varargin{1,1};
-          end
+        Conversion object containing the IDs from the conversion file
     """
 
     """
@@ -1612,9 +1587,7 @@ def f_read_in_ConversionFile(
     end"""
 
 
-def f_matchPGDBs_to_MDs(
-    vG2R, vR_MD, vReactions_all, vReactions_all_Att, vRxnMetaDom, vRxnMetaDom_Att
-):
+def match_PGDBs_to_MDs(Gene2Rxn, vR_MD, vReactions_all, vRxnMetaDom) -> dict:
     """
     ---------------------------------------------------------------------------
 
@@ -1623,49 +1596,41 @@ def f_matchPGDBs_to_MDs(
 
     ---------------------------------------------------------------------------
     Args:
-        vG2R: Mapping of all genes in the Genes_all to the Reactions in
+        Gene2Rxn: Mapping of all genes in the Genes_all to the Reactions in
               Reactions_all
         vR_MD: Mapping between all Reactions stored in the Metabolic domain file
                and the metabolic domains that were identified to be of interest
                in vMD_to_annotate.
-        vReactions_all: Matlab structure containing all the information
+        vReactions_all: DataFrame containing all the information
                         (Attributes)that was searched for (described in
                         vReactionsAttributes, default is {'UNIQUE-ID', ...
                         'ENZYMATIC-REACTION', 'EC-NUMBER'};) in reactions.dat
                         of the pgdb.
-        vReactions_all_Att: Attributes of vReactions_all, can be displayed by
-                            vReactions_all.(char(vReactions_all_Att(1,n)))
-        vRxnMetaDom: Matlab structure of all the items stored in the Metabolic
+        vRxnMetaDom: DataFrame of all the items stored in the Metabolic
                      domain file
-        vRxnMetaDom_Att: Attributes of vRxnMetaDom (lets you access vRxnMetaDom
-                         with vRxnMetaDom.(char(vRxnMetaDom_Att(1,n))))
 
     Returns:
-        vRpgdb_Rmd: A maping between reactions stored in the pgdb and the
+        vRpgdb_Rmd: A mapping between reactions stored in the pgdb and the
                     reactions given in the metabolic domain file
     """
 
     """
         % MATLAB code
 
-        vRpgdb_Rmd = false(size(vG2R,2),size(vR_MD,1));
+        vRpgdb_Rmd = false(size(Gene2Rxn,2),size(vR_MD,1));
         for vi = 1:size(vReactions_all.(char(vReactions_all_Att(1,1))),1)
             vRpgdb_Rmd(vi,strcmp(vRxnMetaDom.(char(vRxnMetaDom_Att(1,1))),vReactions_all.(char(vReactions_all_Att(1,1)))(vi,1))) = 1;
         end
     end"""
 
 
-def f_map_PGDBs_to_conversion_file(
-    vMapG,
-    vMapT,
-    vMapP,
-    vMapG_MapT,
-    vMapG_MapP,
+def map_PGDBs_to_conversion_file(
+    Conversion: Conversion,
     vGenes_all,
     vGenesDat_GeneInfo,
     vPGDBIdsToMap,
     vVerbose,
-):
+) -> dict:
     """
     ---------------------------------------------------------------------------
 
@@ -1674,12 +1639,8 @@ def f_map_PGDBs_to_conversion_file(
 
     ---------------------------------------------------------------------------
     Args:
-        vMapG: Unique list of gene IDs stored in the conversion file.
-        vMapT: Unique list of transcript IDs stored in the conversion file.
-        vMapP: Unique list of protein IDs stored in the conversion file.
-        vMapG_MapT: Mapping between vMapG and vMapT
-        vMapG_MapP: Mapping between vMapG and vMapP
-        vGenes_all: Matlab structure containing all the information
+        Conversion: Conversion object from conversion file
+        vGenes_all: DataFrame containing all the information
                     (Attributes)that was searched for (described in
                     vGenesAttributes, default is {'UNIQUE-ID','PRODUCT', ...
                     'ACCESSION-1','ACCESSION-2'};) in genes.dat of the pgdb.
@@ -1693,7 +1654,7 @@ def f_map_PGDBs_to_conversion_file(
                   the screen. (0 = nothing, 1 = little, 2 = more, ...)
 
     Returns:
-        vMapG_Gpgdb: A maping between Genes in the conversion file and genes
+        A mapping between Genes in the conversion file and genes
                      stored in the pgdb genes.dat file.
     """
 
@@ -1752,16 +1713,11 @@ def f_map_PGDBs_to_conversion_file(
     end"""
 
 
-def f_remove_protein_transcript_info_from_genepositionfile(
+def remove_protein_transcript_info_from_genepositionfile(
     vGeneLocation,
-    vGeneLocation_Att,
-    vMapG,
-    vMapT,
-    vMapP,
-    vMapG_MapT,
-    vMapG_MapP,
+    conversion: Conversion,
     vVerbose,
-):
+) -> pl.DataFrame:
     """
     ---------------------------------------------------------------------------
 
@@ -1771,18 +1727,12 @@ def f_remove_protein_transcript_info_from_genepositionfile(
     ---------------------------------------------------------------------------
 
     Args:
-        vGeneLocation: Matlab structure about the gene location information,
+        vGeneLocation: DataFrame about the gene location information,
                        generated in PlantClusterFinder function.
-        vGeneLocation_Att: Describing the fields attributes of the Matlab
-                           structure vGeneLocation and vGeneLocation2.
-        vMapG: Unique list of gene IDs stored in the conversion file.
-        vMapT: Unique list of transcript IDs stored in the conversion file.
-        vMapP: Unique list of protein IDs stored in the conversion file.
-        vMapG_MapT: Mapping between vMapG and vMapT
-        vMapG_MapP: Mapping between vMapG and vMapP
+        conversion: Conversion object constructed from conversion file
 
     Returns:
-        vGeneLocation: Matlab structure about the gene location information,
+        vGeneLocation: DataFrame about the gene location information,
                        generated in PlantClusterFinder function.
     """
 
@@ -1794,16 +1744,16 @@ def f_remove_protein_transcript_info_from_genepositionfile(
                 fprintf('Processing transcript %i of %i\n', vi, vNi);
             end
             vCurrID = vGeneLocation.(char(vGeneLocation_Att(1,1)))(vi,1);
-            vCurrID_T = strcmpi(vMapT,vCurrID);
-            vCurrID_P = strcmpi(vMapP,vCurrID);
-            vCurrID_G = sum(vMapG_MapT(:,vCurrID_T,1),2)>0 & sum(vMapG_MapP(:,vCurrID_P,1),2)>0;
+            vCurrID_T = strcmpi(conversion.MapT,vCurrID);
+            vCurrID_P = strcmpi(conversion.MapP,vCurrID);
+            vCurrID_G = sum(conversion.MapG_MapT(:,vCurrID_T,1),2)>0 & sum(conversion.MapG_MapP(:,vCurrID_P,1),2)>0;
 
             if sum(vCurrID_G) > 1
                 error('Gene / Transcript / Protein location file (Gene position file) matches several entries to more than one gene.\nPlease clean up entries for %s in your input files.\n', char(vCurrID));
             elseif sum(vCurrID_G) == 1
-                vGeneLocation.(char(vGeneLocation_Att(1,1)))(vi,1) = vMapG(vCurrID_G,1);
+                vGeneLocation.(char(vGeneLocation_Att(1,1)))(vi,1) = conversion.MapG(vCurrID_G,1);
             else
-                vCurrID_G = strcmpi(vMapG,vCurrID);
+                vCurrID_G = strcmpi(conversion.MapG,vCurrID);
                 if sum(vCurrID_G) == 0
                     error('Gene / Transcript / Protein location file (Gene position file) has an entry %s that is not covered by your gene ID conversion file.\nPlease add the entry.\n', char(vCurrID));
                 end
@@ -1812,7 +1762,7 @@ def f_remove_protein_transcript_info_from_genepositionfile(
     end"""
 
 
-def f_consolidate_gene_info(vGeneLocation, vGeneLocation_Att, vVerbose):
+def consolidate_gene_info(vGeneLocation, vVerbose) -> (pl.DataFrame, set[str]):
     """
     ---------------------------------------------------------------------------
 
@@ -1823,16 +1773,15 @@ def f_consolidate_gene_info(vGeneLocation, vGeneLocation_Att, vVerbose):
 
     ---------------------------------------------------------------------------
     Args:
-        vGeneLocation: Matlab structure about the gene location information,
+        vGeneLocation: DataFrame about the gene location information,
                        generated in PlantClusterFinder function.
-        vGeneLocation_Att: Describing the fields attributes of the Matlab
-                           structure vGeneLocation and vGeneLocation2.
 
     Returns:
-        vUniqueChrom: A list with unique entries of all chromosome and scaffold
-                      names.
-        vGeneLocation2: Matlab structure about the gene location information,
+        Tuple containing the following values
+        - **vGeneLocation2**: DataFrame about the gene location information,
                         generated in PlantClusterFinder function.
+        - **vUniqueChrom**: A list with unique entries of all chromosome and scaffold
+                      names.
     """
 
     """
@@ -1872,7 +1821,7 @@ def f_consolidate_gene_info(vGeneLocation, vGeneLocation_Att, vVerbose):
     end"""
 
 
-def f_sort_genes(vGeneLocation2, vGeneLocation_Att, vUniqueChrom, vVerbose):
+def sort_genes(vGeneLocation2, vUniqueChrom, vVerbose) -> pl.DataFrame:
     """
     ---------------------------------------------------------------------------
 
@@ -1883,15 +1832,13 @@ def f_sort_genes(vGeneLocation2, vGeneLocation_Att, vUniqueChrom, vVerbose):
     ---------------------------------------------------------------------------
 
     Args:
-        vGeneLocation2: Matlab structure about the gene location information,
+        vGeneLocation2: DataFrame about the gene location information,
                         generated in PlantClusterFinder function.
-        vGeneLocation_Att: Describing the fields attributes of the Matlab
-                           structure vGeneLocation and vGeneLocation2.
         vUniqueChrom: A list with unique entries of all chromosome and scaffold
                       names.
 
     Returns:
-        vGeneLocation2: Matlab structure about the gene location information,
+        vGeneLocation2: DataFrame about the gene location information,
                         generated in PlantClusterFinder function.
     """
 
@@ -1917,9 +1864,7 @@ def f_sort_genes(vGeneLocation2, vGeneLocation_Att, vUniqueChrom, vVerbose):
     end"""
 
 
-def f_find_intergenic_regions(
-    vGeneLocation2, vGeneLocation_Att, vUniqueChrom, vVerbose
-):
+def find_intergenic_regions(vGeneLocation2, vUniqueChrom, vVerbose) -> pl.DataFrame:
     """
     ---------------------------------------------------------------------------
 
@@ -1929,10 +1874,8 @@ def f_find_intergenic_regions(
     ---------------------------------------------------------------------------
 
     Args:
-        vGeneLocation2: Matlab structure about the gene location information,
+        vGeneLocation2: DataFrame about the gene location information,
                         generated in PlantClusterFinder function.
-        vGeneLocation_Att: Describing the fields attributes of the Matlab
-                           structure vGeneLocation and vGeneLocation2.
         vUniqueChrom: A list with unique entries of all chromosome and scaffold
                       names.
 
@@ -1984,9 +1927,7 @@ def f_find_intergenic_regions(
     end"""
 
 
-def f_map_genelocation_to_conversion_file(
-    vgenelocation2, vgenelocation_att, vmapg, vverbose
-):
+def map_genelocation_to_conversion_file(vgenelocation2, vmapg, vverbose) -> dict:
     """
     ---------------------------------------------------------------------------
 
@@ -1997,13 +1938,11 @@ def f_map_genelocation_to_conversion_file(
     Args:
         vgenelocation2: matlab structure about the gene location information,
                         generated in plantclusterfinder function.
-        vgenelocation_att: describing the fields attributes of the matlab
-                           structure vgenelocation and vgenelocation2.
         vmapg: unique list of gene ids stored in the conversion file.
 
     Returns:
-        vbiomg_g: maping between the gene location file and the gene-ids in the
-                  conversion file.
+        vbiomg_g: mapping between the gene location file and the gene-ids
+                in the conversion file.
     """
 
     """
@@ -2020,9 +1959,9 @@ def f_map_genelocation_to_conversion_file(
     end"""
 
 
-def f_annotate_enyme_info_to_gene_location(
-    vGeneLocation2, vGeneLocation_Att, vBiomG_G, vMapG_Gpgdb, vG2R, vVerbose
-):
+def annotate_enyme_info_to_gene_location(
+    vGeneLocation2, vBiomG_G, vMapG_Gpgdb, Gene2Rxn, vVerbose
+) -> list[bool]:
     """
     ---------------------------------------------------------------------------
 
@@ -2032,22 +1971,20 @@ def f_annotate_enyme_info_to_gene_location(
     ---------------------------------------------------------------------------
 
     Args:
-        vGeneLocation2: Matlab structure about the gene location information,
+        vGeneLocation2: DataFrame about the gene location information,
                         generated in PlantClusterFinder function.
-        vGeneLocation_Att: Describing the fields attributes of the Matlab
-                           structure vGeneLocation and vGeneLocation2.
-        vBiomG_G: Mapping between the Gene location file and the gene-IDs in the
-                  conversion file.
-        vMapG_Gpgdb: A maping between Genes in the conversion file and genes
+        vBiomG_G: Mapping between the Gene location file and the gene-IDs
+            in the conversion file.
+        vMapG_Gpgdb: A mapping between Genes in the conversion file and genes
                      stored in the pgdb genes.dat file.
-        vG2R: Mapping of all genes in the Genes_all to the Reactions in
+        Gene2Rxn: Mapping of all genes in the Genes_all to the Reactions in
               Reactions_all
         vVerbose: Tells the code on how much of output should be printed out to
                   the screen. (0 = nothing, 1 = little, 2 = more, ...)
 
     Returns:
-        vBiomG_E: A vector describing which gene has at least one reaction
-                  annotated in the pgdb (1, if no reaction 0)
+        A list describing which gene has at least one reaction
+                  annotated in the pgdb (True if at least one reaction)
     """
 
     """
@@ -2060,29 +1997,28 @@ def f_annotate_enyme_info_to_gene_location(
             end
             vIDs = vBiomG_G(vi,:);
             vIDs = sum(vMapG_Gpgdb(vIDs,:),1)>0;
-            if sum(sum(vG2R(vIDs,:),1))>0
+            if sum(sum(Gene2Rxn(vIDs,:),1))>0
                 vBiomG_E(vi,1) = 1;
             end
         end
     end"""
 
 
-def f_perform_clustering(
+def perform_clustering(
     vMinStepSize,
     vMaxStepSize,
     vGeneLocation2,
-    vGeneLocation_Att,
     vBiomG_E,
     vEnzMinForClusters,
     vKbRangeLD,
     vGeneRangeLD,
     vG_MCL,
     vBiomG_G,
-    vG2R,
+    vGene2Rxn,
     vMapG_Gpgdb,
     vCriterion,
     vVerbose,
-):
+) -> Clusters:
     """
     ---------------------------------------------------------------------------
 
@@ -2100,7 +2036,7 @@ def f_perform_clustering(
                       (default is 5).
         vMaxStepSize: Maximal intervening gene size that should be computed
                       (default is 20).
-        vGeneLocation2: Matlab structure about the gene location information,
+        vGeneLocation2: DataFrame about the gene location information,
                         generated in PlantClusterFinder function.
         vGeneLocation_Att: Describing the fields attributes of the Matlab
                            structure vGeneLocation and vGeneLocation2.
@@ -2117,9 +2053,9 @@ def f_perform_clustering(
                 MCL-clustering file.
         vBiomG_G: Mapping between the Gene location file and the gene-IDs in the
                   conversion file.
-        vG2R: Mapping of all genes in the Genes_all to the Reactions in
+        Gene2Rxn: Mapping of all genes in the Genes_all to the Reactions in
               Reactions_all
-        vMapG_Gpgdb: A maping between Genes in the conversion file and genes
+        vMapG_Gpgdb: A mapping between Genes in the conversion file and genes
                      stored in the pgdb genes.dat file.
         vCriterion: Criterion after which stepsize is chosen (default is 1).
                     1: as published in Schlapfer et al 2017
@@ -2134,17 +2070,18 @@ def f_perform_clustering(
                   the screen. (0 = nothing, 1 = little, 2 = more, ...)
 
     Returns:
-        vClusters: Cluster Information (stepsize, chromosome id, gene start,
+        Cluster object which contains the following information:
+        - vClusters: Cluster Information (stepsize, chromosome id, gene start,
                    gene end, number of enzymes)
-        vClusterBackground: Density information about the genome (window size,
+        - vClusterBackground: Density information about the genome (window size,
                             number of enzymes, Occurrence of windowsize with
                             this many enzymes in the genome, occurence of
                             this windowsize in the genome, Frequency of seeing
                             a windowsize of this size with at least as many
                             enzymes in the genome)
-        vFinalStepsize: Stepsize that was chosen by the criterion (clusters
+        - vFinalStepsize: Stepsize that was chosen by the criterion (clusters
                         contain in average more enzymes than non-enzymes).
-        vStepSize_Max: Maximal stepsize that was computed.
+        - vStepSize_Max: Maximal stepsize that was computed.
     """
 
     """
@@ -2236,11 +2173,11 @@ def f_perform_clustering(
                 end
                 % Get rid of clusters that only have one reaction set
                 if vAbolishCluster == 0
-                    vRxns = sum(vG2R(sum(vMapG_Gpgdb(sum(vBiomG_G(vEIDs(1,1),:),1)>0,:),1)>0,:),1)>0;
+                    vRxns = sum(Gene2Rxn(sum(vMapG_Gpgdb(sum(vBiomG_G(vEIDs(1,1),:),1)>0,:),1)>0,:),1)>0;
                     vj = 1;
                     vTwoGroups = 0;
                     while vj <= size(vEIDs,1) && vTwoGroups == 0
-                        if sum(vRxns & sum(vG2R(sum(vMapG_Gpgdb(sum(vBiomG_G(vEIDs(vj,1),:),1)>0,:),1)>0,:),1)==0) > 0
+                        if sum(vRxns & sum(Gene2Rxn(sum(vMapG_Gpgdb(sum(vBiomG_G(vEIDs(vj,1),:),1)>0,:),1)>0,:),1)==0) > 0
                             vTwoGroups = 1;
                         end
                         vj = vj + 1;
@@ -2331,7 +2268,7 @@ def f_perform_clustering(
     end"""
 
 
-def f_compute_background(
+def compute_background(
     vClusterBackground,
     vClusters,
     vClusterBackgroundWrite,
@@ -2339,7 +2276,7 @@ def f_compute_background(
     vGeneLocation_Att,
     vBiomG_E,
     vC_IDs,
-):
+) -> (pl.DataFrame, int):
     """
     ---------------------------------------------------------------------------
 
@@ -2367,7 +2304,7 @@ def f_compute_background(
                    gene end, number of enzymes)
         vClusterBackgroundWrite: Defines where the next entry should be written
                                  in vClusterBackground.
-        vGeneLocation2: Matlab structure about the gene location information,
+        vGeneLocation2: DataFrame about the gene location information,
                         generated in PlantClusterFinder function.
         vGeneLocation_Att: Describing the fields attributes of the Matlab
                            structure vGeneLocation and vGeneLocation2.
@@ -2379,13 +2316,14 @@ def f_compute_background(
                 already calculated.
 
     Returns:
-        vClusterBackground: Density information about the genome (window size,
+        Tuple with the following information:
+        - **vClusterBackground**: Density information about the genome (window size,
                             number of enzymes, Occurrence of windowsize with
                             this many enzymes in the genome, occurence of
                             this windowsize in the genome, Frequency of seeing
                             a windowsize of this size with at least as many
                             enzymes in the genome)
-        vClusterBackgroundWrite: Defines where the next entry should be written
+        - **vClusterBackgroundWrite**: Defines where the next entry should be written
                                  in vClusterBackground.
     """
 
@@ -2414,7 +2352,7 @@ def f_compute_background(
     end"""
 
 
-def f_perform_cutoff(vClusters, vClusterBackground, vTopPercentClusters):
+def perform_cutoff(clusters: Clusters, vTopPercentClusters) -> list[float]:
     """
     ---------------------------------------------------------------------------
 
@@ -2425,23 +2363,23 @@ def f_perform_cutoff(vClusters, vClusterBackground, vTopPercentClusters):
     ---------------------------------------------------------------------------
 
     Args:
-        vClusters: Cluster Information (stepsize, chromosome id, gene start,
-                   gene end, number of enzymes)
-        vClusterBackground: Density information about the genome (window size,
-                            number of enzymes, Occurrence of windowsize with
-                            this many enzymes in the genome, occurence of
-                            this windowsize in the genome, Frequency of seeing
-                            a windowsize of this size with at least as many
-                            enzymes in the genome)
+        clusters: Cluster Information (stepsize, chromosome id, gene start,
+                   gene end, number of enzymes) and
+                   Density information about the genome (window size,
+                   number of enzymes, Occurrence of windowsize with
+                   this many enzymes in the genome, occurence of
+                   this windowsize in the genome, Frequency of seeing
+                   a windowsize of this size with at least as many
+                   enzymes in the genome)
         vTopPercentClusters: Clusters are labeled as being in the top n% if
                              they are within this top n% of enzyme dense
                              clusters compared to the background (default is
                              5).
 
     Returns:
-        vClusters_Top: Vector with size Number of Clusters x 1. It is zero if
-                       the density of the cluster is above or the same as given
-                       by the input argument vTopPercentClusters*100.
+        List with size Number of Clusters x 1. It is zero if
+               the density of the cluster is above or the same as given
+               by the input argument vTopPercentClusters*100.
     """
 
     """
@@ -2458,15 +2396,14 @@ def f_perform_cutoff(vClusters, vClusterBackground, vTopPercentClusters):
     end"""
 
 
-def f_write_Gene_Output(
-    vGeneOutputFile,
-    vGeneLocation2,
-    vGeneLocation_Att,
-    vFinalStepsize,
-    vStepSize_Max,
+def write_gene_output(
+    vGeneOutputFile: str,
+    vGeneLocation2: pl.DataFrame,
+    vFinalStepsize: int,
+    vStepSize_Max: int,
     vTopPercentClusters,
     vMD_to_annotate,
-    vG2R,
+    Gene2Rxn,
     vMapG_Gpgdb,
     vBiomG_G,
     vReactions_all,
@@ -2484,7 +2421,7 @@ def f_write_Gene_Output(
     vR_SigOrTail,
     vVerbose,
     vOutputType,
-):
+) -> None:
     """
     ---------------------------------------------------------------------------
 
@@ -2506,7 +2443,7 @@ def f_write_Gene_Output(
         vGeneOutputFile: Path and file name to the gene-Outputfile, make sure
                          you have access to the file and folder. This is the
                          first Results output file that will be generated.
-        vGeneLocation2: Matlab structure about the gene location information,
+        vGeneLocation2: DataFrame about the gene location information,
                         generated in PlantClusterFinder function.
         vGeneLocation_Att: Describing the fields attributes of the Matlab
                            structure vGeneLocation and vGeneLocation2.
@@ -2520,13 +2457,13 @@ def f_write_Gene_Output(
         vMD_to_annotate: A list of Metabolic domains that should be analyzed.
                          For example {'Amines and Polyamines Metabolism'; ...
                          'Amino Acids Metabolism'
-        vG2R: Mapping of all genes in the Genes_all to the Reactions in
+        Gene2Rxn: Mapping of all genes in the Genes_all to the Reactions in
               Reactions_all
-        vMapG_Gpgdb: A maping between Genes in the conversion file and genes
+        vMapG_Gpgdb: A mapping between Genes in the conversion file and genes
                      stored in the pgdb genes.dat file.
         vBiomG_G: Mapping between the Gene location file and the gene-IDs in the
                   conversion file.
-        vReactions_all: Matlab structure containing all the information
+        vReactions_all: DataFrame containing all the information
                         (Attributes)that was searched for (described in
                         vReactionsAttributes, default is {'UNIQUE-ID', ...
                         'ENZYMATIC-REACTION', 'EC-NUMBER'};) in reactions.dat
@@ -2550,7 +2487,7 @@ def f_write_Gene_Output(
         vR_MD: Mapping between all Reactions stored in the Metabolic domain file
                and the metabolic domains that were identified to be of interest
                in vMD_to_annotate.
-        vRpgdb_Rmd: A maping between reactions stored in the pgdb and the
+        vRpgdb_Rmd: A mapping between reactions stored in the pgdb and the
                     reactions given in the metabolic domain file
         vSTClasses: Is a list of signature and tailoring enzyme classes.
         vR_STClasses: Mapping of Reactions in vReactions_all to the enzyme
@@ -2619,7 +2556,7 @@ def f_write_Gene_Output(
             fprintf(vFIO, '\t%s', char(vGeneLocation2.(char(vGeneLocation_Att(1,5)))(vi,1)));
 
             %Compose Gene information (reactions, enzymes, local duplications...)
-            vRXN_IDs = sum(vG2R(sum(vMapG_Gpgdb(vBiomG_G(vi,:),:),1)>0,:),1)>0;
+            vRXN_IDs = sum(Gene2Rxn(sum(vMapG_Gpgdb(vBiomG_G(vi,:),:),1)>0,:),1)>0;
             vRXN_IDs_find = find(vRXN_IDs);
             vECstring = '';
             vRXNstring = '';
@@ -2726,16 +2663,15 @@ def f_write_Gene_Output(
     end"""
 
 
-def f_write_Cluster_Output(
+def write_cluster_output(
     vClusterOutputFile,
     vClusters,
     vClusters_Top,
     vGeneLocation2,
-    vGeneLocation_Att,
     vVerbose,
     vFinalStepsize,
     vOutputType,
-):
+) -> None:
     """
     ---------------------------------------------------------------------------
 
@@ -2756,10 +2692,8 @@ def f_write_Cluster_Output(
         vClusters_Top: Vector with size Number of Clusters x 1. It is zero if
                        the density of the cluster is above or the same as given
                        by the input argument vTopPercentClusters*100.
-        vGeneLocation2: Matlab structure about the gene location information,
+        vGeneLocation2: DataFrame about the gene location information,
                         generated in PlantClusterFinder function.
-        vGeneLocation_Att: Describing the fields of the Matlab structure
-                           vGeneLocation and vGeneLocation2
         vVerbose: Tells the code on how much of output should be printed out to
                   the screen. (0 = nothing, 1 = little, 2 = more, ...)
         vFinalStepsize: Stepsize that was chosen by the criterion (clusters
@@ -2809,7 +2743,7 @@ def f_write_Cluster_Output(
     end"""
 
 
-def f_check_files_for_read_write(
+def check_files_for_read_write(
     vPGDB_FlatFileFolder,
     vMD_reactions_File,
     vProtein_sequence_FastaFile,
@@ -2819,7 +2753,7 @@ def f_check_files_for_read_write(
     vSignatureTailorFile,
     vGeneOutputFile,
     vClusterOutputFile,
-):
+) -> None:
     """
     ---------------------------------------------------------------------------
 
@@ -2861,6 +2795,8 @@ def f_check_files_for_read_write(
 
     Returns:
         None (File checks only)
+    Raises:
+        IOException: If file checks fail, an exception is raised
     """
 
     """
@@ -2939,7 +2875,7 @@ def f_check_files_for_read_write(
     end"""
 
 
-def f_extract_results_with_header(vFile, varargin):
+def extract_results_with_header(vFile, varargin) -> pl.DataFrame:
     # NOTE: I'm pretty sure the csv module already handles this
     """
     ---------------------------------------------------------------------------
@@ -2964,7 +2900,6 @@ def f_extract_results_with_header(vFile, varargin):
         vOutput: Matlabstructure with all the content of the TSV file.
                  Different Columns are stored in different fields of the matlab
                  structure.
-        vHeader: Cell array of the fields of vOutput:
     """
 
     """
@@ -3026,7 +2961,7 @@ def f_extract_results_with_header(vFile, varargin):
     end"""
 
 
-def f_analyze_PlantClusterGapFile(vFileIn, vUnmaskedDNA, vVerbose):
+def analyze_plant_cluster_gap_file(vFileIn, vUnmaskedDNA, vVerbose) -> None:
     """
     ---------------------------------------------------------------------------
 
@@ -3116,7 +3051,7 @@ def f_analyze_PlantClusterGapFile(vFileIn, vUnmaskedDNA, vVerbose):
     end"""
 
 
-def f_read_in_PGDB_Flat(vFile, vAttrib):
+def read_in_PGDB_flat(vFile, vAttrib) -> pl.DataFrame:
     """
     ---------------------------------------------------------------------------
       Function that reads in a pgdb flat file (e.g. genes.dat, proteins.dat,
@@ -3129,9 +3064,8 @@ def f_read_in_PGDB_Flat(vFile, vAttrib):
                  others are discarded.
 
     Returns:
-        vOutput: Matlab structure with the contents of each attribute as a
-                 field of the matlab structure.
-        vAttrib_Head: Fields of vOutput as cell arrays.
+        vOutput: DataFrame structure with the contents of each attribute as a
+                 column
     """
 
     """
@@ -3174,8 +3108,8 @@ def f_read_in_PGDB_Flat(vFile, vAttrib):
     """
 
 
-def f_Remove_non_protein_fasta_gene_locations(
-    vGeneLocation2, vGeneLocation_Att, vMapP, vMapG_MapP, vBiomG_G, vProtein_IDs
+def remove_non_protein_fasta_gene_locations(
+    vGeneLocation2, vMapP, vMapG_MapP, vBiomG_G, vProtein_IDs
 ):
     """
     ---------------------------------------------------------------------------
@@ -3187,10 +3121,8 @@ def f_Remove_non_protein_fasta_gene_locations(
     ---------------------------------------------------------------------------
 
     Args:
-        vGeneLocation2: Matlab structure about the gene location information,
+        vGeneLocation2: DataFrame about the gene location information,
                         generated in PlantClusterFinder function.
-        vGeneLocation_Att: Describing the fields attributes of the Matlab
-                           structure vGeneLocation and vGeneLocation2.
         vMapP: Unique list of protein IDs stored in the conversion file.
         vMapG_MapP: Mapping between vMapG and vMapP
         vBiomG_G: Mapping between the Gene location file and the gene-IDs in the
@@ -3200,7 +3132,7 @@ def f_Remove_non_protein_fasta_gene_locations(
                       vRemoveNonProtLocations is 1. Else the array has no rows.
 
     Returns:
-        vGeneLocation2: Matlab structure about the gene location information,
+        vGeneLocation2: DataFrame about the gene location information,
                         generated in PlantClusterFinder function.
         vBiomG_G: Mapping between the Gene location file and the gene-IDs in the
                   conversion file.
