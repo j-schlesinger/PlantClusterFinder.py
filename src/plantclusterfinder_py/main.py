@@ -715,8 +715,9 @@ def main():
         vClusterOutputFile: "Cluster Output file (-cout)",
     }
     for filename, err in test_writable_file.items():
-        if not os.path.isfile(filename):
-            error_message += f"Could not find {err} at {filename}.\n"
+        if os.path.isfile(filename):
+            error_message += f"File already exists at {
+                filename}, ({err}). Cannot overwrite.\n"
             continue
         try:
             with open(filename, "a") as f:
@@ -741,7 +742,7 @@ def main():
     # Matlab save(filename,)
     if vTempsaves == 1:
         vPartFinished = _tempsaves(locals())
-    if os.path.is_file(vGeneLocation_File + "_tempsave.mat") and vRunAfterPart != 0:
+    if os.path.isfile(vGeneLocation_File + "_tempsave.mat") and vRunAfterPart != 0:
         vPartFinished_old = vPartFinished
         vPartFinished = load([vGeneLocation_File, "_tempsave.mat"], "vPartFinished")[
             "vPartFinished"
@@ -756,19 +757,19 @@ def main():
             locals.update(load([vGeneLocation_File, "_tempsave.mat"]))
             del vPartFinished_old
 
-    # Read in Gene-Transcript-Protein File
+    # Part1 Read in Gene-Transcript-Protein File
     if vPartFinished < 1:
         log.info(
             "Read in file describing gene-ID, transcript-ID, and protein-ID conversion\n"
         )
         conversion = read_in_conversion_file(
-            vGeneTranscriptProtein_mapping_File, verbose_level
+            vGeneTranscriptProtein_mapping_File
         )
         vPartFinished = 1
         if vTempsaves == 1:
             vPartFinished = _tempsaves(locals())
 
-    # Map PGDB Gene-ids to reactions
+    # Part 2: Map PGDB Gene-ids to reactions
     if vPartFinished < 2:
         log.info("Read in pgdb flat files\n")
         (
@@ -782,436 +783,436 @@ def main():
         if vTempsaves == 1:
             vPartFinished = _tempsaves(locals())
 
-        # Map PGDB reactions to metabolic domains
-        if vPartFinished < 3:
-            log.info("Read in and map metabolic domains\n")
-            [vRxnMetaDom, vRxnMetaDom_Att, vR_MD] = get_metabolic_domains(
-                vMD_reactions_File, vMD_to_annotate
-            )
-            # Match PGDBs to MDs
-            [vRpgdb_Rmd] = match_PGDBs_to_MDs(
-                vG2R,
-                vR_MD,
-                vReactions_all,
-                vReactions_all_Att,
-                vRxnMetaDom,
-                vRxnMetaDom_Att,
-            )
-            vPartFinished = 3
-            if vTempsaves == 1:
-                vPartFinished = _tempsaves(locals())
+    # Part 3: Map PGDB reactions to metabolic domains
+    if vPartFinished < 3:
+        log.info("Read in and map metabolic domains\n")
+        [vRxnMetaDom, vRxnMetaDom_Att, vR_MD] = get_metabolic_domains(
+            vMD_reactions_File, vMD_to_annotate
+        )
+        # Match PGDBs to MDs
+        [vRpgdb_Rmd] = match_PGDBs_to_MDs(
+            vG2R,
+            vR_MD,
+            vReactions_all,
+            vReactions_all_Att,
+            vRxnMetaDom,
+            vRxnMetaDom_Att,
+        )
+        vPartFinished = 3
+        if vTempsaves == 1:
+            vPartFinished = _tempsaves(locals())
 
-        # % Label Reactions with signature and tailoring
-        if vPartFinished < 4:
+    # Part 4: Label Reactions with signature and tailoring
+    if vPartFinished < 4:
+        log.info(
+            ["Label reactions with signature and tailoring information\n"])
+        (
+            vSTClasses,
+            vSigOrTail,
+            vR_STClasses,
+            vR_SigOrTail,
+        ) = label_reactions_with_sig_and_tail(
+            vReactions_all, vReactions_all_Att, vSignatureTailorFile
+        )
+        vPartFinished = 4
+        if vTempsaves == 1:
+            vPartFinished = _tempsaves(locals())
+
+    # % Map PGDB genes to Maping genes
+    if vPartFinished < 5:
+        log.info("Map pgdb genes to conversion file gene-IDs\n")
+        # FIXME: What does matlab function regexprep do?
+        vGenesDat_GeneInfo = regexprep(
+            vGenesDat_GeneInfo, "-", "_").upper()
+        vMapG_Gpgdb = map_PGDBs_to_conversion_file(
+            vMapG,
+            vMapT,
+            vMapP,
+            vMapG_MapT,
+            vMapG_MapP,
+            vGenes_all,
+            vGenesDat_GeneInfo,
+            vPGDBIdsToMap,
+            verbose_level,
+        )
+        vPartFinished = 5
+        if vTempsaves == 1:
+            vPartFinished = _tempsaves(locals())
+
+    # % Create MCL clustering mapped to Maping genes
+    if vPartFinished < 6:
+        if vMCLClusterFile == 0:
             log.info(
-                ["Label reactions with signature and tailoring information\n"])
-            (
-                vSTClasses,
-                vSigOrTail,
-                vR_STClasses,
-                vR_SigOrTail,
-            ) = label_reactions_with_sig_and_tail(
-                vReactions_all, vReactions_all_Att, vSignatureTailorFile
+                "Create MCL clustering based on protein file"
+                + " and map cluster IDs to conversion gene-IDs\n"
             )
-            vPartFinished = 4
-            if vTempsaves == 1:
-                vPartFinished = _tempsaves(locals())
-
-        # % Map PGDB genes to Maping genes
-        if vPartFinished < 5:
-            log.info("Map pgdb genes to conversion file gene-IDs\n")
-            # FIXME: What does matlab function regexprep do?
-            vGenesDat_GeneInfo = regexprep(
-                vGenesDat_GeneInfo, "-", "_").upper()
-            vMapG_Gpgdb = map_PGDBs_to_conversion_file(
+            [vG_MCL, vProtein_IDs] = get_MCL_clustering(
+                vProtein_sequence_FastaFile,
                 vMapG,
-                vMapT,
                 vMapP,
-                vMapG_MapT,
                 vMapG_MapP,
-                vGenes_all,
-                vGenesDat_GeneInfo,
-                vPGDBIdsToMap,
+                vPara,
+                vOverwriteMCLClustering,
+                vRemoveNonProtLocations,
                 verbose_level,
             )
-            vPartFinished = 5
-            if vTempsaves == 1:
-                vPartFinished = _tempsaves(locals())
-
-        # % Create MCL clustering mapped to Maping genes
-        if vPartFinished < 6:
-            if vMCLClusterFile == 0:
-                log.info(
-                    "Create MCL clustering based on protein file"
-                    + " and map cluster IDs to conversion gene-IDs\n"
-                )
-                [vG_MCL, vProtein_IDs] = get_MCL_clustering(
-                    vProtein_sequence_FastaFile,
-                    vMapG,
-                    vMapP,
-                    vMapG_MapP,
-                    vPara,
-                    vOverwriteMCLClustering,
-                    vRemoveNonProtLocations,
-                    verbose_level,
-                )
-            else:
-                log.info(
-                    "Read in MCL clustering and map cluster IDs to conversion gene-IDs\n"
-                )
-                [vG_MCL, vProtein_IDs] = read_MCL_clustering_file(
-                    vProtein_sequence_FastaFile,
-                    vMapG,
-                    vMapP,
-                    vMapG_MapP,
-                    vRemoveNonProtLocations,
-                    verbose_level,
-                )
-            vPartFinished = 6
-            if vTempsaves == 1:
-                vPartFinished = _tempsaves(locals())
-
-        # % Read in Gene Position File
-        if vPartFinished < 7:
-            log.info("Read in gene position file\n")
-            (vGeneLocation, vGeneLocation_Att) = extract_results_with_header(
-                vGeneLocation_File
+        else:
+            log.info(
+                "Read in MCL clustering and map cluster IDs to conversion gene-IDs\n"
             )
-            log.debug("Gene Location File Attributes:\n")
-            # FIXME: Validate vGeneLocation_Att
-            for vi in range(1, len(vGeneLocation_Att)):
-                if not iscell(vGeneLocation_Att(1, vi)):
-                    log.debug("Attribute %i is broken.\n", vi)
-                else:
-                    log.debug("Attribute %i: %s\n", vi,
-                              char(vGeneLocation_Att(1, vi)))
-                    # Remove protein or transcript information
-                    log.debug("Remove transcript information\n")
+            [vG_MCL, vProtein_IDs] = read_MCL_clustering_file(
+                vProtein_sequence_FastaFile,
+                vMapG,
+                vMapP,
+                vMapG_MapP,
+                vRemoveNonProtLocations,
+                verbose_level,
+            )
+        vPartFinished = 6
+        if vTempsaves == 1:
+            vPartFinished = _tempsaves(locals())
 
-            vGeneLocation = remove_protein_transcript_info_from_genepositionfile(
-                vGeneLocation,
+    # % Read in Gene Position File
+    if vPartFinished < 7:
+        log.info("Read in gene position file\n")
+        (vGeneLocation, vGeneLocation_Att) = extract_results_with_header(
+            vGeneLocation_File
+        )
+        log.debug("Gene Location File Attributes:\n")
+        # FIXME: Validate vGeneLocation_Att
+        for vi in range(1, len(vGeneLocation_Att)):
+            if not iscell(vGeneLocation_Att(1, vi)):
+                log.debug("Attribute %i is broken.\n", vi)
+            else:
+                log.debug("Attribute %i: %s\n", vi,
+                          char(vGeneLocation_Att(1, vi)))
+                # Remove protein or transcript information
+                log.debug("Remove transcript information\n")
+
+        vGeneLocation = remove_protein_transcript_info_from_genepositionfile(
+            vGeneLocation,
+            vGeneLocation_Att,
+            vMapG,
+            vMapT,
+            vMapP,
+            vMapG_MapT,
+            vMapG_MapP,
+            verbose_level,
+        )
+        # Consolidate gene information (one entry per gene)
+        log.debug("Consolidate gene information\n")
+        [vUniqueChrom, vGeneLocation2] = consolidate_gene_info(
+            vGeneLocation, vGeneLocation_Att, verbose_level
+        )
+        # Sort genes according to their physical positon on the chromosomes
+        log.debug("Sort genes on the chromosomes\n")
+        [vGeneLocation2] = sort_genes(
+            vGeneLocation2, vGeneLocation_Att, vUniqueChrom, verbose_level
+        )
+        vPartFinished = 7
+        if vTempsaves == 1:
+            vPartFinished = _tempsaves(locals())
+
+    # % Map Biomartfile to Gene Map
+    if vPartFinished < 8:
+        log.info("Map gene location to conversion gene-IDs\n")
+        [vBiomG_G] = map_genelocation_to_conversion_file(
+            vGeneLocation2, vGeneLocation_Att, vMapG, verbose_level
+        )
+
+        # If chosen, remove gene position information about genes that are
+        # not present in the protein fasta file.
+        if vRemoveNonProtLocations == 1:
+            log.debug("Remove non-protein coding genes in gene locations.\n")
+            [vGeneLocation2, vBiomG_G] = remove_non_protein_fasta_gene_locations(
+                vGeneLocation2,
                 vGeneLocation_Att,
-                vMapG,
-                vMapT,
                 vMapP,
-                vMapG_MapT,
                 vMapG_MapP,
+                vBiomG_G,
+                vProtein_IDs,
+            )
+
+        vPartFinished = 8
+        if vTempsaves == 1:
+            vPartFinished = _tempsaves(locals())
+
+        # % Get places on genome that do not have genes encoded:
+    if vPartFinished < 9:
+        log.info("Find intergenic regions\n")
+        [vInterChrom] = find_intergenic_regions(
+            vGeneLocation2, vGeneLocation_Att, vUniqueChrom, verbose_level
+        )
+        vPartFinished = 9
+        if vTempsaves == 1:
+            vPartFinished = _tempsaves(locals())
+
+    # % Calculate percentile of gene size that should yield hypo genes
+    if vPartFinished < 10:
+        log.info(
+            "Calculate size of sequence gap that should be populated by hypothetical genes\n"
+        )
+        # FIXME: MATLAB functions ceil, prctile, and char
+        vGeneLengthHypoMin = ceil(
+            prctile(
+                int(
+                    char(vGeneLocation2(charvGeneLocation_Att[1, 3])[:, 1])
+                    - int(vGeneLocation2char(vGeneLocation_Att[1, 2]))[:, 1]
+                ),
+                vHypoGenePercentile,
+            )
+        )
+        vPartFinished = 10
+        if vTempsaves == 1:
+            vPartFinished = _tempsaves(locals())
+
+    # % Get sequencing gaps
+    if vPartFinished < 11:
+        log.info("Identify sequencing gaps (bases encoded by N)\n")
+        if vGeneLengthHypoMin > 0 and vPreScreenGaps == 1:
+            vSeqGaps = annotate_sequencing_gaps(
+                vDNA_FastaFile,
+                vInterChrom,
+                vUniqueChrom,
+                vOverwriteSeqGapInfo,
+                vPara,
+                vUnmaskedDNA,
                 verbose_level,
-            )
-            # Consolidate gene information (one entry per gene)
-            log.debug("Consolidate gene information\n")
-            [vUniqueChrom, vGeneLocation2] = consolidate_gene_info(
-                vGeneLocation, vGeneLocation_Att, verbose_level
-            )
-            # Sort genes according to their physical positon on the chromosomes
-            log.debug("Sort genes on the chromosomes\n")
-            [vGeneLocation2] = sort_genes(
-                vGeneLocation2, vGeneLocation_Att, vUniqueChrom, verbose_level
-            )
-            vPartFinished = 7
-            if vTempsaves == 1:
-                vPartFinished = _tempsaves(locals())
-
-        # % Map Biomartfile to Gene Map
-        if vPartFinished < 8:
-            log.info("Map gene location to conversion gene-IDs\n")
-            [vBiomG_G] = map_genelocation_to_conversion_file(
-                vGeneLocation2, vGeneLocation_Att, vMapG, verbose_level
-            )
-
-            # If chosen, remove gene position information about genes that are
-            # not present in the protein fasta file.
-            if vRemoveNonProtLocations == 1:
-                log.debug("Remove non-protein coding genes in gene locations.\n")
-                [vGeneLocation2, vBiomG_G] = remove_non_protein_fasta_gene_locations(
-                    vGeneLocation2,
-                    vGeneLocation_Att,
-                    vMapP,
-                    vMapG_MapP,
-                    vBiomG_G,
-                    vProtein_IDs,
-                )
-
-            vPartFinished = 8
-            if vTempsaves == 1:
-                vPartFinished = _tempsaves(locals())
-
-            # % Get places on genome that do not have genes encoded:
-        if vPartFinished < 9:
-            log.info("Find intergenic regions\n")
-            [vInterChrom] = find_intergenic_regions(
-                vGeneLocation2, vGeneLocation_Att, vUniqueChrom, verbose_level
-            )
-            vPartFinished = 9
-            if vTempsaves == 1:
-                vPartFinished = _tempsaves(locals())
-
-        # % Calculate percentile of gene size that should yield hypo genes
-        if vPartFinished < 10:
-            log.info(
-                "Calculate size of sequence gap that should be populated by hypothetical genes\n"
-            )
-            # FIXME: MATLAB functions ceil, prctile, and char
-            vGeneLengthHypoMin = ceil(
-                prctile(
-                    int(
-                        char(vGeneLocation2(charvGeneLocation_Att[1, 3])[:, 1])
-                        - int(vGeneLocation2char(vGeneLocation_Att[1, 2]))[:, 1]
-                    ),
-                    vHypoGenePercentile,
-                )
-            )
-            vPartFinished = 10
-            if vTempsaves == 1:
-                vPartFinished = _tempsaves(locals())
-
-        # % Get sequencing gaps
-        if vPartFinished < 11:
-            log.info("Identify sequencing gaps (bases encoded by N)\n")
-            if vGeneLengthHypoMin > 0 and vPreScreenGaps == 1:
-                vSeqGaps = annotate_sequencing_gaps(
-                    vDNA_FastaFile,
-                    vInterChrom,
-                    vUniqueChrom,
-                    vOverwriteSeqGapInfo,
-                    vPara,
-                    vUnmaskedDNA,
-                    verbose_level,
-                    "GeneLengthHypoMin",
-                    vGeneLengthHypoMin,
-                    "SeqGapSizesChromBreak",
-                    vSeqGapSizesChromBreak,
-                )
-            else:
-                vSeqGaps = annotate_sequencing_gaps(
-                    vDNA_FastaFile,
-                    vInterChrom,
-                    vUniqueChrom,
-                    vOverwriteSeqGapInfo,
-                    vPara,
-                    vUnmaskedDNA,
-                    verbose_level,
-                )
-                vPartFinished = 11
-                if vTempsaves == 1:
-                    vPartFinished = _tempsaves(locals())
-
-            # % Introduce Hardbreaks (split chromosomes)
-        if vPartFinished < 12:
-            if (
-                vMaxInterGeneDist != -1
-                or vMaxSeqGapSize != -1
-                or len(vSeqGapSizesChromBreak, 2) != 0
-                or vPercentileForMaxInterGeneDist != -1
-                or vMaxInterGeneDistByMedian != -1
-            ):
-                log.info("Prevent clusters:\n")
-            if vMaxSeqGapSize != -1:
-                log.info(
-                    "Prevent clusters spanning sequencing gaps longer or equal than %ibp\n",
-                    vMaxSeqGapSize,
-                )
-            if size(vSeqGapSizesChromBreak, 2) != 0:
-                # FIXME: matlab function num2str
-                vNumbers = num2str(vSeqGapSizesChromBreak(1, 1))
-                # FIXME: Validate vi is being set correctly
-                for vi in range(2, len(vSeqGapSizesChromBreak), 2):
-                    vNumbers = vNumbers + ", " + \
-                        str(vSeqGapSizesChromBreak(1, vi))
-                log.info(
-                    "Prevent clusters spanning sequencing gaps of length %sbp\n",
-                    vNumbers,
-                )
-                if vMaxInterGeneDist != -1:
-                    log.info(
-                        "Prevent clusters spanning intergenic distances longer or equal than %ibp\n",
-                        vMaxInterGeneDist,
-                    )
-            if vPercentileForMaxInterGeneDist != -1:
-                log.info(
-                    "Prevent clusters spanning the top %i%% intergenic distances\n",
-                    vPercentileForMaxInterGeneDist,
-                )
-            if vMaxInterGeneDistByMedian != -1:
-                log.info(
-                    "Prevent clusters spanning intergenic distances longer or equal than %i * the median of gene sizes\n",
-                    vMaxInterGeneDistByMedian,
-                )
-                (
-                    vGeneLocation2,
-                    vGeneLocation_Att,
-                    vSeqGaps,
-                    vInterChrom,
-                    vBiomG_G,
-                ) = introduce_hard_breaks(
-                    vGeneLocation2,
-                    vGeneLocation_Att,
-                    vUniqueChrom,
-                    vInterChrom,
-                    vSeqGaps,
-                    vSeqGapSizesChromBreak,
-                    vMaxSeqGapSize,
-                    vMaxInterGeneDist,
-                    vPercentileForMaxInterGeneDist,
-                    vMaxInterGeneDistByMedian,
-                    vBiomG_G,
-                )
-
-            vPartFinished = 12
-            if vTempsaves == 1:
-                vPartFinished = _tempsaves(locals())
-
-        # % Populate Hypothetical genes
-        if vPartFinished < 13:
-            log.info(
-                "Introduce Hypothetical genes for gap" "s longer than %i bp\n",
+                "GeneLengthHypoMin",
                 vGeneLengthHypoMin,
+                "SeqGapSizesChromBreak",
+                vSeqGapSizesChromBreak,
             )
-            if vInsertHypos:
-                if "vHypoAmount" not in locals():
-                    # This should be impossible as long as args were parsed
-                    log.error(
-                        "vHypoAmount does not exist. Needs to be set as an Argument."
-                    )
-                (vGeneLocation2, vGeneLocation_Att, _, vBiomG_G) = introduce_hypo_genes(
-                    vGeneLocation2,
-                    vGeneLocation_Att,
-                    vInterChrom,
-                    vSeqGaps,
-                    vGeneLengthHypoMin,
-                    vBiomG_G,
-                    vInsertHypos,
-                    "HypoAmount",
-                    vHypoAmount,
+        else:
+            vSeqGaps = annotate_sequencing_gaps(
+                vDNA_FastaFile,
+                vInterChrom,
+                vUniqueChrom,
+                vOverwriteSeqGapInfo,
+                vPara,
+                vUnmaskedDNA,
+                verbose_level,
+            )
+            vPartFinished = 11
+            if vTempsaves == 1:
+                vPartFinished = _tempsaves(locals())
+
+        # % Introduce Hardbreaks (split chromosomes)
+    if vPartFinished < 12:
+        if (
+            vMaxInterGeneDist != -1
+            or vMaxSeqGapSize != -1
+            or len(vSeqGapSizesChromBreak, 2) != 0
+            or vPercentileForMaxInterGeneDist != -1
+            or vMaxInterGeneDistByMedian != -1
+        ):
+            log.info("Prevent clusters:\n")
+        if vMaxSeqGapSize != -1:
+            log.info(
+                "Prevent clusters spanning sequencing gaps longer or equal than %ibp\n",
+                vMaxSeqGapSize,
+            )
+        if size(vSeqGapSizesChromBreak, 2) != 0:
+            # FIXME: matlab function num2str
+            vNumbers = num2str(vSeqGapSizesChromBreak(1, 1))
+            # FIXME: Validate vi is being set correctly
+            for vi in range(2, len(vSeqGapSizesChromBreak), 2):
+                vNumbers = vNumbers + ", " + \
+                    str(vSeqGapSizesChromBreak(1, vi))
+            log.info(
+                "Prevent clusters spanning sequencing gaps of length %sbp\n",
+                vNumbers,
+            )
+            if vMaxInterGeneDist != -1:
+                log.info(
+                    "Prevent clusters spanning intergenic distances longer or equal than %ibp\n",
+                    vMaxInterGeneDist,
                 )
-
-            vPartFinished = 13
-            if vTempsaves == 1:
-                vPartFinished = _tempsaves(locals())
-
-        # % Annotate Biomartfile with Enzymes (use Gene-protein mapping)
-        if vPartFinished < 14:
-            log.info("Annotate gene location file with enzyme information\n")
-            vBiomG_E = annotate_enyme_info_to_gene_location(
-                vGeneLocation2,
-                vGeneLocation_Att,
-                vBiomG_G,
-                vMapG_Gpgdb,
-                vG2R,
-                verbose_level,
+        if vPercentileForMaxInterGeneDist != -1:
+            log.info(
+                "Prevent clusters spanning the top %i%% intergenic distances\n",
+                vPercentileForMaxInterGeneDist,
             )
-            log.debug(
-                "Number of genes in location file identified as enzymes: %i\n",
-                sum(vBiomG_E),
+        if vMaxInterGeneDistByMedian != -1:
+            log.info(
+                "Prevent clusters spanning intergenic distances longer or equal than %i * the median of gene sizes\n",
+                vMaxInterGeneDistByMedian,
             )
-            vPartFinished = 14
-            if vTempsaves == 1:
-                vPartFinished = _tempsaves(locals())
-
-        # % Compute LD information
-        if vPartFinished < 15:
-            log.info("Compute local gene duplication per gene location\n")
-            (vG_LD, vG_LD_ClustIDs) = compute_local_duplication(
-                vGeneLocation2,
-                vGeneLocation_Att,
-                vG_MCL,
-                vBiomG_G,
-                vKbRangeLD,
-                vGeneRangeLD,
-                verbose_level,
-            )
-            vPartFinished = 15
-            if vTempsaves == 1:
-                vPartFinished = _tempsaves(locals())
-
-        # % Perform clustering
-        if vPartFinished < 16:
-            log.info("Perform clustering\n")
             (
-                vClusters,
-                vClusterBackground,
-                vFinalStepsize,
-                vStepSize_Max,
-            ) = perform_clustering(
-                vMinStepSize,
-                vMaxStepSize,
                 vGeneLocation2,
                 vGeneLocation_Att,
-                vBiomG_E,
-                vEnzMinForClusters,
-                vKbRangeLD,
-                vGeneRangeLD,
-                vG_MCL,
+                vSeqGaps,
+                vInterChrom,
                 vBiomG_G,
-                vG2R,
-                vMapG_Gpgdb,
-                vCriterion,
-                verbose_level,
-            )
-            vPartFinished = 16
-            if vTempsaves == 1:
-                vPartFinished = _tempsaves(locals())
-
-        # % Perform cutoff
-        if vPartFinished < 17:
-            log.info("Perform cuttof at %i%%\n", vTopPercentClusters)
-            [vClusters_Top] = perform_cutoff(
-                vClusters, vClusterBackground, vTopPercentClusters
-            )
-            vPartFinished = 17
-            if vTempsaves == 1:
-                vPartFinished = _tempsaves(locals())
-
-        # % Produce Gene Outputfile
-        if vPartFinished < 18:
-            log.info("Produce GeneOutputFile\n")
-            write_gene_output(
-                vGeneOutputFile,
+            ) = introduce_hard_breaks(
                 vGeneLocation2,
                 vGeneLocation_Att,
-                vFinalStepsize,
-                vStepSize_Max,
-                vTopPercentClusters,
-                vMD_to_annotate,
-                vG2R,
-                vMapG_Gpgdb,
+                vUniqueChrom,
+                vInterChrom,
+                vSeqGaps,
+                vSeqGapSizesChromBreak,
+                vMaxSeqGapSize,
+                vMaxInterGeneDist,
+                vPercentileForMaxInterGeneDist,
+                vMaxInterGeneDistByMedian,
                 vBiomG_G,
-                vReactions_all,
-                vReactions_all_Att,
-                vBiomG_E,
-                vG_LD_ClustIDs,
-                vG_LD,
-                vClusters,
-                vClusters_Top,
-                vR_MD,
-                vRpgdb_Rmd,
-                vSTClasses,
-                vR_STClasses,
-                vSigOrTail,
-                vR_SigOrTail,
-                verbose_level,
-                vOutputType,
             )
-            vPartFinished = 18
-            if vTempsaves == 1:
-                vPartFinished = _tempsaves(locals())
 
-        # % Print cluster File
-        if vPartFinished < 19:
-            log.info("Produce ClusterOutputFile\n")
-            write_cluster_output(
-                vClusterOutputFile,
-                vClusters,
-                vClusters_Top,
+        vPartFinished = 12
+        if vTempsaves == 1:
+            vPartFinished = _tempsaves(locals())
+
+    # % Populate Hypothetical genes
+    if vPartFinished < 13:
+        log.info(
+            "Introduce Hypothetical genes for gap" "s longer than %i bp\n",
+            vGeneLengthHypoMin,
+        )
+        if vInsertHypos:
+            if "vHypoAmount" not in locals():
+                # This should be impossible as long as args were parsed
+                log.error(
+                    "vHypoAmount does not exist. Needs to be set as an Argument."
+                )
+            (vGeneLocation2, vGeneLocation_Att, _, vBiomG_G) = introduce_hypo_genes(
                 vGeneLocation2,
                 vGeneLocation_Att,
-                verbose_level,
-                vFinalStepsize,
-                vOutputType,
+                vInterChrom,
+                vSeqGaps,
+                vGeneLengthHypoMin,
+                vBiomG_G,
+                vInsertHypos,
+                "HypoAmount",
+                vHypoAmount,
             )
-            vPartFinished = 19
-            if vTempsaves == 1:
-                vPartFinished = _tempsaves(locals())
+
+        vPartFinished = 13
+        if vTempsaves == 1:
+            vPartFinished = _tempsaves(locals())
+
+    # % Annotate Biomartfile with Enzymes (use Gene-protein mapping)
+    if vPartFinished < 14:
+        log.info("Annotate gene location file with enzyme information\n")
+        vBiomG_E = annotate_enyme_info_to_gene_location(
+            vGeneLocation2,
+            vGeneLocation_Att,
+            vBiomG_G,
+            vMapG_Gpgdb,
+            vG2R,
+            verbose_level,
+        )
+        log.debug(
+            "Number of genes in location file identified as enzymes: %i\n",
+            sum(vBiomG_E),
+        )
+        vPartFinished = 14
+        if vTempsaves == 1:
+            vPartFinished = _tempsaves(locals())
+
+    # % Compute LD information
+    if vPartFinished < 15:
+        log.info("Compute local gene duplication per gene location\n")
+        (vG_LD, vG_LD_ClustIDs) = compute_local_duplication(
+            vGeneLocation2,
+            vGeneLocation_Att,
+            vG_MCL,
+            vBiomG_G,
+            vKbRangeLD,
+            vGeneRangeLD,
+            verbose_level,
+        )
+        vPartFinished = 15
+        if vTempsaves == 1:
+            vPartFinished = _tempsaves(locals())
+
+    # % Perform clustering
+    if vPartFinished < 16:
+        log.info("Perform clustering\n")
+        (
+            vClusters,
+            vClusterBackground,
+            vFinalStepsize,
+            vStepSize_Max,
+        ) = perform_clustering(
+            vMinStepSize,
+            vMaxStepSize,
+            vGeneLocation2,
+            vGeneLocation_Att,
+            vBiomG_E,
+            vEnzMinForClusters,
+            vKbRangeLD,
+            vGeneRangeLD,
+            vG_MCL,
+            vBiomG_G,
+            vG2R,
+            vMapG_Gpgdb,
+            vCriterion,
+            verbose_level,
+        )
+        vPartFinished = 16
+        if vTempsaves == 1:
+            vPartFinished = _tempsaves(locals())
+
+    # % Perform cutoff
+    if vPartFinished < 17:
+        log.info("Perform cuttof at %i%%\n", vTopPercentClusters)
+        [vClusters_Top] = perform_cutoff(
+            vClusters, vClusterBackground, vTopPercentClusters
+        )
+        vPartFinished = 17
+        if vTempsaves == 1:
+            vPartFinished = _tempsaves(locals())
+
+    # % Produce Gene Outputfile
+    if vPartFinished < 18:
+        log.info("Produce GeneOutputFile\n")
+        write_gene_output(
+            vGeneOutputFile,
+            vGeneLocation2,
+            vGeneLocation_Att,
+            vFinalStepsize,
+            vStepSize_Max,
+            vTopPercentClusters,
+            vMD_to_annotate,
+            vG2R,
+            vMapG_Gpgdb,
+            vBiomG_G,
+            vReactions_all,
+            vReactions_all_Att,
+            vBiomG_E,
+            vG_LD_ClustIDs,
+            vG_LD,
+            vClusters,
+            vClusters_Top,
+            vR_MD,
+            vRpgdb_Rmd,
+            vSTClasses,
+            vR_STClasses,
+            vSigOrTail,
+            vR_SigOrTail,
+            verbose_level,
+            vOutputType,
+        )
+        vPartFinished = 18
+        if vTempsaves == 1:
+            vPartFinished = _tempsaves(locals())
+
+    # % Print cluster File
+    if vPartFinished < 19:
+        log.info("Produce ClusterOutputFile\n")
+        write_cluster_output(
+            vClusterOutputFile,
+            vClusters,
+            vClusters_Top,
+            vGeneLocation2,
+            vGeneLocation_Att,
+            verbose_level,
+            vFinalStepsize,
+            vOutputType,
+        )
+        vPartFinished = 19
+        if vTempsaves == 1:
+            vPartFinished = _tempsaves(locals())
 
     def help_content():
         """
