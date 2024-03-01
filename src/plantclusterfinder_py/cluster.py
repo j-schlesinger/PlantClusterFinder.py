@@ -2,6 +2,7 @@ from plantclusterfinder_py.cluster_datatypes import *
 import pythoncyc
 import polars as pl
 import logging
+log = logging.getLogger(__name__)
 
 
 def label_reactions_with_sig_and_tail(
@@ -1469,7 +1470,7 @@ def match_pgdb_flat(
 
 
 def read_in_conversion_file(
-    vGeneTranscriptProtein_mapping_File: str, vVerbose
+    vGeneTranscriptProtein_mapping_File: str
 ) -> Conversion:  # , vPara, varargin):
     """
     ---------------------------------------------------------------------------
@@ -1485,106 +1486,51 @@ def read_in_conversion_file(
                                              identifier and then for all the
                                              identfiers the listings (gene-ID,
                                              transcript-ID, protein-ID).
-        vVerbose: Tells the code on how much of output should be printed out to
-                  the screen. (0 = nothing, 1 = little, 2 = more, ...)
 
     Returns:
         Conversion object containing the IDs from the conversion file
+    Raises 
     """
-
-    """
-        % MATLAB code
-
-        vFIO = fopen(vGeneTranscriptProtein_mapping_File);
-        vInitialize = 250000;
-        vLine = fgetl(vFIO);
-        vGTP_Header = regexp(vLine,'\t','split'); %#ok<NASGU>
-        vLine = fgetl(vFIO);
-        vSplit = regexp(vLine,'\t','split');
-        if vVerbose >= 2
-            fprintf('Read conversion ids 1\n');
-        end
-        for vi = 1:size(vSplit,2)
-            vGTP.(['Col' num2str(vi)]) = cell(vInitialize,1);
-            vGTP.(['Col' num2str(vi)])(1,1) = vSplit(1,vi);
-        end
-        vLine = fgetl(vFIO);
-        vL = 2;
-        while ischar(vLine)
-            if vVerbose >= 2
-                fprintf('Read conversion ids %i\n', vL);
-            end
-            vSplit = regexp(vLine,'\t','split');
-            for vi = 1:size(vSplit,2)
-                if vL <= vInitialize
-                    vGTP.(['Col' num2str(vi)])(vL,1) = vSplit(1,vi);
-                else
-                    vGTP.(['Col' num2str(vi)]) = [vGTP.(['Col' num2str(vi)]);vSplit(1,vi)];
-                end
-            end
-            vLine = fgetl(vFIO);
-            vL = vL + 1;
-        end
-        fclose(vFIO);
-        for vi = 1:size(vSplit,2)
-            vGTP.(['Col' num2str(vi)]) = vGTP.(['Col' num2str(vi)])(1:vL-1,:);
-        end
-
-        vMapG = unique(vGTP.Col1(:,1));
-        vMapT = unique(vGTP.Col2(:,1));
-        vMapP = unique(vGTP.Col3(:,1));
-        vMapG_MapT = false(size(vMapG,1),size(vMapT,1));
-        vMapG_MapP = false(size(vMapG,1),size(vMapP,1));
-        vnvi = size(vGTP.Col1,1);
-        for vi = 1:vnvi
-            if vVerbose >= 2
-                fprintf('Map conversion ids %i of %i to each other\n', vi, vnvi);
-            end
-    %         if vPara == 1
-                vMapG_ID = strcmp(vMapG,vGTP.Col1(vi,1));
-                vMapT_ID = strcmp(vMapT,vGTP.Col2(vi,1));
-                vMapP_ID = strcmp(vMapP,vGTP.Col3(vi,1));
-                vMapG_MapT(vMapG_ID,vMapT_ID) = 1;
-                vMapG_MapP(vMapG_ID,vMapP_ID) = 1;
-    %         else
-    %             vMapG_ID_find = find(strcmp(vMapG,vGTP.Col1(vi,1)));
-    %             vMapT_ID_find = find(strcmp(vMapT,vGTP.Col2(vi,1)));
-    %             vMapP_ID_find = find(strcmp(vMapP,vGTP.Col3(vi,1)));
-    %             parfor vj = vMapG_ID_find
-    %                 for vk = vMapT_ID_find
-    %                     vMapG_MapT(vj,vk) = 1;
-    %                 end
-    %                 for vk = vMapP_ID_find
-    %                     vMapG_MapP(vj,vk) = 1;
-    %                 end
-    %             end
-    %         end
-        end
-        vSum_T = sum(vMapG_MapT,1);
-        vSum_P = sum(vMapG_MapT,1);
-
-        if sum(vSum_T>1) > 0 || sum(vSum_P>1) > 0
-            if sum(vSum_T>1) > 0
-                warning('Some transcripts match to multiple genes in the ID conversion file:\n');
-                vSum_T_ID = find(vSum_T>1);
-                for vi = 1:size(vSum_T_ID,1)
-                    fprintf('Please check transcript %s\n', char(vMapT(vSum_T_ID(vi,1))));
-                end
-            end
-            if sum(vSum_P>1) > 0
-                warning('Some proteins match to multiple genes in the ID conversion file:\n');
-                vSum_P_ID = find(vSum_P>1);
-                for vi = 1:size(vSum_P_ID,1)
-                    fprintf('Please check protein %s\n', char(vMapT(vSum_P_ID(vi,1))));
-                end
-            end
-            error('Please clean Protein ID file.\n');
-        end
-        if vVerbose >= 1
-            fprintf('Number of gene-ID to transcript-ID mappings: %i\n', sum(vSum_T));
-            fprintf('Number of Gene to Protein mappings: %i\n', sum(vSum_P));
-        end
-    end"""
+    conversion_data = pl.read_csv(vGeneTranscriptProtein_mapping_File,
+                                  separator='\t', dtypes=[pl.String]*3)
+    column_names = conversion_data.columns
+    conversion_len = len(conversion_data)
+    log.debug("Read in conversion data, %d rows, columns are %s",
+              conversion_len,
+              column_names
+              )
+    conversion = Conversion(
+        MapG=set(conversion_data[column_names[0]].unique()),
+        MapT=set(conversion_data[column_names[1]].unique()),
+        MapP=set(conversion_data[column_names[2]].unique()),
+        MapG_MapT={x[0]: x[1] for x in conversion_data.iter_rows()},
+        MapG_MapP={x[0]: x[2] for x in conversion_data.iter_rows()}
+    )
+    # Validate conversion before output
+    # TODO: are unclean protein ID files an unrecoverable error?
+    if len(conversion.MapG_MapT) < len(conversion.MapG):
+        log.warn("Some Transcripts match multiple genes in the ID Conversion file")
+        transcript_multi = (conversion_data
+                            .group_by(column_names[1])
+                            .n_unique()
+                            .filter(pl.col(column_names[0]) > 1)[column_names[1]])
+        for transcript in transcript_multi:
+            log.warn("Please check the transcript %s", transcript)
+        log.error("Please clean the protein ID file")
+    if len(conversion.MapG_MapP) < len(conversion.MapG):
+        log.warn("Some Proteins match multiple genes in the ID Conversion file")
+        prot_multi = (conversion_data
+                      .group_by(column_names[2])
+                      .n_unique()
+                      .filter(pl.col(column_names[0]) > 1)[column_names[2]])
+        for prot in prot_multi:
+            log.warn("Please check the protein %s", prot)
+        log.error("Please clean the protein ID file")
+    log.info("Number of Gene-ID to Transcript-ID mappings: %i",
+             len(conversion.MapG_MapT))
+    log.info("Number of Gene-ID to Protein mappings: %i",
+             len(conversion.MapG_MapP))
+    return conversion
 
 
 def match_PGDBs_to_MDs(Gene2Rxn, vR_MD, vReactions_all, vRxnMetaDom) -> dict:
@@ -2738,138 +2684,6 @@ def write_cluster_output(
                 end
                 fprintf(vFIO, '\t%s\t%s\t%s\n',char(vGeneLocation2.(char(vGeneLocation_Att(1,1)))(vClusters(vi,2),1)),char(vGeneLocation2.(char(vGeneLocation_Att(1,1)))(vClusters(vi,3),1)),vClustersString);
             end
-        end
-        fclose(vFIO);
-    end"""
-
-
-def check_files_for_read_write(
-    vPGDB_FlatFileFolder,
-    vMD_reactions_File,
-    vProtein_sequence_FastaFile,
-    vGeneTranscriptProtein_mapping_File,
-    vGeneLocation_File,
-    vDNA_FastaFile,
-    vSignatureTailorFile,
-    vGeneOutputFile,
-    vClusterOutputFile,
-) -> None:
-    """
-    ---------------------------------------------------------------------------
-
-      Function that checks if the user has access to read (and write) the data
-      that serve as in- and ouputfiles.
-
-    ---------------------------------------------------------------------------
-
-    Args:
-        vPGDB_FlatFileFolder: Full path to the folder where the flatfiles of
-                              the species pgdb is stored.
-        vMD_reactions_File: TSV of the metabolic domains of reactions. Check if
-                            file is outdated (needs to contain all reactions
-                            that are present in the PGDB that have genes
-                            annotated to).
-        vProtein_sequence_FastaFile: Protein sequence file of the genome.
-                                       Should only contain Protein IDs as
-                                       header e.g. >protein1-ID
-        vGeneTranscriptProtein_mapping_File: TSV file with a header describing
-                                             gene, transcript, and protein
-                                             identifier and then for all the
-                                             identfiers the listings (gene-ID,
-                                             transcript-ID, protein-ID).
-        vGeneLocation_File: TSV file with gene ID, start bp, end bp, chromosome
-                            / scaffold, strand (encoded as 1 or -1). This file
-                            can be generated with a biomart or out of a gff3
-                            file.
-        vDNA_FastaFile: Fasta file of the masked genome nucleotide sequences.
-        vSignatureTailorFile: TSV file describing the classes of enzymes that
-                              should be classified as signature or tailoring
-                              enzymes to identify clusters containing such.
-        vGeneOutputFile: Path and file name to the gene-Outputfile, make sure
-                         you have access to the file and folder. This is the
-                         first Results output file that will be generated.
-        vClusterOutputFile: Path and file name to the cluster-Outputfile, make
-                            sure you have access to the file and folder. This
-                            is the second Results output file that will be
-                            generated.
-
-    Returns:
-        None (File checks only)
-    Raises:
-        IOException: If file checks fail, an exception is raised
-    """
-
-    """
-        % MATLAB code
-        vFIO = fopen([vPGDB_FlatFileFolder 'genes.dat']);
-        if vFIO < 0
-            error('Can not read %sgenes.dat\n', vPGDB_FlatFileFolder);
-        end
-        fclose(vFIO);
-
-        vFIO = fopen([vPGDB_FlatFileFolder 'proteins.dat']);
-        if vFIO < 0
-            error('Can not read %sproteins.dat\n', vPGDB_FlatFileFolder);
-        end
-        fclose(vFIO);
-
-        vFIO = fopen([vPGDB_FlatFileFolder 'enzrxns.dat']);
-        if vFIO < 0
-            error('Can not read %senzrxns.dat\n', vPGDB_FlatFileFolder);
-        end
-        fclose(vFIO);
-
-        vFIO = fopen([vPGDB_FlatFileFolder 'reactions.dat']);
-        if vFIO < 0
-            error('Can not read %sreactions.dat\n', vPGDB_FlatFileFolder);
-        end
-        fclose(vFIO);
-
-        vFIO = fopen(vMD_reactions_File);
-        if vFIO < 0
-            error('Can not read %s\n', vMD_reactions_File);
-        end
-        fclose(vFIO);
-
-        vFIO = fopen(vProtein_sequence_FastaFile);
-        if vFIO < 0
-            error('Can not read %s\n', vProtein_sequence_FastaFile);
-        end
-        fclose(vFIO);
-
-        vFIO = fopen(vGeneTranscriptProtein_mapping_File);
-        if vFIO < 0
-            error('Can not read %s\n', vGeneTranscriptProtein_mapping_File);
-        end
-        fclose(vFIO);
-
-        vFIO = fopen(vGeneLocation_File);
-        if vFIO < 0
-            error('Can not read %s\n', vGeneLocation_File);
-        end
-        fclose(vFIO);
-
-        vFIO = fopen(vDNA_FastaFile);
-        if vFIO < 0
-            error('Can not read %s\n', vDNA_FastaFile);
-        end
-        fclose(vFIO);
-
-        vFIO = fopen(vSignatureTailorFile);
-        if vFIO < 0
-            error('Can not read %s\n', vSignatureTailorFile);
-        end
-        fclose(vFIO);
-
-        vFIO = fopen(vGeneOutputFile, 'w');
-        if vFIO < 0
-            error('Can not read / write %s\n', vGeneOutputFile);
-        end
-        fclose(vFIO);
-
-        vFIO = fopen(vClusterOutputFile, 'w');
-        if vFIO < 0
-            error('Can not read / write %s\n', vClusterOutputFile);
         end
         fclose(vFIO);
     end"""

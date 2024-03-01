@@ -89,7 +89,8 @@ def _tempsaves(caller_locals: dict):
         the vPartFinished from that, otherwise the caller's vPartFinished
     """
     ret = caller_locals["vPartFinished"]
-    temp_filename = caller_locals.get("vGeneLocation_File", "TEMP") + "_tempsave.mat"
+    temp_filename = caller_locals.get(
+        "vGeneLocation_File", "TEMP") + "_tempsave.mat"
     if caller_locals.get("vTempsavesOverwrite", 0) == 1:
         save(
             temp_filename,
@@ -760,7 +761,7 @@ def main():
         log.info(
             "Read in file describing gene-ID, transcript-ID, and protein-ID conversion\n"
         )
-        (vMapG, vMapT, vMapP, vMapG_MapT, vMapG_MapP) = read_in_conversion_file(
+        conversion = read_in_conversion_file(
             vGeneTranscriptProtein_mapping_File, verbose_level
         )
         vPartFinished = 1
@@ -802,7 +803,8 @@ def main():
 
         # % Label Reactions with signature and tailoring
         if vPartFinished < 4:
-            log.info(["Label reactions with signature and tailoring information\n"])
+            log.info(
+                ["Label reactions with signature and tailoring information\n"])
             (
                 vSTClasses,
                 vSigOrTail,
@@ -819,7 +821,8 @@ def main():
         if vPartFinished < 5:
             log.info("Map pgdb genes to conversion file gene-IDs\n")
             # FIXME: What does matlab function regexprep do?
-            vGenesDat_GeneInfo = regexprep(vGenesDat_GeneInfo, "-", "_").upper()
+            vGenesDat_GeneInfo = regexprep(
+                vGenesDat_GeneInfo, "-", "_").upper()
             vMapG_Gpgdb = map_PGDBs_to_conversion_file(
                 vMapG,
                 vMapT,
@@ -880,7 +883,8 @@ def main():
                 if not iscell(vGeneLocation_Att(1, vi)):
                     log.debug("Attribute %i is broken.\n", vi)
                 else:
-                    log.debug("Attribute %i: %s\n", vi, char(vGeneLocation_Att(1, vi)))
+                    log.debug("Attribute %i: %s\n", vi,
+                              char(vGeneLocation_Att(1, vi)))
                     # Remove protein or transcript information
                     log.debug("Remove transcript information\n")
 
@@ -1012,7 +1016,8 @@ def main():
                 vNumbers = num2str(vSeqGapSizesChromBreak(1, 1))
                 # FIXME: Validate vi is being set correctly
                 for vi in range(2, len(vSeqGapSizesChromBreak), 2):
-                    vNumbers = vNumbers + ", " + str(vSeqGapSizesChromBreak(1, vi))
+                    vNumbers = vNumbers + ", " + \
+                        str(vSeqGapSizesChromBreak(1, vi))
                 log.info(
                     "Prevent clusters spanning sequencing gaps of length %sbp\n",
                     vNumbers,
