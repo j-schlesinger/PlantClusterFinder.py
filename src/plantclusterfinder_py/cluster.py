@@ -1245,7 +1245,7 @@ def get_MCL_clustering(
 
 
 def map_pgdb_reactions_to_genes(
-    vPGDB_FlatFileFolder, vVerbose, **kwargs
+    vPGDB_FlatFileFolder, **kwargs
 ) -> GenesToReactions:
     """
     ---------------------------------------------------------------------------
@@ -1259,13 +1259,11 @@ def map_pgdb_reactions_to_genes(
     Args:
         vPGDB_FlatFileFolder: Full path to the folder where the flatfiles of
                               the species pgdb is stored.
-        vVerbose: Tells the code on how much of output should be printed out to
-                  the screen. (0 = nothing, 1 = little, 2 = more, ...)
     Optional Args:
         'GenesAttributes': Attributes of genes.dat that should be read out.
                            Default is {'UNIQUE-ID','PRODUCT','ACCESSION-1', ...
                            'ACCESSION-2'}
-        'vProteinsAttributes': Attributes of proteins.dat that should be read
+        'ProteinsAttributes': Attributes of proteins.dat that should be read
                                out. Default is {'UNIQUE-ID','CATALYZES', ...
                                'COMPONENTS'}
         'EnzrxnsAttributes': Attributes of enzrxns.dat that should be read
@@ -1274,14 +1272,14 @@ def map_pgdb_reactions_to_genes(
                                out. Default is {'UNIQUE-ID',
                                'ENZYMATIC-REACTION', 'EC-NUMBER'}
         'G2P': Defines which attributes in genes.dat should be matched to which
-               attributes in proteins.dat. Default is: [2,1];
+               attributes in proteins.dat. Default is: ('UNIQUE-ID', 'PRODUCT')
         'P2P': Defines which attributes in proteins.dat should be matched to
                which attributes in proteins.dat (Protein complexes). Default
-               is: [1,3];
+               is: ('UNIQUE-ID', 'COMPONENTS')
         'P2E': Defines which attributes in proteins.dat should be matched to
-               which attributes in enzrxns.dat. Default is: [2,1];
+               which attributes in enzrxns.dat. Default is: ('CATALYZES', 'COMPONENTS')
         'E2R': Defines which attributes in enzrxns.dat should be matched to
-               which attributes in reactions.dat. Default is: [2,1];
+               which attributes in reactions.dat. Default is: ('REACTION', 'UNIQUE-ID')
 
     Returns:
         GenesToReactions object containing
@@ -1289,141 +1287,83 @@ def map_pgdb_reactions_to_genes(
             - ReactionsAll: searched-for attributes of all reactions in reactions.dat of pgdb
             - Gene2Rxn: Mapping between records in GenesAll and ReactionsAll
     """
+    # Attributes of Flatfiles that should be read out
+    _genes_attributes = tuple(kwargs.get(
+        'GenesAttributes', ('UNIQUE-ID', 'PRODUCT', 'ACCESSION-1', 'ACCESSION-2')))
+    _proteins_attributes = tuple(kwargs.get(
+        'ProteinsAttributes', ('UNIQUE-ID', 'CATALYZES', 'COMPONENTS')))
+    _enzrxns_attributes = tuple(kwargs.get(
+        'EnzrxnsAttributes', ('UNIQUE-ID', 'REACTION', 'ENZYME')))
+    _reactions_attributes = kwargs.get(
+        'ReactionsAttributes', ('UNIQUE-ID', 'ENZYMATIC-REACTION', 'EC-NUMBER'))
+    G2P = kwargs.get('G2P', ('UNIQUE-ID', 'PRODUCT'))
+    P2P = kwargs.get('P2P', ('UNIQUE-ID', 'COMPONENTS'))
+    P2E = kwargs.get('P2E', ('CATALYZES', 'COMPONENTS'))
+    E2R = kwargs.get('E2R', ('REACTION', 'UNIQUE-ID'))
+    R2Pa = ('UNIQUE-ID', 'ENZYMATIC-REACTION')
 
-    """
-        % MATLAB code
-        vCurrNargin = 2;
+    # Guarantee that UNIQUE-ID is in the attributes
+    genes_attributes = _genes_attributes if 'UNIQUE-ID' in _genes_attributes else _genes_attributes + \
+        ('UNIQUE-ID',)
+    proteins_attributes = _proteins_attributes if 'UNIQUE-ID' in _proteins_attributes else _proteins_attributes + \
+        ('UNIQUE-ID',)
+    enzrnxs_attributes = _enzrnxs_attributes if 'UNIQUE-ID' in _enzrnxs_attributes else _enzrnxs_attributes + \
+        ('UNIQUE-ID',)
+    reactions_attributes = _reactions_attributes if 'UNIQUE-ID' in _reactions_attributes else _reactions_attributes + \
+        ('UNIQUE-ID',)
 
-        % Attributes of Flatfiles that should be read out
-        vGenesAttributes = {'UNIQUE-ID','PRODUCT','ACCESSION-1','ACCESSION-2'};
-        vProteinsAttributes = {'UNIQUE-ID','CATALYZES','COMPONENTS'};
-        vEnzrxnsAttributes = {'UNIQUE-ID','REACTION','ENZYME'};
-        vReactionsAttributes = {'UNIQUE-ID', 'ENZYMATIC-REACTION', 'EC-NUMBER'};
+    # Read in all attributes and store them
+    log.info('Reading in genes.dat')
+    genes_all = read_in_pgdb_flat(os.path.join(
+        vPGDB_FlatFileFolder, 'genes.dat'), genes_attributes)
+    log.info('Reading in proteins.dat')
+    proteins_all = read_in_pgdb_flat(os.path.join(
+        vPGDB_FlatFileFolder, 'proteins.dat'), proteins_attributes)
+    log.info('Reading in enzrxns.dat')
+    enzrxns_all = read_in_pgdb_flat(os.path.join(
+        vPGDB_FlatFileFolder, 'enzrxns.dat'), enzrxns_attributes)
+    log.info('Reading in reactions.dat')
+    reactions_all = read_in_pgdb_flat(os.path.join(
+        vPGDB_FlatFileFolder, 'reactions.dat'), reactions_attributes)
 
-        % Which Attributes should be used to match different Flatfiles to each
-        % other.
-        vG2P = [2,1];
-        vP2P = [1,3];
-        vP2E = [2,1];
-        vE2R = [2,1];
-        vR2Pa = [1,2]; %#ok<NASGU>
+    # Match flat files to each other
+    log.info("Matching genes to proteins")
+    G2_P = match_pgdb_flat(genes_all, proteins_all, G2P)
+    log.info("Matching proteins to protein-complexes")
+    P_P = match_pgdb_flat(proteins, proteins_all, P2P)
 
-        %Use inputs to write over defaults
-        if nargin > vCurrNargin
-            vi = 1;
-            while vi <= nargin - vCurrNargin
-                if ischar(varargin{1,vi})
-                    if strcmp(varargin{1,vi},'GenesAttributes')
-                        vGenesAttributes = varargin{1,vi+1};
-                        vi = vi + 1;
-                    elseif strcmp(varargin{1,vi},'vProteinsAttributes')
-                        vProteinsAttributes = varargin{1,vi+1};
-                        vi = vi + 1;
-                    elseif strcmp(varargin{1,vi},'EnzrxnsAttributes')
-                        vEnzrxnsAttributes = varargin{1,vi+1};
-                        vi = vi + 1;
-                    elseif strcmp(varargin{1,vi},'ReactionsAttributes')
-                        vReactionsAttributes = varargin{1,vi+1};
-                        vi = vi + 1;
-                    elseif strcmp(varargin{1,vi},'G2P')
-                        vG2P = varargin{1,vi+1};
-                        vi = vi + 1;
-                    elseif strcmp(varargin{1,vi},'P2P')
-                        vP2P = varargin{1,vi+1};
-                        vi = vi + 1;
-                    elseif strcmp(varargin{1,vi},'P2E')
-                        vP2E = varargin{1,vi+1};
-                        vi = vi + 1;
-                    elseif strcmp(varargin{1,vi},'E2R')
-                        vE2R = varargin{1,vi+1};
-                        vi = vi + 1;
-                    end
-                end
-                vi = vi + 1;
-            end
-        end
+    # I'm not quite sure what this is for
+    for i in range(len(P_P)):
+        P_P[i, i] = 1
+    sum_old = -1
+    sum_new = sum(sum(P_P))
+    while sum_new != sum_old:
+        sum_old = sum
+        for i in range(len(P_P)):
+            ids1 = P_P[i, :] == 1 or P_P[:, i].transpose == 1
+            P_P[i, ids1] = 1
+            P_P[ids1, i] = 1
+        sum_new = sum(sum(P_P))
 
-        %make sure that the unique IDs were not forgot.
-        if ~strcmp(vGenesAttributes{1,1},'UNIQUE-ID')
-            vGenesAttributes = {'UNIQUE-ID', vGenesAttributes};
-        end
-        if ~strcmp(vProteinsAttributes{1,1},'UNIQUE-ID')
-            vProteinsAttributes = {'UNIQUE-ID', vProteinsAttributes};
-        end
-        if ~strcmp(vEnzrxnsAttributes{1,1},'UNIQUE-ID')
-            vEnzrxnsAttributes = {'UNIQUE-ID', vEnzrxnsAttributes};
-        end
-        if ~strcmp(vReactionsAttributes{1,1},'UNIQUE-ID')
-            vReactionsAttributes = {'UNIQUE-ID', vReactionsAttributes};
-        end
+    log.info('Match proteins and protein complexes to enzymereactions')
+    P_E = match_pgdb_flat(proteins_all, enzrxns_all, P2E)
+    log.info("Matching enzymereactions to reactions")
+    E_R2 = match_pgdb_flat(enzrxns_all, reactions_all, E2R)
 
-        %Read all attributes and store them
-        if vVerbose >= 1
-            fprintf('Read in genes.dat\n');
-        end
-        [vGenes_all, vGenes_all_Att] = f_read_in_PGDB_flat([vPGDB_FlatFileFolder 'genes.dat'],vGenesAttributes);
-        if vVerbose >= 1
-            fprintf('Read in proteins.dat\n');
-        end
-        [vProteins_all, vProteins_all_Att] = f_read_in_PGDB_flat([vPGDB_FlatFileFolder 'proteins.dat'],vProteinsAttributes);
-        if vVerbose >= 1
-            fprintf('Read in enzrxns.dat\n');
-        end
-        [vEnzrxns_all, vEnzrxns_all_Att] = f_read_in_PGDB_flat([vPGDB_FlatFileFolder 'enzrxns.dat'],vEnzrxnsAttributes);
-        if vVerbose >= 1
-            fprintf('Read in reactions.dat\n');
-        end
-        [vReactions_all, vReactions_all_Att] = f_read_in_PGDB_flat([vPGDB_FlatFileFolder 'reactions.dat'], vReactionsAttributes);
-
-        %Match flat files to each other
-        if vVerbose >= 1
-            fprintf('Match genes to proteins\n');
-        end
-        [vG2_P] = f_match_pgdb_flat(vGenes_all,vGenes_all_Att,vProteins_all,vProteins_all_Att,vG2P,vVerbose);
-        if vVerbose >= 1
-            fprintf('Match proteins to protein-complexes\n');
-        end
-        [vP_P] = f_match_pgdb_flat(vProteins_all,vProteins_all_Att,vProteins_all,vProteins_all_Att,vP2P,vVerbose);
-        for vi = 1:size(vP_P,1)
-            vP_P(vi,vi) = 1;
-        end
-        vSUM_old = -1;
-        vSUM = sum(sum(vP_P));
-        while vSUM ~= vSUM_old
-            vSUM_old = vSUM;
-            for vi = 1:size(vP_P,1)
-                vIDs1 = (vP_P(vi,:) == 1 | vP_P(:,vi)' == 1);
-                vP_P(vi,vIDs1) = 1;
-                vP_P(vIDs1,vi) = 1;
-            end
-            vSUM = sum(sum(vP_P));
-        end
-        if vVerbose >= 1
-            fprintf('Match proteins and protein complexes to enzymereactions\n');
-        end
-        [vP_E] = f_match_pgdb_flat(vProteins_all,vProteins_all_Att,vEnzrxns_all,vEnzrxns_all_Att,vP2E,vVerbose);
-        if vVerbose >= 1
-            fprintf('Match enzymereactions to reactions\n');
-        end
-        [vE_R2] = f_match_pgdb_flat(vEnzrxns_all,vEnzrxns_all_Att,vReactions_all,vReactions_all_Att,vE2R,vVerbose);
-
-        %Match Genes to reactions directly.
-        if vVerbose >= 1
-            fprintf('Match genes to to reactions\n');
-        end
-        Gene2Rxn = false(size(vG2_P,1),size(vE_R2,2));
-        for Gene_all_ID = 1:size(Gene2Rxn,1)
-            vP_ID = vG2_P(Gene_all_ID,:)==1;
-            vP2_ID = [sum(vP_P(vP_ID,:),1)>0]'; %#ok<NBRAK>
-            vE_ID = [sum(vP_E(vP2_ID,:),1)>0]'; %#ok<NBRAK>
-            vR_ID = [sum(vE_R2(vE_ID,:),1)>0]'; %#ok<NBRAK>
-            Gene2Rxn(Gene_all_ID,vR_ID) = 1;
-        end
-    end"""
+    # Match Genes to reactions directly.
+    log.info('Match genes to to reactions')
+    # initialize matrix the size of [G2_P, E_R2]
+    gene2rxn = np.zeros(len(G2_P), len(E_R2))
+    for gene_all_id in range(G2_P):
+        P_ID = G2_P[gene_all_id, :] == 1
+        P2_ID = [sum(P_P[P_ID, :] > 0)]
+        E_ID = [sum(P_E[P2_ID, :] > 0)]
+        R_ID = [sum(E_R2[EPolarsDataType_ID, :] > 0)]
+        gene2rxn[gene_all_id, R_ID]
 
 
 def match_pgdb_flat(
-    vFlat1, vFlatAttri1, vFlat2, vFlatAttri2, vMatchings, vVerbose
+    Flat1, Flat2, Matchings
 ) -> dict:
     """
     ---------------------------------------------------------------------------
@@ -1433,17 +1373,13 @@ def match_pgdb_flat(
     ---------------------------------------------------------------------------
 
     Args:
-        vFlat1: DataFrame of a read out pgdb Flat file.
-        vFlatAttri1: Attributes of the first structure
-        vFlat2: DataFrame of a read out pgdb Flat file.
-        vFlatAttri2: Attributes of the second structure
-        vMatchings: Definition of which attributes in structure 1 should be
+        Flat1: DataFrame of a read out pgdb Flat file.
+        Flat2: DataFrame of a read out pgdb Flat file.
+        Matchings: Definition of which attributes in structure 1 should be
                     matched to which attributes of structure 2
-        vVerbose: Tells the code on how much of output should be printed out to
-                  the screen. (0 = nothing, 1 = little, 2 = more, ...)
 
     Returns:
-        vF1_F2: A mapping between items of the first pgdb file to the second
+        F1_F2: A mapping between items of the first pgdb file to the second
                 one.
     """
 
@@ -2865,7 +2801,7 @@ def analyze_plant_cluster_gap_file(vFileIn, vUnmaskedDNA, vVerbose) -> None:
     end"""
 
 
-def read_in_PGDB_flat(vFile, vAttrib) -> pl.DataFrame:
+def read_in_PGDB_flat(pgdb_filename: str, attrib: tuple[str]) -> pl.DataFrame:
     """
     ---------------------------------------------------------------------------
       Function that reads in a pgdb flat file (e.g. genes.dat, proteins.dat,
@@ -2873,53 +2809,34 @@ def read_in_PGDB_flat(vFile, vAttrib) -> pl.DataFrame:
     ---------------------------------------------------------------------------
 
     Args:
-        vFile: PGDB Flat file that should be read in.
-        vAttrib: Attributes of the PGDB Flat file that should be saved (all
+        pgdb_filename: PGDB Flat file that should be read in.
+        attrib: Attributes of the PGDB Flat file that should be saved (all
                  others are discarded.
 
     Returns:
-        vOutput: DataFrame structure with the contents of each attribute as a
-                 column
+        DataFrame structure with the contents of each attribute as a column
     """
+    # By encapsulating the parsing logic in a generator,
+    #  it opens up the door to potentially deferring reading
+    #  or simplifying asynchronous reading
+    def row_gen(fh, attrib):
+        y = {att: None for att in attrib}
+        for line in fh:
+            if line.startswith('#'):
+                continue
+            elif line.startswith('//'):
+                print(y)
+                yield y
+                y = {att: None for att in attrib}
+                continue
+            key, value = line.split(' - ')
+            if key in y:
+                y[key] = value.strip()
 
-    """
-        % MATLAB code
-        vFIO = fopen(vFile);
-        vAttrib_Head = vAttrib;
-        for vi = 1:size(vAttrib,2)
-            """
-    #      vAttrib_Head(1,vi) = regexprep(vAttrib_Head(1,vi),'\-','_');
-    """
-            vOutput.(char(vAttrib_Head(1,vi))) = cell(1,1);
-        end
-        vLine = fgetl(vFIO);
-        vW = 0;
-        while ischar(vLine)
-            for vi = 1:size(vAttrib,2)
-                if strncmp(vLine,vAttrib(1,vi),size(vAttrib{1,vi},2))
-                    if vi == 1
-                        for vk = 2:size(vAttrib,2)
-                            if size(vOutput.(char(vAttrib_Head(1,1))),1) ~= size(vOutput.(char(vAttrib_Head(1,vk))),1)
-                                vOutput.(char(vAttrib_Head(1,vk)))(vW,vAttrib_nr(vk)+1) = cellstr('');
-                            end
-                        end
-                        vAttrib_nr = zeros(1,size(vAttrib,2));
-                        vW = vW + 1;
-                    end
-                    vOutput.(char(vAttrib_Head(1,vi)))(vW,vAttrib_nr(vi)+1) = cellstr(vLine(1,size(vAttrib_Head{1,vi},2)+4:end));
-                    vAttrib_nr(vi) = vAttrib_nr(vi)+1;
-                end
-            end
-            vLine = fgetl(vFIO);
-        end
-        fclose(vFIO);
-        for vk = 2:size(vAttrib,2)
-            if size(vOutput.(char(vAttrib_Head(1,1))),1) ~= size(vOutput.(char(vAttrib_Head(1,vk))),1)
-                vOutput.(char(vAttrib_Head(1,vk)))(vW,vAttrib_nr(vk)+1) = cellstr('');
-            end
-        end
-    end
-    """
+    with open(pgdb_filename, 'r') as f:
+        pgdb_data = pl.DataFrame(list(row_gen(f, attrib)))
+
+    return pgdb_data
 
 
 def remove_non_protein_fasta_gene_locations(
