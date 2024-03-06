@@ -32,7 +32,20 @@ dev-dependencies = [
     "black>=24.2.0",
     "flake8>=7.0.0",
     "mypy>=1.8.0",
+    "ruff>=0.3.0",
 ]
+
+[tool.ruff]
+exclude = [
+    ".git",
+    "__pycache__",
+    "csubellipsoidea",
+    "Inputs",
+    "Expected_results_for_csubellipsoidea",
+    ".venv",
+    ".pytest_cache"
+]
+
 
 [tool.hatch.metadata]
 allow-direct-references = true
