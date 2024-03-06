@@ -28,10 +28,17 @@ dev-dependencies = [
     "pdoc>=14.4.0",
     "pytest>=8.0.1",
     "pre-commit>=3.6.2",
+    "isort>=5.13.2",
+    "black>=24.2.0",
+    "flake8>=7.0.0",
+    "mypy>=1.8.0",
 ]
 
 [tool.hatch.metadata]
 allow-direct-references = true
+
+[tool.isort]
+profile = "black"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/plantclusterfinder_py"]

@@ -6,17 +6,31 @@ from argparse import ArgumentParser, RawTextHelpFormatter
 from scipy.io import loadmat, savemat
 
 from plantclusterfinder_py.cluster import (
-    annotate_enyme_info_to_gene_location, annotate_sequencing_gaps,
-    compute_local_duplication, consolidate_gene_info,
-    extract_results_with_header, find_intergenic_regions, get_MCL_clustering,
-    get_metabolic_domains, introduce_hard_breaks, introduce_hypo_genes,
-    label_reactions_with_sig_and_tail, map_genelocation_to_conversion_file,
-    map_pgdb_reactions_to_genes, map_PGDBs_to_conversion_file,
-    match_PGDBs_to_MDs, perform_clustering, perform_cutoff,
-    read_in_conversion_file, read_MCL_clustering_file,
+    annotate_enyme_info_to_gene_location,
+    annotate_sequencing_gaps,
+    compute_local_duplication,
+    consolidate_gene_info,
+    extract_results_with_header,
+    find_intergenic_regions,
+    get_MCL_clustering,
+    get_metabolic_domains,
+    introduce_hard_breaks,
+    introduce_hypo_genes,
+    label_reactions_with_sig_and_tail,
+    map_genelocation_to_conversion_file,
+    map_pgdb_reactions_to_genes,
+    map_PGDBs_to_conversion_file,
+    match_PGDBs_to_MDs,
+    perform_clustering,
+    perform_cutoff,
+    read_in_conversion_file,
+    read_MCL_clustering_file,
     remove_non_protein_fasta_gene_locations,
-    remove_protein_transcript_info_from_genepositionfile, sort_genes,
-    write_cluster_output, write_gene_output)
+    remove_protein_transcript_info_from_genepositionfile,
+    sort_genes,
+    write_cluster_output,
+    write_gene_output,
+)
 
 
 def save(filename: str, *args, caller_locals: dict = {}):
@@ -77,8 +91,7 @@ def _tempsaves(caller_locals: dict):
         the vPartFinished from that, otherwise the caller's vPartFinished
     """
     ret = caller_locals["vPartFinished"]
-    temp_filename = caller_locals.get(
-        "vGeneLocation_File", "TEMP") + "_tempsave.mat"
+    temp_filename = caller_locals.get("vGeneLocation_File", "TEMP") + "_tempsave.mat"
     if caller_locals.get("vTempsavesOverwrite", 0) == 1:
         save(
             temp_filename,
@@ -617,7 +630,7 @@ def main():
     elif verbose_level >= 2:
         log.setLevel(logging.DEBUG)
         if verbose_level > 2:
-            log.warn("Maximum verbosity exceeded, defaulting to 2 (DEBUG)")
+            log.warning("Maximum verbosity exceeded, defaulting to 2 (DEBUG)")
 
     vMD_to_annotate = args.md
     # Verify is directory
@@ -667,8 +680,9 @@ def main():
 
     error_message = ""
     if not os.path.isdir(vPGDB_FlatFileFolder):
-        error_message += f"Argument -pgdb {
-            vPGDB_FlatFileFolder} was not a dirctory\n"
+        error_message += (
+            "Argument -pgdb " + f"{vPGDB_FlatFileFolder} was not a dirctory\n"
+        )
     test_file = {
         vMD_reactions_File: "Metabolic domains reaction file (-rmdf)",
         vProtein_sequence_FastaFile: "Protein Sequence FASTA file (-psf)",
@@ -704,8 +718,9 @@ def main():
     }
     for filename, err in test_writable_file.items():
         if os.path.isfile(filename):
-            error_message += f"File already exists at {
-                filename}, ({err}). Cannot overwrite.\n"
+            error_message += (
+                "File already exists at " + f"{filename}, ({err}). Cannot overwrite.\n"
+            )
             continue
         try:
             with open(filename, "a") as f:
@@ -718,8 +733,7 @@ def main():
                 + " file at {filename}\n"
             )
         except OSError as e:
-            error_message += f"Cannot write to {
-                err} {filename} because of {e}.\n"
+            error_message += "Cannot write to " + f"{err} {filename} because of {e}.\n"
     if error_message != "":
         log.error(error_message)
         exit(1)
@@ -750,9 +764,7 @@ def main():
         log.info(
             "Read in file describing gene-ID, transcript-ID, and protein-ID conversion\n"
         )
-        conversion = read_in_conversion_file(
-            vGeneTranscriptProtein_mapping_File
-        )
+        conversion = read_in_conversion_file(vGeneTranscriptProtein_mapping_File)
         vPartFinished = 1
         if vTempsaves == 1:
             vPartFinished = _tempsaves(locals())
@@ -792,8 +804,7 @@ def main():
 
     # Part 4: Label Reactions with signature and tailoring
     if vPartFinished < 4:
-        log.info(
-            ["Label reactions with signature and tailoring information\n"])
+        log.info(["Label reactions with signature and tailoring information\n"])
         (
             vSTClasses,
             vSigOrTail,
@@ -810,8 +821,7 @@ def main():
     if vPartFinished < 5:
         log.info("Map pgdb genes to conversion file gene-IDs\n")
         # FIXME: What does matlab function regexprep do?
-        vGenesDat_GeneInfo = regexprep(
-            vGenesDat_GeneInfo, "-", "_").upper()
+        vGenesDat_GeneInfo = regexprep(vGenesDat_GeneInfo, "-", "_").upper()
         vMapG_Gpgdb = map_PGDBs_to_conversion_file(
             vMapG,
             vMapT,
@@ -872,8 +882,7 @@ def main():
             if not iscell(vGeneLocation_Att(1, vi)):
                 log.debug("Attribute %i is broken.\n", vi)
             else:
-                log.debug("Attribute %i: %s\n", vi,
-                          char(vGeneLocation_Att(1, vi)))
+                log.debug("Attribute %i: %s\n", vi, char(vGeneLocation_Att(1, vi)))
                 # Remove protein or transcript information
                 log.debug("Remove transcript information\n")
 
@@ -1005,8 +1014,7 @@ def main():
             vNumbers = num2str(vSeqGapSizesChromBreak(1, 1))
             # FIXME: Validate vi is being set correctly
             for vi in range(2, len(vSeqGapSizesChromBreak), 2):
-                vNumbers = vNumbers + ", " + \
-                    str(vSeqGapSizesChromBreak(1, vi))
+                vNumbers = vNumbers + ", " + str(vSeqGapSizesChromBreak(1, vi))
             log.info(
                 "Prevent clusters spanning sequencing gaps of length %sbp\n",
                 vNumbers,
@@ -1059,9 +1067,7 @@ def main():
         if vInsertHypos:
             if "vHypoAmount" not in locals():
                 # This should be impossible as long as args were parsed
-                log.error(
-                    "vHypoAmount does not exist. Needs to be set as an Argument."
-                )
+                log.error("vHypoAmount does not exist. Needs to be set as an Argument.")
             (vGeneLocation2, vGeneLocation_Att, _, vBiomG_G) = introduce_hypo_genes(
                 vGeneLocation2,
                 vGeneLocation_Att,

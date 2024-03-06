@@ -18,13 +18,13 @@ def test_read_in_conversion_file():
 
 
 # Part 2
-def test_read_in_PGDB_Flat():
+def test_read_in_pgdb_flat():
     """Used by map_pgdb_reactions_to_genes"""
 
     pgdb_dir = "./csubellipsoidea/pgdb/csubellipsoideacyc/1.0/data"
-    from plantclusterfinder_py.cluster import read_in_PGDB_flat
+    from plantclusterfinder_py.cluster import read_in_pgdb_flat
 
-    gene_df = read_in_PGDB_flat(
+    gene_df = read_in_pgdb_flat(
         pgdb_dir + "/genes.dat", ("UNIQUE-ID", "PRODUCT", "ACCESSION-1")
     )
     assert isinstance(gene_df, pl.DataFrame)

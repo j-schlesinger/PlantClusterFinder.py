@@ -1,9 +1,18 @@
 import logging
+import os
 
+import numpy as np
 import polars as pl
-import pythoncyc
 
-from plantclusterfinder_py.cluster_datatypes import *
+from plantclusterfinder_py.cluster_datatypes import (
+    AnnotatedMetabolicDomains,
+    Clusters,
+    Conversion,
+    GenesToReactions,
+    HardBreaks,
+    MclClusterData,
+    ReactionLabels,
+)
 
 log = logging.getLogger(__name__)
 
@@ -35,7 +44,7 @@ def label_reactions_with_sig_and_tail(
             enzyme classes as well as signature or tailoring enymes
     """
 
-    """
+    mtlb1 = """
         %MATLAB code
         vFIO = fopen(vSignatureTailorFile);
         vLine = fgetl(vFIO);
@@ -62,11 +71,10 @@ def label_reactions_with_sig_and_tail(
             vMatchSigOrTail(vi,:) = strcmp(vSigOrTail,vSTdata(vi,3));
         end
 
-"""
+    """
     # vSTdata_star_IDs = ~cellfun('isempty',regexp(vSTdata(:,1),'\.\*','once'));
 
-
-"""
+    mtlb2 = """
         vSTdata_star = vSTdata(vSTdata_star_IDs,:);
         vSTdata = vSTdata(~vSTdata_star_IDs,:);
         vMatchSTClasses_star = vMatchSTClasses(vSTdata_star_IDs,:);
@@ -89,8 +97,9 @@ def label_reactions_with_sig_and_tail(
         end
         vColSig = strcmpi(vSigOrTail,'signature');
 """
-#      vTemp = regexp(vSTdata_star(:,1),'\.\*','split');
-"""
+
+    #      vTemp = regexp(vSTdata_star(:,1),'\.\*','split');
+    matlab3 = """
         for vi = 1:size(vTemp)
             vTemp2 = vTemp{vi,1};
             vSTdata_star(vi,1) = vTemp2(1,1);
@@ -105,6 +114,7 @@ def label_reactions_with_sig_and_tail(
             vR_SigOrTail(vIDs,vMatchSigOrTail_star(vi,:)) = 1;
         end
     end"""
+    pass
 
 
 def compute_local_duplication(
@@ -1320,10 +1330,10 @@ def map_pgdb_reactions_to_genes(vPGDB_FlatFileFolder, **kwargs) -> GenesToReacti
         if "UNIQUE-ID" in _proteins_attributes
         else _proteins_attributes + ("UNIQUE-ID",)
     )
-    enzrnxs_attributes = (
-        _enzrnxs_attributes
-        if "UNIQUE-ID" in _enzrnxs_attributes
-        else _enzrnxs_attributes + ("UNIQUE-ID",)
+    enzrxns_attributes = (
+        _enzrxns_attributes
+        if "UNIQUE-ID" in _enzrxns_attributes
+        else _enzrxns_attributes + ("UNIQUE-ID",)
     )
     reactions_attributes = (
         _reactions_attributes
@@ -1353,7 +1363,7 @@ def map_pgdb_reactions_to_genes(vPGDB_FlatFileFolder, **kwargs) -> GenesToReacti
     log.info("Matching genes to proteins")
     G2_P = match_pgdb_flat(genes_all, proteins_all, G2P)
     log.info("Matching proteins to protein-complexes")
-    P_P = match_pgdb_flat(proteins, proteins_all, P2P)
+    P_P = match_pgdb_flat(proteins_all, proteins_all, P2P)
 
     # I'm not quite sure what this is for
     for i in range(len(P_P)):
@@ -1361,7 +1371,7 @@ def map_pgdb_reactions_to_genes(vPGDB_FlatFileFolder, **kwargs) -> GenesToReacti
     sum_old = -1
     sum_new = sum(sum(P_P))
     while sum_new != sum_old:
-        sum_old = sum
+        sum_old = sum_new
         for i in range(len(P_P)):
             ids1 = P_P[i, :] == 1 or P_P[:, i].transpose == 1
             P_P[i, ids1] = 1
@@ -1376,12 +1386,12 @@ def map_pgdb_reactions_to_genes(vPGDB_FlatFileFolder, **kwargs) -> GenesToReacti
     # Match Genes to reactions directly.
     log.info("Match genes to to reactions")
     # initialize matrix the size of [G2_P, E_R2]
-    gene2rxn = np.zeros(len(G2_P), len(E_R2))
-    for gene_all_id in range(G2_P):
+    gene2rxn = np.zeros((len(G2_P), len(E_R2)))
+    for gene_all_id in range(len(G2_P)):
         P_ID = G2_P[gene_all_id, :] == 1
         P2_ID = [sum(P_P[P_ID, :] > 0)]
         E_ID = [sum(P_E[P2_ID, :] > 0)]
-        R_ID = [sum(E_R2[EPolarsDataType_ID, :] > 0)]
+        R_ID = [sum(E_R2[E_ID, :] > 0)]
         gene2rxn[gene_all_id, R_ID]
 
 
@@ -1466,24 +1476,24 @@ def read_in_conversion_file(
     # Validate conversion before output
     # TODO: are unclean protein ID files an unrecoverable error?
     if len(conversion.MapG_MapT) < len(conversion.MapG):
-        log.warn("Some Transcripts match multiple genes in the ID Conversion file")
+        log.warning("Some Transcripts match multiple genes in the ID Conversion file")
         transcript_multi = (
             conversion_data.group_by(column_names[1])
             .n_unique()
             .filter(pl.col(column_names[0]) > 1)[column_names[1]]
         )
         for transcript in transcript_multi:
-            log.warn("Please check the transcript %s", transcript)
+            log.warning("Please check the transcript %s", transcript)
         log.error("Please clean the protein ID file")
     if len(conversion.MapG_MapP) < len(conversion.MapG):
-        log.warn("Some Proteins match multiple genes in the ID Conversion file")
+        log.warning("Some Proteins match multiple genes in the ID Conversion file")
         prot_multi = (
             conversion_data.group_by(column_names[2])
             .n_unique()
             .filter(pl.col(column_names[0]) > 1)[column_names[2]]
         )
         for prot in prot_multi:
-            log.warn("Please check the protein %s", prot)
+            log.warning("Please check the protein %s", prot)
         log.error("Please clean the protein ID file")
     log.info(
         "Number of Gene-ID to Transcript-ID mappings: %i", len(conversion.MapG_MapT)
@@ -1667,7 +1677,7 @@ def remove_protein_transcript_info_from_genepositionfile(
     end"""
 
 
-def consolidate_gene_info(vGeneLocation, vVerbose) -> (pl.DataFrame, set[str]):
+def consolidate_gene_info(vGeneLocation, vVerbose) -> tuple[pl.DataFrame, set[str]]:
     """
     ---------------------------------------------------------------------------
 
@@ -2181,7 +2191,7 @@ def compute_background(
     vGeneLocation_Att,
     vBiomG_E,
     vC_IDs,
-) -> (pl.DataFrame, int):
+) -> tuple[pl.DataFrame, int]:
     """
     ---------------------------------------------------------------------------
 
@@ -2824,7 +2834,7 @@ def analyze_plant_cluster_gap_file(vFileIn, vUnmaskedDNA, vVerbose) -> None:
     end"""
 
 
-def read_in_PGDB_flat(pgdb_filename: str, attrib: tuple[str]) -> pl.DataFrame:
+def read_in_pgdb_flat(pgdb_filename: str, attrib: tuple[str]) -> pl.DataFrame:
     """
     ---------------------------------------------------------------------------
       Function that reads in a pgdb flat file (e.g. genes.dat, proteins.dat,
