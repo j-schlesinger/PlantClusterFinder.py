@@ -1,6 +1,8 @@
-from pydantic import BaseModel
 from typing import Any, Optional
+
 import polars as pl
+from pydantic import BaseModel
+
 # import numpy as np
 
 

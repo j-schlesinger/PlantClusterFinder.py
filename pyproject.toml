@@ -27,6 +27,7 @@ dev-dependencies = [
     "sphinx>=7.2.6",
     "pdoc>=14.4.0",
     "pytest>=8.0.1",
+    "pre-commit>=3.6.2",
 ]
 
 [tool.hatch.metadata]

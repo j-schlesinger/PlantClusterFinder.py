@@ -1,7 +1,10 @@
-from plantclusterfinder_py.cluster_datatypes import *
-import pythoncyc
-import polars as pl
 import logging
+
+import polars as pl
+import pythoncyc
+
+from plantclusterfinder_py.cluster_datatypes import *
+
 log = logging.getLogger(__name__)
 
 
@@ -1244,9 +1247,7 @@ def get_MCL_clustering(
     end"""
 
 
-def map_pgdb_reactions_to_genes(
-    vPGDB_FlatFileFolder, **kwargs
-) -> GenesToReactions:
+def map_pgdb_reactions_to_genes(vPGDB_FlatFileFolder, **kwargs) -> GenesToReactions:
     """
     ---------------------------------------------------------------------------
 
@@ -1288,43 +1289,65 @@ def map_pgdb_reactions_to_genes(
             - Gene2Rxn: Mapping between records in GenesAll and ReactionsAll
     """
     # Attributes of Flatfiles that should be read out
-    _genes_attributes = tuple(kwargs.get(
-        'GenesAttributes', ('UNIQUE-ID', 'PRODUCT', 'ACCESSION-1', 'ACCESSION-2')))
-    _proteins_attributes = tuple(kwargs.get(
-        'ProteinsAttributes', ('UNIQUE-ID', 'CATALYZES', 'COMPONENTS')))
-    _enzrxns_attributes = tuple(kwargs.get(
-        'EnzrxnsAttributes', ('UNIQUE-ID', 'REACTION', 'ENZYME')))
+    _genes_attributes = tuple(
+        kwargs.get(
+            "GenesAttributes", ("UNIQUE-ID", "PRODUCT", "ACCESSION-1", "ACCESSION-2")
+        )
+    )
+    _proteins_attributes = tuple(
+        kwargs.get("ProteinsAttributes", ("UNIQUE-ID", "CATALYZES", "COMPONENTS"))
+    )
+    _enzrxns_attributes = tuple(
+        kwargs.get("EnzrxnsAttributes", ("UNIQUE-ID", "REACTION", "ENZYME"))
+    )
     _reactions_attributes = kwargs.get(
-        'ReactionsAttributes', ('UNIQUE-ID', 'ENZYMATIC-REACTION', 'EC-NUMBER'))
-    G2P = kwargs.get('G2P', ('UNIQUE-ID', 'PRODUCT'))
-    P2P = kwargs.get('P2P', ('UNIQUE-ID', 'COMPONENTS'))
-    P2E = kwargs.get('P2E', ('CATALYZES', 'COMPONENTS'))
-    E2R = kwargs.get('E2R', ('REACTION', 'UNIQUE-ID'))
-    R2Pa = ('UNIQUE-ID', 'ENZYMATIC-REACTION')
+        "ReactionsAttributes", ("UNIQUE-ID", "ENZYMATIC-REACTION", "EC-NUMBER")
+    )
+    G2P = kwargs.get("G2P", ("UNIQUE-ID", "PRODUCT"))
+    P2P = kwargs.get("P2P", ("UNIQUE-ID", "COMPONENTS"))
+    P2E = kwargs.get("P2E", ("CATALYZES", "COMPONENTS"))
+    E2R = kwargs.get("E2R", ("REACTION", "UNIQUE-ID"))
+    R2Pa = ("UNIQUE-ID", "ENZYMATIC-REACTION")
 
     # Guarantee that UNIQUE-ID is in the attributes
-    genes_attributes = _genes_attributes if 'UNIQUE-ID' in _genes_attributes else _genes_attributes + \
-        ('UNIQUE-ID',)
-    proteins_attributes = _proteins_attributes if 'UNIQUE-ID' in _proteins_attributes else _proteins_attributes + \
-        ('UNIQUE-ID',)
-    enzrnxs_attributes = _enzrnxs_attributes if 'UNIQUE-ID' in _enzrnxs_attributes else _enzrnxs_attributes + \
-        ('UNIQUE-ID',)
-    reactions_attributes = _reactions_attributes if 'UNIQUE-ID' in _reactions_attributes else _reactions_attributes + \
-        ('UNIQUE-ID',)
+    genes_attributes = (
+        _genes_attributes
+        if "UNIQUE-ID" in _genes_attributes
+        else _genes_attributes + ("UNIQUE-ID",)
+    )
+    proteins_attributes = (
+        _proteins_attributes
+        if "UNIQUE-ID" in _proteins_attributes
+        else _proteins_attributes + ("UNIQUE-ID",)
+    )
+    enzrnxs_attributes = (
+        _enzrnxs_attributes
+        if "UNIQUE-ID" in _enzrnxs_attributes
+        else _enzrnxs_attributes + ("UNIQUE-ID",)
+    )
+    reactions_attributes = (
+        _reactions_attributes
+        if "UNIQUE-ID" in _reactions_attributes
+        else _reactions_attributes + ("UNIQUE-ID",)
+    )
 
     # Read in all attributes and store them
-    log.info('Reading in genes.dat')
-    genes_all = read_in_pgdb_flat(os.path.join(
-        vPGDB_FlatFileFolder, 'genes.dat'), genes_attributes)
-    log.info('Reading in proteins.dat')
-    proteins_all = read_in_pgdb_flat(os.path.join(
-        vPGDB_FlatFileFolder, 'proteins.dat'), proteins_attributes)
-    log.info('Reading in enzrxns.dat')
-    enzrxns_all = read_in_pgdb_flat(os.path.join(
-        vPGDB_FlatFileFolder, 'enzrxns.dat'), enzrxns_attributes)
-    log.info('Reading in reactions.dat')
-    reactions_all = read_in_pgdb_flat(os.path.join(
-        vPGDB_FlatFileFolder, 'reactions.dat'), reactions_attributes)
+    log.info("Reading in genes.dat")
+    genes_all = read_in_pgdb_flat(
+        os.path.join(vPGDB_FlatFileFolder, "genes.dat"), genes_attributes
+    )
+    log.info("Reading in proteins.dat")
+    proteins_all = read_in_pgdb_flat(
+        os.path.join(vPGDB_FlatFileFolder, "proteins.dat"), proteins_attributes
+    )
+    log.info("Reading in enzrxns.dat")
+    enzrxns_all = read_in_pgdb_flat(
+        os.path.join(vPGDB_FlatFileFolder, "enzrxns.dat"), enzrxns_attributes
+    )
+    log.info("Reading in reactions.dat")
+    reactions_all = read_in_pgdb_flat(
+        os.path.join(vPGDB_FlatFileFolder, "reactions.dat"), reactions_attributes
+    )
 
     # Match flat files to each other
     log.info("Matching genes to proteins")
@@ -1345,13 +1368,13 @@ def map_pgdb_reactions_to_genes(
             P_P[ids1, i] = 1
         sum_new = sum(sum(P_P))
 
-    log.info('Match proteins and protein complexes to enzymereactions')
+    log.info("Match proteins and protein complexes to enzymereactions")
     P_E = match_pgdb_flat(proteins_all, enzrxns_all, P2E)
     log.info("Matching enzymereactions to reactions")
     E_R2 = match_pgdb_flat(enzrxns_all, reactions_all, E2R)
 
     # Match Genes to reactions directly.
-    log.info('Match genes to to reactions')
+    log.info("Match genes to to reactions")
     # initialize matrix the size of [G2_P, E_R2]
     gene2rxn = np.zeros(len(G2_P), len(E_R2))
     for gene_all_id in range(G2_P):
@@ -1362,9 +1385,7 @@ def map_pgdb_reactions_to_genes(
         gene2rxn[gene_all_id, R_ID]
 
 
-def match_pgdb_flat(
-    Flat1, Flat2, Matchings
-) -> dict:
+def match_pgdb_flat(Flat1, Flat2, Matchings) -> dict:
     """
     ---------------------------------------------------------------------------
 
@@ -1406,7 +1427,7 @@ def match_pgdb_flat(
 
 
 def read_in_conversion_file(
-    vGeneTranscriptProtein_mapping_File: str
+    vGeneTranscriptProtein_mapping_File: str,
 ) -> Conversion:  # , vPara, varargin):
     """
     ---------------------------------------------------------------------------
@@ -1425,47 +1446,49 @@ def read_in_conversion_file(
 
     Returns:
         Conversion object containing the IDs from the conversion file
-    Raises 
+    Raises
     """
-    conversion_data = pl.read_csv(vGeneTranscriptProtein_mapping_File,
-                                  separator='\t', dtypes=[pl.String]*3)
+    conversion_data = pl.read_csv(
+        vGeneTranscriptProtein_mapping_File, separator="\t", dtypes=[pl.String] * 3
+    )
     column_names = conversion_data.columns
     conversion_len = len(conversion_data)
-    log.debug("Read in conversion data, %d rows, columns are %s",
-              conversion_len,
-              column_names
-              )
+    log.debug(
+        "Read in conversion data, %d rows, columns are %s", conversion_len, column_names
+    )
     conversion = Conversion(
         MapG=set(conversion_data[column_names[0]].unique()),
         MapT=set(conversion_data[column_names[1]].unique()),
         MapP=set(conversion_data[column_names[2]].unique()),
         MapG_MapT={x[0]: x[1] for x in conversion_data.iter_rows()},
-        MapG_MapP={x[0]: x[2] for x in conversion_data.iter_rows()}
+        MapG_MapP={x[0]: x[2] for x in conversion_data.iter_rows()},
     )
     # Validate conversion before output
     # TODO: are unclean protein ID files an unrecoverable error?
     if len(conversion.MapG_MapT) < len(conversion.MapG):
         log.warn("Some Transcripts match multiple genes in the ID Conversion file")
-        transcript_multi = (conversion_data
-                            .group_by(column_names[1])
-                            .n_unique()
-                            .filter(pl.col(column_names[0]) > 1)[column_names[1]])
+        transcript_multi = (
+            conversion_data.group_by(column_names[1])
+            .n_unique()
+            .filter(pl.col(column_names[0]) > 1)[column_names[1]]
+        )
         for transcript in transcript_multi:
             log.warn("Please check the transcript %s", transcript)
         log.error("Please clean the protein ID file")
     if len(conversion.MapG_MapP) < len(conversion.MapG):
         log.warn("Some Proteins match multiple genes in the ID Conversion file")
-        prot_multi = (conversion_data
-                      .group_by(column_names[2])
-                      .n_unique()
-                      .filter(pl.col(column_names[0]) > 1)[column_names[2]])
+        prot_multi = (
+            conversion_data.group_by(column_names[2])
+            .n_unique()
+            .filter(pl.col(column_names[0]) > 1)[column_names[2]]
+        )
         for prot in prot_multi:
             log.warn("Please check the protein %s", prot)
         log.error("Please clean the protein ID file")
-    log.info("Number of Gene-ID to Transcript-ID mappings: %i",
-             len(conversion.MapG_MapT))
-    log.info("Number of Gene-ID to Protein mappings: %i",
-             len(conversion.MapG_MapP))
+    log.info(
+        "Number of Gene-ID to Transcript-ID mappings: %i", len(conversion.MapG_MapT)
+    )
+    log.info("Number of Gene-ID to Protein mappings: %i", len(conversion.MapG_MapP))
     return conversion
 
 
@@ -2816,24 +2839,25 @@ def read_in_PGDB_flat(pgdb_filename: str, attrib: tuple[str]) -> pl.DataFrame:
     Returns:
         DataFrame structure with the contents of each attribute as a column
     """
+
     # By encapsulating the parsing logic in a generator,
     #  it opens up the door to potentially deferring reading
     #  or simplifying asynchronous reading
     def row_gen(fh, attrib):
         y = {att: None for att in attrib}
         for line in fh:
-            if line.startswith('#'):
+            if line.startswith("#"):
                 continue
-            elif line.startswith('//'):
+            elif line.startswith("//"):
                 print(y)
                 yield y
                 y = {att: None for att in attrib}
                 continue
-            key, value = line.split(' - ')
+            key, value = line.split(" - ")
             if key in y:
                 y[key] = value.strip()
 
-    with open(pgdb_filename, 'r') as f:
+    with open(pgdb_filename, "r") as f:
         pgdb_data = pl.DataFrame(list(row_gen(f, attrib)))
 
     return pgdb_data

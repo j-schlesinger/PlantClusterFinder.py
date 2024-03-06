@@ -1,10 +1,10 @@
-import re
-import os
 import logging
+import os
+import re
 from argparse import ArgumentParser
-from operator import itemgetter
-from itertools import groupby
 from collections import deque
+from itertools import groupby
+from operator import itemgetter
 
 log = logging.getLogger()
 

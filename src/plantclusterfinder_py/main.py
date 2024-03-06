@@ -1,34 +1,22 @@
-from argparse import ArgumentParser, RawTextHelpFormatter
-from scipy.io import savemat, loadmat
-import re
-import os
 import logging
-from plantclusterfinder_py.cluster import remove_non_protein_fasta_gene_locations
-from plantclusterfinder_py.cluster import annotate_sequencing_gaps
-from plantclusterfinder_py.cluster import annotate_enyme_info_to_gene_location
-from plantclusterfinder_py.cluster import compute_local_duplication
-from plantclusterfinder_py.cluster import consolidate_gene_info
-from plantclusterfinder_py.cluster import extract_results_with_header
-from plantclusterfinder_py.cluster import find_intergenic_regions
-from plantclusterfinder_py.cluster import get_MCL_clustering
-from plantclusterfinder_py.cluster import get_metabolic_domains
-from plantclusterfinder_py.cluster import introduce_hypo_genes
-from plantclusterfinder_py.cluster import introduce_hard_breaks
-from plantclusterfinder_py.cluster import label_reactions_with_sig_and_tail
-from plantclusterfinder_py.cluster import map_genelocation_to_conversion_file
-from plantclusterfinder_py.cluster import map_PGDBs_to_conversion_file
-from plantclusterfinder_py.cluster import map_pgdb_reactions_to_genes
-from plantclusterfinder_py.cluster import match_PGDBs_to_MDs
-from plantclusterfinder_py.cluster import perform_clustering
-from plantclusterfinder_py.cluster import perform_cutoff
-from plantclusterfinder_py.cluster import read_MCL_clustering_file
-from plantclusterfinder_py.cluster import read_in_conversion_file
+import os
+import re
+from argparse import ArgumentParser, RawTextHelpFormatter
+
+from scipy.io import loadmat, savemat
+
 from plantclusterfinder_py.cluster import (
-    remove_protein_transcript_info_from_genepositionfile,
-)
-from plantclusterfinder_py.cluster import sort_genes
-from plantclusterfinder_py.cluster import write_cluster_output
-from plantclusterfinder_py.cluster import write_gene_output
+    annotate_enyme_info_to_gene_location, annotate_sequencing_gaps,
+    compute_local_duplication, consolidate_gene_info,
+    extract_results_with_header, find_intergenic_regions, get_MCL_clustering,
+    get_metabolic_domains, introduce_hard_breaks, introduce_hypo_genes,
+    label_reactions_with_sig_and_tail, map_genelocation_to_conversion_file,
+    map_pgdb_reactions_to_genes, map_PGDBs_to_conversion_file,
+    match_PGDBs_to_MDs, perform_clustering, perform_cutoff,
+    read_in_conversion_file, read_MCL_clustering_file,
+    remove_non_protein_fasta_gene_locations,
+    remove_protein_transcript_info_from_genepositionfile, sort_genes,
+    write_cluster_output, write_gene_output)
 
 
 def save(filename: str, *args, caller_locals: dict = {}):

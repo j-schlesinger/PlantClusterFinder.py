@@ -1,0 +1,43 @@
+name: Pylint
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Rye
+      uses: eiginger/setup-rye@v2
+      with:
+        enable-cache: true
+        cache-prefix: ${{ matrix.python-version }}
+    - name: Pin python-version ${{ matrix.python-version }}
+      if: stes.setup-rye.outputs.cache-hit != 'true'
+      run: rye pin ${{ matrix.python-version }}
+    - name: Install dependencies
+      if: steps.setup-rye.outputs.cache-hit != 'true'
+      run: |
+        rye sync --no-lock
+    - name: Analysing the code with black, isort, mypy and flake8
+      uses: rcardochaves/python-lint@v1.4.0
+      with:
+        python-root-list: "src tests"
+        use-pylint: false
+        use-pycodestyle: false
+        use-flake8: true
+        use-black: true
+        use-mypy: true
+        use-isort: true
+        extra-pylint-options: ""
+        extra-pycodestyle-options: ""
+        extra-flake8-options: ""
+        extra-black-options: ""
+        extra-mypy-options: ""
+        extra-isort-options: ""
+    - name: Performing tests using pytest
+      run: |
+        rye run pytest

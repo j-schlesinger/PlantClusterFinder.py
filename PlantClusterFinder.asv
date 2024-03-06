@@ -1,52 +1,52 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % PlantClusterFinder 1.3
 % PlantClusterFinder (PCF) detects metabolic gene clusters in a sequenced
 % genome. It uses a gene location file provided by the user (see below) and
 % a PGDB created with Pathway Tools as well as further information (see
 % below) to identify enzyme-coding genes (metabolic genes) located together
-% on a chromosome. Initially only continous stretches of metabolic genes 
+% on a chromosome. Initially only continous stretches of metabolic genes
 % lying directly next to each other are allowed. This condition is relaxed
 % by iteratively increasing the intervening (non-metabolic) gene size by
 % one. Several criteria to select for clusters are provided. In addition to
 % this, clusters can be prevented from forming by a section of criteria.
-% Details of PCF (version 1.0) can be found in PMID: 28228535.  
-% 
-% The major differences between this version (1.3) and previous versions 
+% Details of PCF (version 1.0) can be found in PMID: 28228535.
+%
+% The major differences between this version (1.3) and previous versions
 % (1.0 and 1.2) are:
-% 
+%
 %   1) Physical breaks of the genome or sequencing gaps of unknown size are
 %      typically encoded by stretches of Ns in the genome assembly fasta
-%      file. Previously we inserted N hypothetical genes. This however 
-%      diluted the background of low quality genomes with non-enzymes, and 
-%      hence the likelyhood of a cluster to be classified as top x% of 
-%      enzyme dense regions was better than in a genome that had good 
-%      quality. In version 1.3 we identify these breaks and prevent 
-%      formation of a cluster over these gaps. 
-%   2) Any sequencing information that is missing is typically hard masked 
-%      with Ns. Previously, any intergenic region affected by at least one 
-%      N was evaluated for its length, and hypothetical genes were inserted 
-%      accordingly (See Schlapfer et al, PMID: 28228535). This led 
-%      sometimes to unrealistic prevention of detecting gene clusters. It 
-%      is unlikely that missing information about a single nucleotide would 
-%      (if it would be known) lead to the finding of multiple gene models. 
-%      Thus here we changed the code to insert 2 hypothetical genes only if 
-%      a strech of unknown sequence is larger than nth percentile of gene 
-%      sequences (set to 5). We also provide the option to NOT insert any 
-%      hypothetical genes all together. Instead we by default we use 
-%      MaxSeqGapSize set to 100000 and MaxInterGeneDistByMedian set to 50 
+%      file. Previously we inserted N hypothetical genes. This however
+%      diluted the background of low quality genomes with non-enzymes, and
+%      hence the likelyhood of a cluster to be classified as top x% of
+%      enzyme dense regions was better than in a genome that had good
+%      quality. In version 1.3 we identify these breaks and prevent
+%      formation of a cluster over these gaps.
+%   2) Any sequencing information that is missing is typically hard masked
+%      with Ns. Previously, any intergenic region affected by at least one
+%      N was evaluated for its length, and hypothetical genes were inserted
+%      accordingly (See Schlapfer et al, PMID: 28228535). This led
+%      sometimes to unrealistic prevention of detecting gene clusters. It
+%      is unlikely that missing information about a single nucleotide would
+%      (if it would be known) lead to the finding of multiple gene models.
+%      Thus here we changed the code to insert 2 hypothetical genes only if
+%      a strech of unknown sequence is larger than nth percentile of gene
+%      sequences (set to 5). We also provide the option to NOT insert any
+%      hypothetical genes all together. Instead we by default we use
+%      MaxSeqGapSize set to 100000 and MaxInterGeneDistByMedian set to 50
 %      resulting in similar clusters as in PCF version 1.0.
-%   3) Large gene poor intergenic regions are present in genomes. In this 
-%      version we provide the option of several parameters to prevent 
-%      clusters from spanning such large gene poor regions.  
+%   3) Large gene poor intergenic regions are present in genomes. In this
+%      version we provide the option of several parameters to prevent
+%      clusters from spanning such large gene poor regions.
 %
 % Authors: Pascal Schlapfer, December 2017
 %          Bo Xue, December 2017
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Mandatory inputs: all files need full path, order does not matter.
-%  
+%
 %     -pgdb fullpath: Give full path of PGDB flat file folder, where the
 %                     flat files of the species pgdb is stored.
 %     -rmdf fullpath: TSV file of the metabolic domains of reactions. Check
@@ -81,7 +81,7 @@
 %                     sure you have access to the file and folder. This is
 %                     the second Results output file that will be
 %                     generated.
-%  
+%
 % Optional Inputs:
 %     'GenesDat_GeneInfo': needs to be followed by a list of Attributes in
 %                          genes.dat. Defines where gene ID information
@@ -103,7 +103,7 @@
 %                           size of all genes of the genome (default is 5).
 %     'MaxSeqGapSize': needs to be followed by a number. Maximal masked
 %                      nucleotide region (in bp) that a cluster is allowed
-%                      to bridge (default is 100000). 
+%                      to bridge (default is 100000).
 %     'MaxInterGeneDist': needs to be followed by a number. Maximal
 %                         intergenic distance ( in bp) that still can be
 %                         crossed by a gene cluster. (default is -1, thus
@@ -212,14 +212,14 @@
 %                   stepsizes are reported. 'simple' just reports the top
 %                   percent clusters of the chosen stepsize (default
 %                   simple).
-% 
+%
 %  Outputs:
 %     None (Two files are generated: vGeneOutputFile, containing all the
 %          information about genes and vClusterOutputFile, containing all
 %          the information about clusters)
-% 
+%
 %  USAGE:
-%  
+%
 %     MATLAB (paths with windows, please be aware that certain parts need
 %            to be run in linux!):
 %         PlantClusterFinder('-pgdb', vPGDB_FlatFileFolder, '-rmdf', ...
@@ -232,7 +232,7 @@
 %                            vSignatureTailorFile, '-gout', ...
 %                            vGeneOutputFile, '-cout', ...
 %                            vClusterOutputFile, varargin)
-%     
+%
 %     Example: (use absolute paths!)
 %         PlantClusterFinder('-pgdb', '[PlantClusterFinder]\csubellipsoidea\pgdb\csubellipsoideacyc\1.0\data\', ...
 %         '-rmdf', '[PlantClusterFinder]\Inputs\ReactionMetabolicDomainClassification.txt', ...
@@ -247,27 +247,27 @@
 %         'SeqGapSizesChromBreak', [10000], 'PGDBIdsToMap', 'GTP');
 %         % Note, PGDBIdsToMap is only needed here because the pgdb
 %         % contains protein Ids in place of gene identifiers.
-%         
+%
 %     Shell, standalone (linux, but you can compile a windows version, see
 %                       how to compile new version file):
 %         To use standalone, download matlab runtime from matlab website.
 %         Make sure, you download the v91. Then replace
 %         "/share/apps/MATLAB/MATLAB_Runtime/v91" int the example with your
 %         path to your runtime.
-%         
+%
 %         USE ABSOLUTE PATHS!
 %
 %         ./run_PlantClusterFinder.sh /share/apps/MATLAB/MATLAB_Runtime/v91 -pgdb "./csubellipsoidea/pgdb/csubellipsoideacyc/1.0/data/" -rmdf "./Inputs/ReactionMetabolicDomainClassification.txt" -md "{'Amines and Polyamines Metabolism'; 'Amino Acids Metabolism'; 'Carbohydrates Metabolism'; 'Cofactors Metabolism'; 'Detoxification Metabolism'; 'Energy Metabolism'; 'Fatty Acids and Lipids Metabolism'; 'Hormones Metabolism'; 'Inorganic Nutrients Metabolism'; 'Nitrogen-Containing Compounds'; 'Nucleotides Metabolism'; 'Phenylpropanoid Derivatives'; 'Polyketides'; 'Primary-Specialized Interface Metabolism'; 'Redox Metabolism'; 'Specialized Metabolism'; 'Sugar Derivatives'; 'Terpenoids'}" -psf "./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa" -gtpf "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt" -glof "./csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt" -dnaf "./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.hardmasked.fa" -sitf "./Inputs/scaffold-tailoring-reactions-05082016.tab" -gout "./csubellipsoidea/csubellipsoidea_Gene1_3.txt" -cout "./csubellipsoidea/csubellipsoidea_Clust1_3.txt" SeqGapSizesChromBreak '[10000]' PGDBIdsToMap GTP
 %         % Note, PGDBIdsToMap is only needed here because the pgdb
 %         % contains protein Ids in place of gene identifiers.
-% 
+%
 function PlantClusterFinder(varargin)
     %% Display help if no arguments
     if nargin == 0
         f_display_help()
         return;
     end
-    
+
     %% Display parameters:
     if ispc()
         vc = 1;
@@ -300,7 +300,7 @@ function PlantClusterFinder(varargin)
             end
         end
     end
-    
+
     %% Initializing parameters
     fprintf('Initializing parameters and running PlantClusterFinder\n');
     vVerbose = 0;
@@ -781,7 +781,7 @@ function PlantClusterFinder(varargin)
             end
         end
     end
-    if exist([vGeneLocation_File '_tempsave.mat'],'file') && vRunAfterPart ~= 0 
+    if exist([vGeneLocation_File '_tempsave.mat'],'file') && vRunAfterPart ~= 0
         vPartFinished_old = vPartFinished;
         load([vGeneLocation_File '_tempsave.mat'],'vPartFinished')
         if vPartFinished >= vRunAfterPart
@@ -795,7 +795,7 @@ function PlantClusterFinder(varargin)
             clear vPartFinished_old
         end
     end
-    
+
     %% Read in Gene-Transcript-Protein File
     if vPartFinished < 1
         if vVerbose >= 1
@@ -831,7 +831,7 @@ function PlantClusterFinder(varargin)
         [vGenes_all, ~, vReactions_all, vReactions_all_Att, vG2R] = ...
             f_map_pgdb_reactions_to_genes(vPGDB_FlatFileFolder, ...
             vVerbose);
-        
+
         vPartFinished = 2;
         if vTempsaves == 1
             if vTempsavesOverwrite == 1
@@ -849,7 +849,7 @@ function PlantClusterFinder(varargin)
             end
         end
     end
-    
+
     %% Map PGDB reactions to metabolic domains
     if vPartFinished < 3
         if vVerbose >= 1
@@ -877,7 +877,7 @@ function PlantClusterFinder(varargin)
             end
         end
     end
-    
+
     %% Lable Reactions with signature and tailoring
     if vPartFinished < 4
         if vVerbose >= 1
@@ -904,7 +904,7 @@ function PlantClusterFinder(varargin)
             end
         end
     end
-    
+
     %% Map PGDB genes to Maping genes
     if vPartFinished < 5
         if vVerbose >= 1
@@ -930,7 +930,7 @@ function PlantClusterFinder(varargin)
             end
         end
     end
-    
+
     %% Create MCL clustering mapped to Maping genes
     if vPartFinished < 6
         if vMCLClusterFile == 0
@@ -1021,7 +1021,7 @@ function PlantClusterFinder(varargin)
             end
         end
     end
-    
+
     %% Map Biomartfile to Gene Map
     if vPartFinished < 8
         if vVerbose >= 1
@@ -1029,7 +1029,7 @@ function PlantClusterFinder(varargin)
         end
         [vBiomG_G] = f_map_GeneLocation_to_conversion_file(vGeneLocation2, ...
             vGeneLocation_Att, vMapG, vVerbose);
-        
+
         %If chosen, remove gene position information about genes that are
         %not present in the protein fasta file.
         if vRemoveNonProtLocations == 1
@@ -1039,7 +1039,7 @@ function PlantClusterFinder(varargin)
             [vGeneLocation2, vBiomG_G] = f_Remove_non_protein_fasta_gene_locations(vGeneLocation2, ...
                 vGeneLocation_Att, vMapP, vMapG_MapP, vBiomG_G, vProtein_IDs);
         end
-        
+
         vPartFinished = 8;
         if vTempsaves == 1
             if vTempsavesOverwrite == 1
@@ -1111,9 +1111,9 @@ function PlantClusterFinder(varargin)
             end
         end
     end
-    
+
     %% Get sequencing gaps
-    if vPartFinished < 11    
+    if vPartFinished < 11
         if vVerbose >= 1
             fprintf('Identify sequencing gaps (bases encoded by N)\n');
         end
@@ -1141,7 +1141,7 @@ function PlantClusterFinder(varargin)
             end
         end
     end
-    
+
     %% Introduce Hardbreaks (split chromosomes)
     if vPartFinished < 12
         if vVerbose >= 1
@@ -1175,7 +1175,7 @@ function PlantClusterFinder(varargin)
         f_introduce_HardB(vGeneLocation2, vGeneLocation_Att, ...
         vUniqueChrom, vInterChrom, vSeqGaps, vSeqGapSizesChromBreak, ...
         vMaxSeqGapSize, vMaxInterGeneDist, vPercentileForMaxInterGeneDist, vMaxInterGeneDistByMedian, vBiomG_G);
-        
+
         vPartFinished = 12;
         if vTempsaves == 1
             if vTempsavesOverwrite == 1
@@ -1193,7 +1193,7 @@ function PlantClusterFinder(varargin)
             end
         end
     end
-    
+
     %% Populate Hypothetical genes
     if vPartFinished < 13
         if vVerbose >= 1
@@ -1210,7 +1210,7 @@ function PlantClusterFinder(varargin)
                 vInterChrom, vSeqGaps, vGeneLengthHypoMin, vBiomG_G, vInsertHypos, vVerbose, 'HypoAmount', vHypoAmount);
             end
         end
-        
+
         vPartFinished = 13;
         if vTempsaves == 1
             if vTempsavesOverwrite == 1
@@ -1309,7 +1309,7 @@ function PlantClusterFinder(varargin)
             end
         end
     end
-    
+
     %% Perform cutoff
     if vPartFinished < 17
         if vVerbose >= 1
@@ -1333,7 +1333,7 @@ function PlantClusterFinder(varargin)
             end
         end
     end
-    
+
     %% Produce Gene Outputfile
     if vPartFinished < 18
         if vVerbose >= 1
@@ -1360,7 +1360,7 @@ function PlantClusterFinder(varargin)
             end
         end
     end
-    
+
     %% Print cluster File
     if vPartFinished < 19
         if vVerbose >= 1
@@ -1387,15 +1387,15 @@ function PlantClusterFinder(varargin)
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Function identifying wether reactions found in the pgdb are of a certain
 % type of enyzme and if they are either signature or tailoring enzymes.
 % Note, there have to be signature enzymes identified as 'signature' in the
 % File vSignatureTailorFile.
-% 
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
-% Inputs: 
+%
+% Inputs:
 %   vReactions_all: Matlab structure containing all the information
 %                   (Attributes)that was searched for (described in
 %                   vReactionsAttributes, default is {'UNIQUE-ID', ...
@@ -1406,8 +1406,8 @@ end
 %   vSignatureTailorFile: TSV file describing the classes of enzymes that
 %                         should be classified as signature or tailoring
 %                         enzymes to identify clusters containing such.
-% 
-% Outputs: 
+%
+% Outputs:
 %   vSTClasses: Is a list of signature and tailoring enzyme classes.
 %   vSigOrTail: Is a list of types of enzymes, e.g. signature, tailoring
 %               and so on.
@@ -1431,7 +1431,7 @@ function [vSTClasses, vSigOrTail, vR_STClasses, vR_SigOrTail] = f_lable_Reaction
     end
     fclose(vFIO);
     vSTdata = vSTdata(1:(vL-1),:);
-    
+
     vSTClasses = unique(vSTdata(:,2));
     vSigOrTail = unique(vSTdata(:,3));
     vMatchSTClasses = false(size(vSTdata,1),size(vSTClasses,1));
@@ -1440,7 +1440,7 @@ function [vSTClasses, vSigOrTail, vR_STClasses, vR_SigOrTail] = f_lable_Reaction
         vMatchSTClasses(vi,:) = strcmp(vSTClasses,vSTdata(vi,2));
         vMatchSigOrTail(vi,:) = strcmp(vSigOrTail,vSTdata(vi,3));
     end
-    
+
     vSTdata_star_IDs = ~cellfun('isempty',regexp(vSTdata(:,1),'\.\*','once'));
     vSTdata_star = vSTdata(vSTdata_star_IDs,:);
     vSTdata = vSTdata(~vSTdata_star_IDs,:);
@@ -1448,7 +1448,7 @@ function [vSTClasses, vSigOrTail, vR_STClasses, vR_SigOrTail] = f_lable_Reaction
     vMatchSTClasses = vMatchSTClasses(~vSTdata_star_IDs,:);
     vMatchSigOrTail_star = vMatchSigOrTail(vSTdata_star_IDs,:);
     vMatchSigOrTail = vMatchSigOrTail(~vSTdata_star_IDs,:);
-    
+
     vR_STClasses = false(size(vReactions_all.(char(vReactions_all_Att(1,1))),1),size(vSTClasses,1));
     vR_SigOrTail = false(size(vReactions_all.(char(vReactions_all_Att(1,1))),1),size(vSigOrTail,1));
     for vi = 1:size(vReactions_all.(char(vReactions_all_Att(1,1))),1)
@@ -1480,13 +1480,13 @@ function [vSTClasses, vSigOrTail, vR_STClasses, vR_SigOrTail] = f_lable_Reaction
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Function that computes wether a genes is locally duplicated, and if so,
-% which MCL cluster it is associated with. 
-% 
+% which MCL cluster it is associated with.
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
-% Inputs: 
+%
+% Inputs:
 %   vGeneLocation2: Matlab structure about the gene location information,
 %                   generated in PlantClusterFinder function.
 %   vGeneLocation_Att: Describing the fields attributes of the Matlab
@@ -1502,8 +1502,8 @@ end
 %                 between themare not called local duplicates.
 %   vVerbose: Tells the code on how much of output should be printed out to
 %             the screen. (0 = nothing, 1 = little, 2 = more, ...)
-% 
-% Outputs: 
+%
+% Outputs:
 %   vG_LD: A vector of length of the number of Genes in vGeneLocation2,
 %          being 1 if the gene was considered to be locally duplicated (a
 %          gene was within vKbRangeLD bp distance and not spaced more than
@@ -1539,7 +1539,7 @@ function [vG_LD, vG_LD_ClustIDs] = f_compute_LocalDuplication(vGeneLocation2, vG
             vEndbp = vGStartbp(vi,1)+vKbRangeLD;
             vIDs = vIDs & vGStartbp >= vStartbp & vGEndbp <= vEndbp;
             vIDs_find = find(vIDs);
-            
+
             vMCL = sum(vG_MCL(sum(vBiomG_G(vi,:),1)>0,:),1)>0;
             vMCL_find = find(vMCL);
             clear vTempMCLString_array
@@ -1563,7 +1563,7 @@ function [vG_LD, vG_LD_ClustIDs] = f_compute_LocalDuplication(vGeneLocation2, vG
             end
             vG_LD_ClustIDs(vi,1) = cellstr(vTempMCLString);
             vN_MCL = size(vMCL,2);
-            
+
             vStop = 0;
             vj = 1;
             while vj <= size(vIDs_find,1) && vStop == 0
@@ -1581,13 +1581,13 @@ function [vG_LD, vG_LD_ClustIDs] = f_compute_LocalDuplication(vGeneLocation2, vG
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Function that introduces Hypothetical genes if a sequencing gap reached a
 % critical size vGeneLengthHypoMin.
-% 
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
-% Inputs: 
+%
+% Inputs:
 %   vGeneLocation2: Matlab structure about the gene location information,
 %                   generated in PlantClusterFinder function.
 %   vGeneLocation_Att: Describing the fields attributes of the Matlab
@@ -1609,8 +1609,8 @@ end
 %                 Hypothetical genes are introduced. Then vHypoAmount needs
 %                 to be set.
 %   vVerbose: Tells the code on how much of output should be printed out to
-%             the screen. (0 = nothing, 1 = little, 2 = more, ...)% 
-% Outputs: 
+%             the screen. (0 = nothing, 1 = little, 2 = more, ...)%
+% Outputs:
 %   vGeneLocation2: Matlab structure about the gene location information,
 %                   generated in PlantClusterFinder function.
 %   vGeneLocation_Att: Describing the fields attributes of the Matlab
@@ -1637,7 +1637,7 @@ function [vGeneLocation2, vGeneLocation_Att, vInterChrom, vBiomG_G] = ...
             vi = vi + 1;
         end
     end
-    
+
     if vInsertHypos > 0
         %Check where and how many Hypothetical genes should be placed.
         if vInsertHypos == 1
@@ -1663,10 +1663,10 @@ function [vGeneLocation2, vGeneLocation_Att, vInterChrom, vBiomG_G] = ...
         else
             error('Not other option (>1) programmed.');
         end
-        
+
         %Sort the Breaks:
         [~, vBreakAfter_sort_ID] = sort(vBreakAfter);
-    
+
         %Remove several sequencing gaps within one intergenic region.
         vBreakafterkill = false(size(vSeqGaps,1),1);
         vOld_Breakafter_sort_ID = vBreakAfter_sort_ID(1,1);
@@ -1688,19 +1688,19 @@ function [vGeneLocation2, vGeneLocation_Att, vInterChrom, vBiomG_G] = ...
 %         vSeqGaps_7 = vSeqGaps_7(~vBreakafterkill,:);
         vBreakAfter = vBreakAfter(~vBreakafterkill,:);
         vHypoToPlace = vHypoToPlace(~vBreakafterkill,:);
-        
+
         [~, vBreakAfter_sort_ID] = sort(vBreakAfter);
-        
+
         %Increase the size of the gene locations.
         for vk = 1:size(vGeneLocation_Att,2)
             vGeneLocation3.(char(vGeneLocation_Att(1,vk))) = cell(size(vGeneLocation2.(char(vGeneLocation_Att(1,vk))),1) + sum(vHypoToPlace), ...
                 size(vGeneLocation2.(char(vGeneLocation_Att(1,vk))),2));
         end
-    
+
         %Increase the size of all variables that are connected to the gene
         %locations.
         vBiomG_G_3 = logical(spalloc(size(vBiomG_G,1) + sum(vHypoToPlace),size(vBiomG_G,2),size(vBiomG_G,2)*2));
-        
+
         %Populate the new gene location variable with the hypothetical genes.
         vEnd_GeneLocation2 = size(vGeneLocation2.(char(vGeneLocation_Att(1,1))),1);
         vEnd_GeneLocation3 = size(vGeneLocation3.(char(vGeneLocation_Att(1,1))),1);
@@ -1761,14 +1761,14 @@ function [vGeneLocation2, vGeneLocation_Att, vInterChrom, vBiomG_G] = ...
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Function that prevents formation of clusters Sequencing gaps that
 % exceed vMaxSeqGapSize or that are defined not to be crossed by
-% vHardBreakGaps. 
-% 
+% vHardBreakGaps.
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
-% Inputs: 
+%
+% Inputs:
 %   vGeneLocation2: Matlab structure about the gene location information,
 %                   generated in PlantClusterFinder function.
 %   vGeneLocation_Att: Describing the fields attributes of the Matlab
@@ -1788,17 +1788,17 @@ end
 %                   (Default is an empty list []).
 %   vMaxSeqGapSize: Maximal masked nucleotide region (in bp) that a cluster
 %                   is allowed to bridge (default is -1, thus inactive).
-%   vMaxInterGeneDist: Maximal intergenic distance that still can be 
+%   vMaxInterGeneDist: Maximal intergenic distance that still can be
 %                      gene cluster.
-%   vPercentileForMaxInterGeneDist: Prevents clusters to be spanned over 
+%   vPercentileForMaxInterGeneDist: Prevents clusters to be spanned over
 %                                   the top n% of intergenic distances.
-%   vMaxInterGeneDistByMedian: Maximal intergenic distance that still can 
+%   vMaxInterGeneDistByMedian: Maximal intergenic distance that still can
 %                              be spanned by a gene cluster: this number
 %                              times the median of the gene sizes.
 %   vBiomG_G: Maping between the Gene location file and the gene-IDs in the
 %             conversion file.
 %
-% Outputs: 
+% Outputs:
 %   vGeneLocation2: Matlab structure about the gene location information,
 %                   generated in PlantClusterFinder function.
 %   vGeneLocation_Att: Describing the fields attributes of the Matlab
@@ -1819,11 +1819,11 @@ function [vGeneLocation2, vGeneLocation_Att, vSeqGaps, vInterChrom, vBiomG_G] = 
     if nargin > vCurrArgin
         vi = 1;
         while vi <= nargin - vCurrArgin
-            
+
             vi = vi +1;
         end
     end
-    
+
     vSeqSize = str2num(char(vSeqGaps(:,end)));
     vSeqHard = false(size(vSeqSize,1),1);
     for vi = 1:size(vHardBreakGaps,2)
@@ -1834,7 +1834,7 @@ function [vGeneLocation2, vGeneLocation_Att, vSeqGaps, vInterChrom, vBiomG_G] = 
     end
     vSeqGaps_Hard = vSeqGaps(vSeqHard,:);
     vSeqGaps = vSeqGaps(~vSeqHard,:);
-    
+
     %Check maximal intergenic distance via percent
     if vPercentileForMaxInterGeneDist ~= -1
         %Change From Median to Percentile
@@ -1849,7 +1849,7 @@ function [vGeneLocation2, vGeneLocation_Att, vSeqGaps, vInterChrom, vBiomG_G] = 
             vMaxInterGeneDist = min([vMaxInterGeneDist,vMaxInterGeneDist_temp]);
         end
     end
-    
+
     %Check maximal intergenic distance via median gene size
     if vMaxInterGeneDistByMedian ~= -1
         vMaxInterGeneDist_temp = prctile(str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,3)))(:,1))) - ...
@@ -1860,7 +1860,7 @@ function [vGeneLocation2, vGeneLocation_Att, vSeqGaps, vInterChrom, vBiomG_G] = 
             vMaxInterGeneDist = min([vMaxInterGeneDist,vMaxInterGeneDist_temp*vMaxInterGeneDistByMedian]);
         end
     end
-    
+
     %Check intergenic distances
     if vMaxInterGeneDist ~= -1
         vG_start = str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,2)))(:,1)));
@@ -1883,7 +1883,7 @@ function [vGeneLocation2, vGeneLocation_Att, vSeqGaps, vInterChrom, vBiomG_G] = 
             end
         end
     end
-    
+
     %Check physical hard breaks
     vGeneLocation2.([char(vGeneLocation_Att(1,4)) '_old']) = vGeneLocation2.(char(vGeneLocation_Att(1,4)));
     vGeneLocation_Att = [vGeneLocation_Att, [char(vGeneLocation_Att(1,4)) '_old']];
@@ -1907,14 +1907,14 @@ function [vGeneLocation2, vGeneLocation_Att, vSeqGaps, vInterChrom, vBiomG_G] = 
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
-% Functions that uses the output of f_get_Sequencing_Gaps and reformulates 
+%
+% Functions that uses the output of f_get_Sequencing_Gaps and reformulates
 % it such that it is clear in which intergenic region the sequening gap
 % lies.
-% 
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
-% Inputs: 
+%
+% Inputs:
 %   vFile: Fasta file of the masked genome nucleotide sequences.
 %   vInterGeneLocation: A matrix defining chromosome, start bp, end bp,
 %                       gene before and gene after a intergenic region.
@@ -1927,9 +1927,9 @@ end
 %   vVerbose: Tells the code on how much of output should be printed out to
 %             the screen. (0 = nothing, 1 = little, 2 = more, ...)
 % Optional Inputs:
-%   vSeqGapSizesChromBreak: A list of numbers. The masked nucleotides 
-%                           sequences of these specific lengths are 
-%                           preventing cluster formation (Default is an 
+%   vSeqGapSizesChromBreak: A list of numbers. The masked nucleotides
+%                           sequences of these specific lengths are
+%                           preventing cluster formation (Default is an
 %                           empty list []). If this is given, then also
 %                           vGeneLengthHypoMin has to be set. Will lead to
 %                           prescreening of the sequencing gaps.
@@ -1939,8 +1939,8 @@ end
 %                       smaller than this are deleted, unless they are
 %                       among the list of vSeqGapSizesChromBreak, which
 %                       also needs to be set. Default is -1, not active.
-% 
-% Outputs: 
+%
+% Outputs:
 %   vSeqGaps: A string array (cell) matrix containing the
 %             chromosome/scaffold, the identification if it is coding (A)
 %             or masked (N) DNA, start bp and length of a masked region.
@@ -1984,7 +1984,7 @@ function vSeqGaps = f_annotate_Sequencing_Gaps(vFile, vInterGeneLocation, vUniqu
             f_get_Sequencing_Gaps(vFile, vPara, vVerbose, vOverwriteSeqGapInfo, vUnmaskedDNA)
         end
     end
-    
+
     vFIO = fopen([vFile '_GAPOutput']);
     vSeqGaps = cell(vMaxInit,4);
     vLine = fgetl(vFIO);
@@ -1996,7 +1996,7 @@ function vSeqGaps = f_annotate_Sequencing_Gaps(vFile, vInterGeneLocation, vUniqu
         if size(vSplit,2) ~= 4
             error('%s is corrupt at line %i. It should contain 4 columns split by spaces, it contains %i.\n\n', [vFile '_GAPOutput'],vL, size(vSplit,2));
         end
-        
+
         if vGeneLengthHypoMin == -1 || sum(vSeqGapSizesChromBreak == str2num(char(vSplit(1,4)))) > 0 || (vGeneLengthHypoMin ~= -1 && vGeneLengthHypoMin <= str2num(char(vSplit(1,4))))
             if vL > vMaxInit
                 vSeqGaps = [vSeqGaps; cell(1,4)];
@@ -2008,19 +2008,19 @@ function vSeqGaps = f_annotate_Sequencing_Gaps(vFile, vInterGeneLocation, vUniqu
     end
     fclose(vFIO);
     vSeqGaps = vSeqGaps(1:(vL-1),:);
-    
+
     %find the intergenic region of the gap, if the gap is present within a
     %gene model, get rid of the gap.
     vSeqGaps = [vSeqGaps, cell(size(vSeqGaps,1),3)];
     vSeqGaps_3 = str2num(char(vSeqGaps(:,3)));
     vSeqGaps_4 = str2num(char(vSeqGaps(:,4)));
     vSeqGaps_4 = vSeqGaps_3 + vSeqGaps_4 - 1;
-    
+
     vnvi = size(vSeqGaps,1);
     vKillSeqGaps = false(vnvi,1); % Check which sequences should not be processed
     vKillSeqGaps = vKillSeqGaps | ~strcmp(vSeqGaps(:,2),'N'); % Do not process all non N sequences.
     % Do not process sequences that do not lie on a chromosome we want.
-    vHasGeneLocChrom = false(vnvi,1); 
+    vHasGeneLocChrom = false(vnvi,1);
     for vi = 1:size(vUniqueChrom,1)
         vHasGeneLocChrom = vHasGeneLocChrom | strcmp(vSeqGaps(:,1),vUniqueChrom(vi,1));
     end
@@ -2059,13 +2059,13 @@ function vSeqGaps = f_annotate_Sequencing_Gaps(vFile, vInterGeneLocation, vUniqu
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Function that screens a DNA fasta file for masked streches of DNA (masked
 % by N).
-% 
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
-% Inputs: 
+%
+% Inputs:
 %   vFile: Fasta file of the masked genome nucleotide sequences.
 %   vPara: Defines if multiple cpus should be used for computation of parts
 %          of algorithm. Active if larger than 1.
@@ -2075,9 +2075,9 @@ end
 %                         analysis for finding sequencing gaps (default is
 %                         0, no enforcement).
 %   vUnmaskedDNA: Option to ignore the error if you use unmasked DNA files.
-% 
-% Outputs: 
-%   None (File is generated with the path of the first input argument, 
+%
+% Outputs:
+%   None (File is generated with the path of the first input argument,
 %        modifying the gene name)
 function f_get_Sequencing_Gaps(vFile, vPara, vVerbose, vOverwriteSeqGapInfo, vUnmaskedDNA)
     if ispc()
@@ -2090,7 +2090,7 @@ function f_get_Sequencing_Gaps(vFile, vPara, vVerbose, vOverwriteSeqGapInfo, vUn
             fprintf('tr -d ''\n'' < ''%s_temp2''>''%s_temp3''\n', vFile, vFile);
             fprintf('%s -f get_new_line_in.awk ''%s_temp3''>''%s_temp4''\n', vAWK_install_path, vFile, vFile);
             fprintf('%s -f get_positions_of_gap.awk ''%s_temp4''>''%s_GAPOutput''\n', vAWK_install_path, vFile, vFile);
-            fprintf('Once you have done this, please store the resulting %s_GAPOutput file in the accoring folder of the DNA fasta file and rerun Plantcluster finder.\n', vFile); 
+            fprintf('Once you have done this, please store the resulting %s_GAPOutput file in the accoring folder of the DNA fasta file and rerun Plantcluster finder.\n', vFile);
             error('Run aborted because PC is used in combination with sequencing gap finding\n');
         end
     else
@@ -2135,18 +2135,18 @@ function f_get_Sequencing_Gaps(vFile, vPara, vVerbose, vOverwriteSeqGapInfo, vUn
             end
             fclose(vFIO_temp);
             fclose(vFIO);
-            
+
             %open matlabpool
             vPool = parpool('local',vPara-1);
-            
+
             %Run the commands individually with parfor
             parfor vi = 1:size(vFile_ID)
                 f_run_awk_skripts([vFile '_' num2str(vi)], vAWK_install_path, vVerbose, vOverwriteSeqGapInfo);
             end
-            
+
             %close matlabpool
             delete(vPool);
-            
+
             %Build result files together
             vFIO = fopen([vFile '_GAPOutput_count.txt'],'w');
             for vi = 1:size(vFile_ID)
@@ -2174,24 +2174,24 @@ function f_get_Sequencing_Gaps(vFile, vPara, vVerbose, vOverwriteSeqGapInfo, vUn
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Function that uses awk to process the masked DNA fasta file to search for
 % sequencing gaps.
-% 
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
-% Inputs: 
+%
+% Inputs:
 %   vFile: Full path to a dna Fasta file. Note, the folder the DNA fasta
 %          file needs to be writable for the temporary and result files
 %          generated.
 %   vAWK_install_path: Path to the installation of awk.
-%   vVerbose: Tells the code on how much of output should be printed out 
+%   vVerbose: Tells the code on how much of output should be printed out
 %             the screen. (0 = nothing, 1 = little, 2 = more, ...)
 %   vOverwriteSeqGapInfo: If set to 1, the code enforces masked nucleotide
 %                         analysis for finding sequencing gaps (default is
 %                         0, no enforcement).
-% 
-% Outputs: 
+%
+% Outputs:
 %   None (Temporary (_temp1, _temp2, _temp3, _temp4) and Gapouptu
 %        (_GAPOutput) files generated.
 function f_run_awk_skripts(vFile, vAWK_install_path, vVerbose, vOverwriteSeqGapInfo)
@@ -2297,15 +2297,15 @@ function f_run_awk_skripts(vFile, vAWK_install_path, vVerbose, vOverwriteSeqGapI
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Function that reads in the metabolic domains of reactions
 % and gives a mapping between reactions in these files and the metabolic
 % domains that were asked to be annotated (usually a subset of all) by
 % vMD_to_annotate.
-% 
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
-% Inputs: 
+%
+% Inputs:
 %   vGenesMetabolicDomains_File: TSV of the metabolic domains of reactions.
 %                                Check if file is outdated (needs to
 %                                contain all reactions that are present in
@@ -2313,8 +2313,8 @@ end
 %   vMD_to_annotate: A list of Metabolic domains that should be analyzed.
 %                    For example {'Amines and Polyamines Metabolism'; ...
 %                    'Amino Acids Metabolism'
-% 
-% Outputs: 
+%
+% Outputs:
 %   vRxnMetaDom: Matlab structure of all the items stored in the Metabolic
 %                domain file
 %   vRxnMetaDom_Att: Attributes of vRxnMetaDom (lets you access vRxnMetaDom
@@ -2323,24 +2323,24 @@ end
 %          and the metabolic domains that were identified to be of interest
 %          in vMD_to_annotate.
 function [vRxnMetaDom, vRxnMetaDom_Att, vR_MD] = f_get_metabolic_domains(vGenesMetabolicDomains_File, vMD_to_annotate)
-    [vRxnMetaDom, vRxnMetaDom_Att] = f_extract_results_with_header(vGenesMetabolicDomains_File); 
+    [vRxnMetaDom, vRxnMetaDom_Att] = f_extract_results_with_header(vGenesMetabolicDomains_File);
     for vi = 1:size(vRxnMetaDom_Att,2)
         for vj = 1:size(vRxnMetaDom.(char(vRxnMetaDom_Att(1,vi))),2)
             vRxnMetaDom.(char(vRxnMetaDom_Att(1,vi)))(:,vj) = strtrim(vRxnMetaDom.(char(vRxnMetaDom_Att(1,vi)))(:,vj));
         end
     end
-    
+
     vUnique_MD = unique(vRxnMetaDom.(char(vRxnMetaDom_Att(1,3))));
     for vi = 4:size(vRxnMetaDom_Att,2)
         vUnique_MD = unique([vUnique_MD;vRxnMetaDom.(char(vRxnMetaDom_Att(1,vi)))]);
     end
-    
+
     for vi = 1:size(vUnique_MD,1)
         if sum(strcmp(vMD_to_annotate, vUnique_MD(vi,1))) == 0
             warning('Discarding metabolic domain information of %s\n', char(vUnique_MD(vi,1)));
         end
     end
-    
+
     vR_MD = false(size(vRxnMetaDom.(char(vRxnMetaDom_Att(1,1))),1),size(vMD_to_annotate,1));
     for vi = 1:size(vMD_to_annotate,1)
         for vj = 3:size(vRxnMetaDom_Att,2)
@@ -2350,22 +2350,22 @@ function [vRxnMetaDom, vRxnMetaDom_Att, vR_MD] = f_get_metabolic_domains(vGenesM
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Function that reads out the MCL clustering information and gives every
 % gene one or several MCL clusters. This is then used for local
 % duplication.
-% 
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
-% Inputs: 
+%
+% Inputs:
 %   vFile: MCL-clustering output file (I20).
 %   vMapG: Unique list of gene IDs stored in the conversion file.
 %   vMapP: Unique list of protein IDs stored in the conversion file.
 %   vMapG_MapP: Maping between vMapG and vMapP
-%   vVerbose: Tells the code on how much of output should be printed out 
+%   vVerbose: Tells the code on how much of output should be printed out
 %             the screen. (0 = nothing, 1 = little, 2 = more, ...)
-% 
-% Outputs: 
+%
+% Outputs:
 %   vG_MCL: Maping between the genes in the conversion-ID file and the
 %           MCL-clustering file.
 %   vProtein_IDs: A cell array of all protein-IDs that are stored in the
@@ -2395,7 +2395,7 @@ function [vG_MCL,vProtein_IDs] = f_read_MCL_clustering_File(vFile, vMapG, vMapP,
     else
         vProtein_IDs = cell(0,1);
     end
-    
+
     vInitMax = 100000;
     vFile_Data = cell(vInitMax,1);
     vFIO = fopen(vFile);
@@ -2420,7 +2420,7 @@ function [vG_MCL,vProtein_IDs] = f_read_MCL_clustering_File(vFile, vMapG, vMapP,
     end
     fclose(vFIO);
     vFile_Data = vFile_Data(1:vL-1,1);
-    
+
     vG_MCL = false(size(vMapG_MapP,1),vL-1);
     nvMapP = size(vMapP,1);
     for vi = 1:nvMapP
@@ -2430,7 +2430,7 @@ function [vG_MCL,vProtein_IDs] = f_read_MCL_clustering_File(vFile, vMapG, vMapP,
         vIDs = ~cellfun('isempty',regexp(vFile_Data, regexptranslate('escape', vMapP(vi,1)), 'once'));
         vG_MCL(vMapG_MapP(:,vi)==1,vIDs) = 1;
     end
-    
+
     for vi = 1:size(vMapG,1)
         if sum(vG_MCL(vi,:)) == 0
             fprintf('Warning: %s seems not to be part of the MCL clustering.\n',char(vMapG(vi,1)));
@@ -2439,14 +2439,14 @@ function [vG_MCL,vProtein_IDs] = f_read_MCL_clustering_File(vFile, vMapG, vMapP,
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Function that uses a protein fasta file of a genome annotation to create
 % a blastdb, and then does an all against all blast and uses the result to
 % do a MCL clustering. This is used for local duplication information.
-% 
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
-% Inputs: 
+%
+% Inputs:
 %   vProtein_sequence_FastaFile: Protein sequence file of the genome.
 %                                Should only contain Protein IDs as
 %                                header e.g. >protein1-ID
@@ -2456,8 +2456,8 @@ end
 %          of algorithm. Active if larger than 1.
 %   vVerbose: Tells the code on how much of output should be printed out to
 %             the screen. (0 = nothing, 1 = little, 2 = more, ...)
-% 
-% Outputs: 
+%
+% Outputs:
 %   vG_MCL: Maping between the genes in the conversion-ID file and the
 %           MCL-clustering file.
 %   vProtein_IDs: A cell array of all protein-IDs that are stored in the
@@ -2480,7 +2480,7 @@ function [vG_MCL, vProtein_IDs] = f_get_MCL_clustering(vProtein_sequence_FastaFi
             fprintf('%s %s.MCLMATRIX -I 2\n',vMcl_install_path, vProtein_sequence_FastaFile);
             fprintf('%s -icl %s.MCLMATRIX.I20 -tabr %s.MCLTAB -o %s.MCLTAB.dump.I20\n', vMcxdump_install_path, vProtein_sequence_FastaFile, vProtein_sequence_FastaFile, vProtein_sequence_FastaFile);
             fprintf('Please use a Protein fasta file that contains only protein Identifiers as headers.\n')
-            fprintf('Once you have done this, please give the %s.MCLTAB.dump.I20 as Filename for the proteinfasta file and use option ''MCLClusterFile'' 1 to start PlantClusterFinder.\n',vProtein_sequence_FastaFile); 
+            fprintf('Once you have done this, please give the %s.MCLTAB.dump.I20 as Filename for the proteinfasta file and use option ''MCLClusterFile'' 1 to start PlantClusterFinder.\n',vProtein_sequence_FastaFile);
             error('Run aborted because PC is used in combination with MCL clustering');
         end
 
@@ -2530,19 +2530,19 @@ function [vG_MCL, vProtein_IDs] = f_get_MCL_clustering(vProtein_sequence_FastaFi
         [~, ~] = system([vMcl_install_path ' ' vProtein_sequence_FastaFile '.MCLMATRIX -I 2 -o' ' ' vProtein_sequence_FastaFile '.MCLMATRIX.I20']);
         [~, ~] = system([vMcxdump_install_path ' ' '-icl' ' ' vProtein_sequence_FastaFile '.MCLMATRIX.I20 -tabr' ' ' vProtein_sequence_FastaFile '.MCLTAB -o' ' ' vProtein_sequence_FastaFile '.MCLTAB.dump.I20']);
     end
-    
+
     [vG_MCL, vProtein_IDs] = f_read_MCL_clustering_File([vProtein_sequence_FastaFile '.MCLTAB.dump.I20'], vMapG, vMapP, vMapG_MapP, vRemoveNonProtLocations, vVerbose);
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Function reading out information of pgdb flatfiles genes.dat,
 % proteins.dat, enzrxns.dat and reactions.dat, maping genes
 % to reactions directly.
-% 
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
-% Inputs: 
+%
+% Inputs:
 %   vPGDB_FlatFileFolder: Full path to the folder where the flatfiles of
 %                         the species pgdb is stored.
 %   vVerbose: Tells the code on how much of output should be printed out to
@@ -2568,8 +2568,8 @@ end
 %          which attributes in enzrxns.dat. Default is: [2,1];
 %   'E2R': Defines which attributes in enzrxns.dat should be matched to
 %          which attributes in reactions.dat. Default is: [2,1];
-% 
-% Outputs: 
+%
+% Outputs:
 %   vGenes_all: Matlab structure containing all the information
 %               (Attributes)that was searched for (described in
 %               vGenesAttributes, default is {'UNIQUE-ID','PRODUCT', ...
@@ -2587,13 +2587,13 @@ end
 %         Reactions_all
 function [vGenes_all, vGenes_all_Att, vReactions_all, vReactions_all_Att, vG2R] = f_map_pgdb_reactions_to_genes(vPGDB_FlatFileFolder, vVerbose, varargin)
     vCurrNargin = 2;
-    
+
     % Attributes of Flatfiles that should be read out
     vGenesAttributes = {'UNIQUE-ID','PRODUCT','ACCESSION-1','ACCESSION-2'};
     vProteinsAttributes = {'UNIQUE-ID','CATALYZES','COMPONENTS'};
     vEnzrxnsAttributes = {'UNIQUE-ID','REACTION','ENZYME'};
     vReactionsAttributes = {'UNIQUE-ID', 'ENZYMATIC-REACTION', 'EC-NUMBER'};
-    
+
     % Which Attributes should be used to match different Flatfiles to each
     % other.
     vG2P = [2,1];
@@ -2601,7 +2601,7 @@ function [vGenes_all, vGenes_all_Att, vReactions_all, vReactions_all_Att, vG2R] 
     vP2E = [2,1];
     vE2R = [2,1];
     vR2Pa = [1,2];
-    
+
     %Use inputs to write over defaults
     if nargin > vCurrNargin
         vi = 1;
@@ -2636,7 +2636,7 @@ function [vGenes_all, vGenes_all_Att, vReactions_all, vReactions_all_Att, vG2R] 
             vi = vi + 1;
         end
     end
-    
+
     %make sure that the unique IDs were not forgot.
     if ~strcmp(vGenesAttributes{1,1},'UNIQUE-ID')
         vGenesAttributes = {'UNIQUE-ID', vGenesAttributes};
@@ -2650,7 +2650,7 @@ function [vGenes_all, vGenes_all_Att, vReactions_all, vReactions_all_Att, vG2R] 
     if ~strcmp(vReactionsAttributes{1,1},'UNIQUE-ID')
         vReactionsAttributes = {'UNIQUE-ID', vReactionsAttributes};
     end
-    
+
     %Read all attributes and store them
     if vVerbose >= 1
         fprintf('Read in genes.dat\n');
@@ -2668,7 +2668,7 @@ function [vGenes_all, vGenes_all_Att, vReactions_all, vReactions_all_Att, vG2R] 
         fprintf('Read in reactions.dat\n');
     end
     [vReactions_all, vReactions_all_Att] = f_read_in_PGDB_Flat([vPGDB_FlatFileFolder 'reactions.dat'], vReactionsAttributes);
-    
+
     %Match flat files to each other
     if vVerbose >= 1
         fprintf('Match genes to proteins\n');
@@ -2700,7 +2700,7 @@ function [vGenes_all, vGenes_all_Att, vReactions_all, vReactions_all_Att, vG2R] 
         fprintf('Match enzymereactions to reactions\n');
     end
     [vE_R2] = f_match_pgdb_flat(vEnzrxns_all,vEnzrxns_all_Att,vReactions_all,vReactions_all_Att,vE2R,vVerbose);
-    
+
     %Match Genes to reactions directly.
     if vVerbose >= 1
         fprintf('Match genes to to reactions\n');
@@ -2716,12 +2716,12 @@ function [vGenes_all, vGenes_all_Att, vReactions_all, vReactions_all_Att, vG2R] 
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Function that maps two flat files of a pgdb to each other.
-% 
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
-% Inputs: 
+%
+% Inputs:
 %   vFlat1: Matlab structure of a read out pgdb Flat file.
 %   vFlatAttri1: Attributes of the first structure
 %   vFlat2: Matlab structure of a read out pgdb Flat file.
@@ -2730,8 +2730,8 @@ end
 %               matched to which attributes of structure 2
 %   vVerbose: Tells the code on how much of output should be printed out to
 %             the screen. (0 = nothing, 1 = little, 2 = more, ...)
-% 
-% Outputs: 
+%
+% Outputs:
 %   vF1_F2: A mapping between items of the first pgdb file to the second
 %           one.
 function [vF1_F2] = f_match_pgdb_flat(vFlat1,vFlatAttri1,vFlat2,vFlatAttri2,vMatchings,vVerbose)
@@ -2742,7 +2742,7 @@ function [vF1_F2] = f_match_pgdb_flat(vFlat1,vFlatAttri1,vFlat2,vFlatAttri2,vMat
             if vVerbose >= 2
                 fprintf('Match PGDB FlatFiles ID %i of %i\n',vvFlat1_ID,size(vFlat1.(char(vFlatAttri1(1,1))),1));
             end
-            
+
             vFlat2_temp = false(size(vFlat2.(char(vFlatAttri2(1,vMatchings(vMatchings_ID,2)))),1),1);
             for vFlat1_Dim = 1:size(vFlat1.(char(vFlatAttri1(1,vMatchings(vMatchings_ID,1)))),2)
                 for vFlat2_Dim = 1:size(vFlat2.(char(vFlatAttri2(1,vMatchings(vMatchings_ID,2)))),2)
@@ -2755,13 +2755,13 @@ function [vF1_F2] = f_match_pgdb_flat(vFlat1,vFlatAttri1,vFlat2,vFlatAttri2,vMat
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Function that reads in the gene, transcript, and protein ID conversion
 % file and stores the IDs as unique lists and mapings between genes and
 % transcripts aswell as genes and proteins.
-% 
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Inputs:
 %   vGeneTranscriptProtein_mapping_File: TSV file with a header describing
 %                                        gene, transcript, and protein
@@ -2770,8 +2770,8 @@ end
 %                                        transcript-ID, protein-ID).
 %   vVerbose: Tells the code on how much of output should be printed out to
 %             the screen. (0 = nothing, 1 = little, 2 = more, ...)
-% 
-% Outputs: 
+%
+% Outputs:
 %   vMapG: Unique list of gene IDs stored in the conversion file.
 %   vMapT: Unique list of transcript IDs stored in the conversion file.
 %   vMapP: Unique list of protein IDs stored in the conversion file.
@@ -2816,7 +2816,7 @@ function [vMapG, vMapT, vMapP, vMapG_MapT, vMapG_MapP] = f_read_in_ConversionFil
     for vi = 1:size(vSplit,2)
         vGTP.(['Col' num2str(vi)]) = vGTP.(['Col' num2str(vi)])(1:vL-1,:);
     end
-    
+
     vMapG = unique(vGTP.Col1(:,1));
     vMapT = unique(vGTP.Col2(:,1));
     vMapP = unique(vGTP.Col3(:,1));
@@ -2874,12 +2874,12 @@ function [vMapG, vMapT, vMapP, vMapG_MapT, vMapG_MapP] = f_read_in_ConversionFil
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Function that maps the reactions stored in the pgdbs to the reactions
 % stored in the metabolic domain file.
-% 
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Inputs:
 %   vG2R: Maping of all genes in the Genes_all to the Reactions in
 %         Reactions_all
@@ -2897,8 +2897,8 @@ end
 %                domain file
 %   vRxnMetaDom_Att: Attributes of vRxnMetaDom (lets you access vRxnMetaDom
 %                    with vRxnMetaDom.(char(vRxnMetaDom_Att(1,n))))
-% 
-% Outputs: 
+%
+% Outputs:
 %   vRpgdb_Rmd: A maping between reactions stored in the pgdb and the
 %               reactions given in the metabolic domain file
 
@@ -2910,12 +2910,12 @@ function [vRpgdb_Rmd] = f_matchPGDBs_to_MDs(vG2R, vR_MD, vReactions_all, vReacti
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Function that maps the conversion file gene IDs to the IDs in the
 % genes.dat of the pgdb
-% 
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Inputs:
 %   vMapG: Unique list of gene IDs stored in the conversion file.
 %   vMapT: Unique list of transcript IDs stored in the conversion file.
@@ -2934,8 +2934,8 @@ end
 %                  or proteins ids of the conversion file.
 %   vVerbose: Tells the code on how much of output should be printed out to
 %             the screen. (0 = nothing, 1 = little, 2 = more, ...)
-% 
-% Outputs: 
+%
+% Outputs:
 %   vMapG_Gpgdb: A maping between Genes in the conversion file and genes
 %                stored in the pgdb genes.dat file.
 function vMapG_Gpgdb = f_map_PGDBs_to_conversion_file(vMapG, vMapT, vMapP, vMapG_MapT, vMapG_MapP, vGenes_all, vGenesDat_GeneInfo, vPGDBIdsToMap, vVerbose)
@@ -2949,7 +2949,7 @@ function vMapG_Gpgdb = f_map_PGDBs_to_conversion_file(vMapG, vMapT, vMapP, vMapG
     if ~isempty(regexp(vPGDBIdsToMap,'P','once'))
         vPGDBIdsToMap_bin(3,1) = 1;
     end
-    
+
     vMapG_Gpgdb = false(size(vMapG,1),size(vGenes_all.(char(vGenesDat_GeneInfo(1,1))),1));
     if vPGDBIdsToMap_bin(1,1) == 1
         for vi = 1:size(vMapG,1)
@@ -2963,7 +2963,7 @@ function vMapG_Gpgdb = f_map_PGDBs_to_conversion_file(vMapG, vMapT, vMapP, vMapG
             end
         end
     end
-    
+
     if vPGDBIdsToMap_bin(2,1) == 1
         for vi = 1:size(vMapT,1)
             if vi == 83
@@ -2979,7 +2979,7 @@ function vMapG_Gpgdb = f_map_PGDBs_to_conversion_file(vMapG, vMapT, vMapP, vMapG
             end
         end
     end
-    
+
     if vPGDBIdsToMap_bin(3,1) == 1
         for vi = 1:size(vMapP,1)
             for vj = 1:size(vGenesDat_GeneInfo,2)
@@ -2995,12 +2995,12 @@ function vMapG_Gpgdb = f_map_PGDBs_to_conversion_file(vMapG, vMapT, vMapP, vMapG
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Function that removes protein and transcript information of the gene
 % location file.
-% 
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Inputs:
 %   vGeneLocation: Matlab structure about the gene location information,
 %                  generated in PlantClusterFinder function.
@@ -3011,8 +3011,8 @@ end
 %   vMapP: Unique list of protein IDs stored in the conversion file.
 %   vMapG_MapT: Maping between vMapG and vMapT
 %   vMapG_MapP: Maping between vMapG and vMapP
-% 
-% Outputs: 
+%
+% Outputs:
 %   vGeneLocation: Matlab structure about the gene location information,
 %                  generated in PlantClusterFinder function.
 function [vGeneLocation] = f_remove_protein_transcript_info_from_genepositionfile(vGeneLocation, vGeneLocation_Att, vMapG, vMapT, vMapP, vMapG_MapT, vMapG_MapP, vVerbose)
@@ -3025,12 +3025,12 @@ function [vGeneLocation] = f_remove_protein_transcript_info_from_genepositionfil
         vCurrID_T = strcmpi(vMapT,vCurrID);
         vCurrID_P = strcmpi(vMapP,vCurrID);
         vCurrID_G = sum(vMapG_MapT(:,vCurrID_T,1),2)>0 & sum(vMapG_MapP(:,vCurrID_P,1),2)>0;
-        
+
         if sum(vCurrID_G) > 1
             error('Gene / Transcript / Protein location file (Gene position file) matches several entries to more than one gene.\nPlease clean up entries for %s in your input files.\n', char(vCurrID));
         elseif sum(vCurrID_G) == 1
             vGeneLocation.(char(vGeneLocation_Att(1,1)))(vi,1) = vMapG(vCurrID_G,1);
-        else 
+        else
             vCurrID_G = strcmpi(vMapG,vCurrID);
             if sum(vCurrID_G) == 0
                 error('Gene / Transcript / Protein location file (Gene position file) has an entry %s that is not covered by your gene ID conversion file.\nPlease add the entry.\n', char(vCurrID));
@@ -3040,27 +3040,27 @@ function [vGeneLocation] = f_remove_protein_transcript_info_from_genepositionfil
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Function that collapses multiple entries (e.g. because it originally
 % contained transcript or protein information) in the gene location data to
 % one entry per gene. It takes the outermost end and start bp of all the
 % protein or transcripts of a gene.
-% 
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Inputs:
 %   vGeneLocation: Matlab structure about the gene location information,
 %                  generated in PlantClusterFinder function.
 %   vGeneLocation_Att: Describing the fields attributes of the Matlab
 %                      structure vGeneLocation and vGeneLocation2.
-% 
-% Outputs: 
+%
+% Outputs:
 %   vUniqueChrom: A list with unique entries of all chromosome and scaffold
 %                 names.
 %   vGeneLocation2: Matlab structure about the gene location information,
 %                   generated in PlantClusterFinder function.
 function [vUniqueChrom, vGeneLocation2] = f_consolidate_gene_info(vGeneLocation, vGeneLocation_Att, vVerbose)
-    vUniqueChrom = unique(vGeneLocation.(char(vGeneLocation_Att(1,4)))); 
+    vUniqueChrom = unique(vGeneLocation.(char(vGeneLocation_Att(1,4))));
     vNi = size(vUniqueChrom,1);
     for vi = 1:vNi
         if vVerbose >= 2
@@ -3095,13 +3095,13 @@ function [vUniqueChrom, vGeneLocation2] = f_consolidate_gene_info(vGeneLocation,
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Function that sorts all teh genes in the gene location structure fist
 % accoring to the chromosome scaffold, then according to their start (start
 % bp for plus strand, end pb for minus strand)
-% 
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Inputs:
 %   vGeneLocation2: Matlab structure about the gene location information,
 %                   generated in PlantClusterFinder function.
@@ -3109,8 +3109,8 @@ end
 %                      structure vGeneLocation and vGeneLocation2.
 %   vUniqueChrom: A list with unique entries of all chromosome and scaffold
 %                 names.
-% 
-% Outputs: 
+%
+% Outputs:
 %   vGeneLocation2: Matlab structure about the gene location information,
 %                   generated in PlantClusterFinder function.
 function [vGeneLocation2] = f_sort_genes(vGeneLocation2, vGeneLocation_Att, vUniqueChrom, vVerbose)
@@ -3134,12 +3134,12 @@ function [vGeneLocation2] = f_sort_genes(vGeneLocation2, vGeneLocation_Att, vUni
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Function computes all stretches of DNA that are not encoding at least one
 % gene model.
-% 
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Inputs:
 %   vGeneLocation2: Matlab structure about the gene location information,
 %                   generated in PlantClusterFinder function.
@@ -3147,8 +3147,8 @@ end
 %                      structure vGeneLocation and vGeneLocation2.
 %   vUniqueChrom: A list with unique entries of all chromosome and scaffold
 %                 names.
-% 
-% Outputs: 
+%
+% Outputs:
 %   vInterChrom: A matrix defining chromosome, start bp, end bp, gene
 %                before and gene after a intergenic region.
 function [vInterChrom] = f_find_intergenic_regions(vGeneLocation2, vGeneLocation_Att, vUniqueChrom, vVerbose)
@@ -3179,7 +3179,7 @@ function [vInterChrom] = f_find_intergenic_regions(vGeneLocation2, vGeneLocation
             else
                 vInterGeneEnd = find(vChrStrandNOT,1,'first') - 1;
             end
-            
+
             %% I think here the correct gene is not identified (either the front or the latter gene....
             vInterChrom(vIC,:) = [vi, vInterGeneStart + vInterGeneEnd_old, vInterGeneEnd + vInterGeneEnd_old, ...
                 find(vTemp_IDs1 & vGene_end_bp + 1 == vInterGeneStart + vInterGeneEnd_old,1,'last'), ...
@@ -3193,20 +3193,20 @@ function [vInterChrom] = f_find_intergenic_regions(vGeneLocation2, vGeneLocation
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Function that maps genes in the gene location file to the genes in the id
 % conversion file.
-% 
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Inputs:
 %   vGeneLocation2: Matlab structure about the gene location information,
 %                   generated in PlantClusterFinder function.
 %   vGeneLocation_Att: Describing the fields attributes of the Matlab
 %                      structure vGeneLocation and vGeneLocation2.
 %   vMapG: Unique list of gene IDs stored in the conversion file.
-% 
-% Outputs: 
+%
+% Outputs:
 %   vBiomG_G: Maping between the Gene location file and the gene-IDs in the
 %             conversion file.
 function [vBiomG_G] = f_map_GeneLocation_to_conversion_file(vGeneLocation2, vGeneLocation_Att, vMapG, vVerbose)
@@ -3222,12 +3222,12 @@ function [vBiomG_G] = f_map_GeneLocation_to_conversion_file(vGeneLocation2, vGen
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Generates a vector with length of all genes in the gene location
 % information and looks up if this gene has a reaction in the pgdb.
-% 
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Inputs:
 %   vGeneLocation2: Matlab structure about the gene location information,
 %                   generated in PlantClusterFinder function.
@@ -3241,8 +3241,8 @@ end
 %         Reactions_all
 %   vVerbose: Tells the code on how much of output should be printed out to
 %             the screen. (0 = nothing, 1 = little, 2 = more, ...)
-% 
-% Outputs: 
+%
+% Outputs:
 %   vBiomG_E: A vector describing which gene has at least one reaction
 %             annotated in the pgdb (1, if no reaction 0)
 function [vBiomG_E] = f_annotate_enyme_info_to_gene_location(vGeneLocation2, vGeneLocation_Att, vBiomG_G, vMapG_Gpgdb, vG2R, vVerbose)
@@ -3261,16 +3261,16 @@ function [vBiomG_E] = f_annotate_enyme_info_to_gene_location(vGeneLocation2, vGe
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Function that clusters the genome. It lookes at enzymes that are at max
 % spaced by vStepsize genes (checking for 0, 1, ..., vMinStepSize intervening
 % genes. It continuous to increase the vStepsize until clusters contain
 % more non-enzymes than enzymes. Clusters containing only one group of
 % locally duplicated genes are turned down. Clusters with only one reaction
 % aswell. Clusters need at least vEnzMinForClusters enzymes.
-% 
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Inputs:
 %   vMinStepSize: Minimal intervening gene size that should be computed
 %                 (default is 5).
@@ -3298,7 +3298,7 @@ end
 %   vMapG_Gpgdb: A maping between Genes in the conversion file and genes
 %                stored in the pgdb genes.dat file.
 %   vCriterion: Criterion after which stepsize is chosen (default is 1).
-%               1: as published in Schlapfer et al 2017 
+%               1: as published in Schlapfer et al 2017
 %                  sum(enzymes in clusters) - sum(non-enzymes in clusters)
 %                  > 0.
 %               2: stepsize 3 (because most organisms take this one
@@ -3308,14 +3308,14 @@ end
 %                  n+1).
 %   vVerbose: Tells the code on how much of output should be printed out to
 %             the screen. (0 = nothing, 1 = little, 2 = more, ...)
-% 
+%
 % Outputs:
 %   vClusters: Cluster Information (stepsize, chromosome id, gene start,
 %              gene end, number of enzymes)
-%   vClusterBackground: Density information about the genome (window size, 
+%   vClusterBackground: Density information about the genome (window size,
 %                       number of enzymes, Occurrence of windowsize with
 %                       this many enzymes in the genome, occurence of
-%                       this windowsize in the genome, Frequency of seeing 
+%                       this windowsize in the genome, Frequency of seeing
 %                       a windowsize of this size with at least as many
 %                       enzymes in the genome)
 %   vFinalStepsize: Stepsize that was chosen by the criterion (clusters
@@ -3346,7 +3346,7 @@ function [vClusters, vClusterBackground, vFinalStepsize, vStepSize_Max] = f_perf
             else
                 vChrom_start = vGeneLocation2.(char(vGeneLocation_Att(1,4)))(vStart,1);
                 vBiomG_Chrom = strcmp(vGeneLocation2.(char(vGeneLocation_Att(1,4)))(:,1),vChrom_start);
-                
+
                 vStopSearchEnd = 0;
                 while vStopSearchEnd == 0
                     vEnds = vEnd+1;
@@ -3361,14 +3361,14 @@ function [vClusters, vClusterBackground, vFinalStepsize, vStepSize_Max] = f_perf
                     end
                 end
             end
-            
+
             %Cluster needs at least 3 enzymes
             if vAbolishCluster == 0
                 if sum(vBiomG_E(vStart:vEnd)) < vEnzMinForClusters
                     vAbolishCluster = 1;
                 end
             end
-            
+
             if vAbolishCluster == 0
                 vLDisNOTaProblem = 0;
                 % Get rid of clusters that only contain LD
@@ -3428,10 +3428,10 @@ function [vClusters, vClusterBackground, vFinalStepsize, vStepSize_Max] = f_perf
             end
             vi = vEnd + 1;
         end
-        
+
         vC_IDs = vClusters(:,1) == vStepSize;
         vC_IDs(vClusterWrite:end,1) = 0;
-        
+
         % Compute background of clusters
         % Get all sizes of clusters of this round
         [vClusterBackground, vClusterBackgroundWrite] = f_compute_background(vClusterBackground, vClusters, vClusterBackgroundWrite, vGeneLocation2, vGeneLocation_Att, vBiomG_E, vC_IDs);
@@ -3504,7 +3504,7 @@ function [vClusters, vClusterBackground, vFinalStepsize, vStepSize_Max] = f_perf
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Function that lookes at all clusters that were found by the function
 % f_perform_clustering(), and computes the background information for the
 % windowsizes of these clusters (e.g. a cluster has 4 enzymes and two non
@@ -3515,14 +3515,14 @@ end
 % than 6 enzymes. This is then used to define top n% clusters, e.g.
 % clusters that are at least as dense as the top 5% of windowsizes are
 % marked to be of higher interest.
-% 
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Inputs:
-%   vClusterBackground: Density information about the genome (window size, 
+%   vClusterBackground: Density information about the genome (window size,
 %                       number of enzymes, Occurrence of windowsize with
 %                       this many enzymes in the genome, occurence of
-%                       this windowsize in the genome, Frequency of seeing 
+%                       this windowsize in the genome, Frequency of seeing
 %                       a windowsize of this size with at least as many
 %                       enzymes in the genome)
 %   vClusters: Cluster Information (stepsize, chromosome id, gene start,
@@ -3539,12 +3539,12 @@ end
 %           Stepsize that was calculated and should be checked if the
 %           background of that size of cluster (number of genes) was
 %           already calculated.
-% 
+%
 % Outputs:
-%   vClusterBackground: Density information about the genome (window size, 
+%   vClusterBackground: Density information about the genome (window size,
 %                       number of enzymes, Occurrence of windowsize with
 %                       this many enzymes in the genome, occurence of
-%                       this windowsize in the genome, Frequency of seeing 
+%                       this windowsize in the genome, Frequency of seeing
 %                       a windowsize of this size with at least as many
 %                       enzymes in the genome)
 %   vClusterBackgroundWrite: Defines where the next entry should be written
@@ -3573,20 +3573,20 @@ function [vClusterBackground, vClusterBackgroundWrite] = f_compute_background(vC
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Function that (given clusters and a background density information of a
-% genome) calculates whether the clusters are within the top n% of enzymes 
+% genome) calculates whether the clusters are within the top n% of enzymes
 % dense clusters.
-% 
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Inputs:
 %   vClusters: Cluster Information (stepsize, chromosome id, gene start,
 %              gene end, number of enzymes)
-%   vClusterBackground: Density information about the genome (window size, 
+%   vClusterBackground: Density information about the genome (window size,
 %                       number of enzymes, Occurrence of windowsize with
 %                       this many enzymes in the genome, occurence of
-%                       this windowsize in the genome, Frequency of seeing 
+%                       this windowsize in the genome, Frequency of seeing
 %                       a windowsize of this size with at least as many
 %                       enzymes in the genome)
 %   vTopPercentClusters: Clusters are labeled as being in the top n% if
@@ -3611,7 +3611,7 @@ function [vClusters_Top] = f_perform_cutoff(vClusters, vClusterBackground, vTopP
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% 
+%
 % Function that writes the genefile of PlantClusterFinder: TSV format,
 % first it includes the information that was stored in the gene location
 % file that was provided to Plantclusterfinder (Gene IDs, Gene Start, Gene
@@ -3623,7 +3623,7 @@ end
 % informatino whether the cluster was found to be in the top n% of
 % clsuters. This is followed by the information about the metabolic
 % domains, and the signature / tailoring information.
-% 
+%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
 % Inputs:
@@ -3697,7 +3697,7 @@ function f_write_Gene_Output(vGeneOutputFile, vGeneLocation2, vGeneLocation_Att,
         vG_LD_ClustIDs, vG_LD, vClusters, vClusters_Top, vR_MD, vRpgdb_Rmd, ...
         vSTClasses, vR_STClasses, vSigOrTail, vR_SigOrTail, vVerbose, vOutputType)
     vFIO = fopen(vGeneOutputFile, 'w');
-    
+
     %% Print Header
     %Gene Location
     fprintf(vFIO, '%s\t%s\t%s\t%s\t%s', vGeneLocation_Att{1,1:5});
@@ -3728,7 +3728,7 @@ function f_write_Gene_Output(vGeneOutputFile, vGeneLocation2, vGeneLocation_Att,
     %Signature Tailoring info
     fprintf(vFIO, '\tSignature Tailoring Enzyme Class\tSignature or Tailoring');
     fprintf(vFIO,'\n');
-    
+
     %% Print Data
     vNvi = size(vGeneLocation2.(char(vGeneLocation_Att(1,1))),1);
     for vi = 1:vNvi %Print all genes
@@ -3741,7 +3741,7 @@ function f_write_Gene_Output(vGeneOutputFile, vGeneLocation2, vGeneLocation_Att,
         fprintf(vFIO, '\t%s', char(vGeneLocation2.(char(vGeneLocation_Att(1,3)))(vi,1)));
         fprintf(vFIO, '\t%s', char(vGeneLocation2.(char(vGeneLocation_Att(1,6)))(vi,1)));
         fprintf(vFIO, '\t%s', char(vGeneLocation2.(char(vGeneLocation_Att(1,5)))(vi,1)));
-        
+
         %Compose Gene information (reactions, enzymes, local duplications...)
         vRXN_IDs = sum(vG2R(sum(vMapG_Gpgdb(vBiomG_G(vi,:),:),1)>0,:),1)>0;
         vRXN_IDs_find = find(vRXN_IDs);
@@ -3811,7 +3811,7 @@ function f_write_Gene_Output(vGeneOutputFile, vGeneLocation2, vGeneLocation_Att,
                 end
             else
                 fprintf(vFIO, '\t');
-            end 
+            end
         elseif strcmp(vOutputType,'verbose')
             for vj = 0:vFinalStepsize
                 vClustIDs = (vClusters(:,1) == vj) & (vClusters(:,2) <= vi) & (vi <= vClusters(:,3));
@@ -3835,7 +3835,7 @@ function f_write_Gene_Output(vGeneOutputFile, vGeneLocation2, vGeneLocation_Att,
             end
         end
         vSigOrTailString = '';
-        
+
         vSIGCol = strcmpi(vSigOrTail,'signature');
         vSIGTailCOls = sum(vR_SigOrTail(vRXN_IDs,:),1)>0;
         if sum(vSIGTailCOls(1,vSIGCol))>0
@@ -3880,7 +3880,7 @@ end
 %                setting) gives only top n% for the final stepsize. verbose
 %                gives all computed stepsize until the final stepsize. old
 %                gives at least 5 until the final stepsize.
-% 
+%
 % Outputs:
 %   None (File is generated with the path of the first input argument)
 function f_write_Cluster_Output(vClusterOutputFile, vClusters, vClusters_Top, vGeneLocation2, vGeneLocation_Att, vVerbose, vFinalStepsize, vOutputType)
@@ -3889,10 +3889,10 @@ function f_write_Cluster_Output(vClusterOutputFile, vClusters, vClusters_Top, vG
         error('OutputType has to either be simple or verbose')
     end
     vFIO = fopen(vClusterOutputFile, 'w');
-    
+
     %Print Header
     fprintf(vFIO, 'Stepsize\tClusterID\tTop n%% cluster\tChromosome\tStart bp\tEnd bp\tPhysical size bp\tNumber of genes\tNumber of Hypothetical genes\tnumber of Enzymes\tStart Gene\tEnd Gene\tGene IDs\n');
-    
+
     %Print Data
     vNvi = size(vClusters,1);
     for vi = 1:vNvi
@@ -3924,7 +3924,7 @@ end
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
-% Inputs: 
+% Inputs:
 %   vPGDB_FlatFileFolder: Full path to the folder where the flatfiles of
 %                         the species pgdb is stored.
 %   vMD_reactions_File: TSV of the metabolic domains of reactions. Check if
@@ -3954,8 +3954,8 @@ end
 %                       sure you have access to the file and folder. This
 %                       is the second Results output file that will be
 %                       generated.
-% 
-% Outputs: 
+%
+% Outputs:
 %   None (File checks only)
 function f_check_files_for_read_write(vPGDB_FlatFileFolder, vMD_reactions_File, vProtein_sequence_FastaFile, vGeneTranscriptProtein_mapping_File, vGeneLocation_File, vDNA_FastaFile, vSignatureTailorFile, vGeneOutputFile, vClusterOutputFile)
     vFIO = fopen([vPGDB_FlatFileFolder 'genes.dat']);
@@ -3963,67 +3963,67 @@ function f_check_files_for_read_write(vPGDB_FlatFileFolder, vMD_reactions_File, 
         error('Can not read %sgenes.dat\n', vPGDB_FlatFileFolder);
     end
     fclose(vFIO);
-    
+
     vFIO = fopen([vPGDB_FlatFileFolder 'proteins.dat']);
     if vFIO < 0
         error('Can not read %sproteins.dat\n', vPGDB_FlatFileFolder);
     end
     fclose(vFIO);
-    
+
     vFIO = fopen([vPGDB_FlatFileFolder 'enzrxns.dat']);
     if vFIO < 0
         error('Can not read %senzrxns.dat\n', vPGDB_FlatFileFolder);
     end
     fclose(vFIO);
-    
+
     vFIO = fopen([vPGDB_FlatFileFolder 'reactions.dat']);
     if vFIO < 0
         error('Can not read %sreactions.dat\n', vPGDB_FlatFileFolder);
     end
     fclose(vFIO);
-    
+
     vFIO = fopen(vMD_reactions_File);
     if vFIO < 0
         error('Can not read %s\n', vMD_reactions_File);
     end
     fclose(vFIO);
-    
+
     vFIO = fopen(vProtein_sequence_FastaFile);
     if vFIO < 0
         error('Can not read %s\n', vProtein_sequence_FastaFile);
     end
     fclose(vFIO);
-    
+
     vFIO = fopen(vGeneTranscriptProtein_mapping_File);
     if vFIO < 0
         error('Can not read %s\n', vGeneTranscriptProtein_mapping_File);
     end
     fclose(vFIO);
-    
+
     vFIO = fopen(vGeneLocation_File);
     if vFIO < 0
         error('Can not read %s\n', vGeneLocation_File);
     end
     fclose(vFIO);
-    
+
     vFIO = fopen(vDNA_FastaFile);
     if vFIO < 0
         error('Can not read %s\n', vDNA_FastaFile);
     end
     fclose(vFIO);
-    
+
     vFIO = fopen(vSignatureTailorFile);
     if vFIO < 0
         error('Can not read %s\n', vSignatureTailorFile);
     end
     fclose(vFIO);
-    
+
     vFIO = fopen(vGeneOutputFile, 'w');
     if vFIO < 0
         error('Can not read / write %s\n', vGeneOutputFile);
     end
     fclose(vFIO);
-    
+
     vFIO = fopen(vClusterOutputFile, 'w');
     if vFIO < 0
         error('Can not read / write %s\n', vClusterOutputFile);
@@ -4039,7 +4039,7 @@ end
 %
 % Inputs:
 %   None
-% 
+%
 % Outputs:
 %   None (Screen output)
 function f_display_help()
@@ -4047,7 +4047,7 @@ function f_display_help()
     for vi = 1:size(vCellHelp,1)
         fprintf('%s\n', char(vCellHelp(vi,1)));
     end
-    
+
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -4058,7 +4058,7 @@ end
 %
 % Inputs:
 %   None
-% 
+%
 % Outputs:
 %   vCellHelp: A cell array matrix containing the text that should be
 %              printed out by the function f_display_help()
@@ -4092,7 +4092,7 @@ vCellHelp = {'%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
              '%      with Ns. Previously, any intergenic region affected by at least one '; ...
              '%      N was evaluated for its length, and hypothetical genes were inserted '; ...
              '%      accordingly (See Schlapfer et al, PMID: 28228535). This led '; ...
-             '%      sometimes to unrealistic prevention of detecting gene clusters. It'; ... 
+             '%      sometimes to unrealistic prevention of detecting gene clusters. It'; ...
              '%      is unlikely that missing information about a single nucleotide would '; ...
              '%      (if it would be known) lead to the finding of multiple gene models. '; ...
              '%      Thus here we changed the code to insert 2 hypothetical genes only if '; ...
@@ -4338,14 +4338,14 @@ end
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
-% Inputs: 
+% Inputs:
 %   vFile: Full path to TSV file with header.
 %   vUnmaskedDNA: Option to ignore the error if you use unmasked DNA files.
 % Optional Inputs:
 %   'vSplitter': Use an alternative sign than tab ('\t') to split text into
 %                columns.
-% 
-% Outputs: 
+%
+% Outputs:
 %   vOutput: Matlabstructure with all the content of the TSV file.
 %            Different Columns are stored in different fields of the matlab
 %            structure.
@@ -4373,7 +4373,7 @@ function [vOutput, vHeader] = f_extract_results_with_header(vFile,varargin)
         vHeader(1,vi) = regexprep(vHeader(1,vi),'\/','_');
         vHeader(1,vi) = regexprep(vHeader(1,vi),'\-','_');
         vHeader(1,vi) = regexprep(vHeader(1,vi),'\.','_');
-        
+
         if sum(strcmp(vHeader(1,1:vi-1),vHeader(1,vi)))>0
             vj = 1;
             while sum(strcmp(vHeader(1,1:vi-1),[char(vHeader(1,vi)) '_' num2str(vj)]))>0
@@ -4386,7 +4386,7 @@ function [vOutput, vHeader] = f_extract_results_with_header(vFile,varargin)
         end
         vOutput.(char(vHeader(1,vi))) = cell(1,1);
     end
-        
+
     vLine = fgetl(vFIO);
     vW = 0;
     while ischar(vLine)
@@ -4411,14 +4411,14 @@ end
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
-% Inputs: 
+% Inputs:
 %   vFileIn: Full path to the _GAPOutput file that whould be analyzed
 %            (produced within PlantClusterFinder.
 %   vUnmaskedDNA: Option to ignore the error if you use unmasked DNA files.
 %   vVerbose: Tells the code on how much of output should be printed out to
 %             the screen. (0 = nothing, 1 = little, 2 = more, ...)
-% 
-% Outputs: 
+%
+% Outputs:
 %   None (File with list of sequencing gaps numbers is generated with
 %   ending _count)
 function f_analyze_PlantClusterGapFile(vFileIn, vUnmaskedDNA, vVerbose)
@@ -4457,13 +4457,13 @@ function f_analyze_PlantClusterGapFile(vFileIn, vUnmaskedDNA, vVerbose)
     end
     fclose(vFIN);
     vCounter = vCounter(1:vCounter_write,:);
-    
+
     if ~exist('vCounter','var') && vUnmaskedDNA == 0
         error('DNA fasta File does not have masked DNA.\nIf you want to ignore this error, use Option ''UnmaskedDNA 1''\n');
     elseif ~exist('vCounter','var')
         warning('DNA fasta File does not have masked DNA.\n You used Option ''UnmaskedDNA 1'' with the intention to use Unmasked DNA file.\n');
     end
-    
+
     [vFOUT,vFOUTERR] = fopen([vFileIn '_count.txt'],'w');
     if vFOUT == -1
         error('Tried to generate %s_count.txt file, error: %s\n', vFileIn, vFOUTERR);
@@ -4495,12 +4495,12 @@ end
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
-% Inputs: 
+% Inputs:
 %   vFile: PGDB Flat file that should be read in.
 %   vAttrib: Attributes of the PGDB Flat file that should be saved (all
 %            others are discarded.
-% 
-% Outputs: 
+%
+% Outputs:
 %   vOutput: Matlab structure with the contents of each attribute as a
 %            field of the matlab structure.
 %   vAttrib_Head: Fields of vOutput as cell arrays.
@@ -4547,7 +4547,7 @@ end
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
-% Inputs: 
+% Inputs:
 %   vGeneLocation2: Matlab structure about the gene location information,
 %                   generated in PlantClusterFinder function.
 %   vGeneLocation_Att: Describing the fields attributes of the Matlab
@@ -4559,8 +4559,8 @@ end
 %   vProtein_IDs: A cell array of all protein-IDs that are stored in the
 %                 protein fasta file. only active if
 %                 vRemoveNonProtLocations is 1. Else the array has no rows.
-% 
-% Outputs: 
+%
+% Outputs:
 %   vGeneLocation2: Matlab structure about the gene location information,
 %                   generated in PlantClusterFinder function.
 %   vBiomG_G: Maping between the Gene location file and the gene-IDs in the
@@ -4575,4 +4575,3 @@ function [vGeneLocation2, vBiomG_G] = f_Remove_non_protein_fasta_gene_locations(
     end
     vBiomG_G = vBiomG_G(vGeneLoc_in_Prot_F,:);
 end
-

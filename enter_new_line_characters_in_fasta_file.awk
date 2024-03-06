@@ -5,14 +5,14 @@ BEGIN{
   # Pascal Schlapfer, January 19th 2016
   # Input: none (takes a file as input)
   # Output: writing a new file to standard output.
- 
+
 	currentmode = 0; # Identifies whether the last line
 	                 # that was written, was a non-header
 					 # line.
 }
 {
-    
-    firstChar = substr($0,1,1); # Reading in the first 
+
+    firstChar = substr($0,1,1); # Reading in the first
 							    # Symbol of a line
     if ($firstChar ~ ">" ) { # If the line is a header line
 		if (currentmode == 1) { # If the previous line was a
