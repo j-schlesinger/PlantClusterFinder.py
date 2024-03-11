@@ -25,7 +25,7 @@ jobs:
     - name: Analysing the code with black, isort, mypy and flake8
       uses: ricardochaves/python-lint@v1.4.0
       with:
-        python-root-list: "src tests"
+        python-root-list: "src test"
         use-pylint: false
         use-pycodestyle: false
         use-flake8: false

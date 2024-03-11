@@ -30,7 +30,7 @@ Whether you're fixing a bug or implementing a feature, these are the guidelines 
 
 Your change should serve a single purpose, be tested and documented before your submit.
 ### Writing Your Code
-For style, Rye fmt is used. The linter `ruff` can be helpful while you're coding, or `black` when you're done.
+For style, `rye fmt` is used which relies on the linter `ruff` which can be helpful while you're coding.
 However, it can be easiest to just run `rye fmt` on your code before committing it.
 
 Docstrings are written using the [Google styleguide](https://github.com/google/styleguide/blob/gh-pages/pyguide.md#38-comments-and-docstrings) and
@@ -53,9 +53,12 @@ Test using `rye run pytest` and build using `rye build`.
 ## Submitting a change
 Quick checklist before writing a PR:
 - [ ] The branch I'm submitting only has one change
-- [ ] My code is clearly documented
+- [ ] My change is clearly documented using Google format docstrings
 - [ ] My code follows the style guide enforced by `rye fmt`
-- [ ] My change is tested
+- [ ] My code has no warnings flagged by `rye lint`
+- [ ] My code raises no errors from `mypy`
+- [ ] My imports are ordered according to `isort`
+- [ ] My change includes tests to verify it is working
 - [ ] All tests pass
 
 Create a new PR, if there is a bug/feature issue be sure to mention it in the PR.
