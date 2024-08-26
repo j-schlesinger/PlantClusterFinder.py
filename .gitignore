@@ -24,6 +24,8 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+.ipynb
+.ipynb_checkpoints/
 
 .env
 .venv

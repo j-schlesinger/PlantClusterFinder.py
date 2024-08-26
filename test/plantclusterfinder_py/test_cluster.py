@@ -29,7 +29,7 @@ def test_read_in_pgdb_flat():
     )
     assert isinstance(gene_df, pl.DataFrame)
     assert len(gene_df) == 2053
-    g4s_3028 = gene_df.filter(pl.col("PRODUCT") == ("G4S-3028-MONOMER"))
+    g4s_3028 = gene_df.filter(pl.col("PRODUCT").list.contains("G4S-3028-MONOMER"))
     assert len(g4s_3028) == 1
 
 

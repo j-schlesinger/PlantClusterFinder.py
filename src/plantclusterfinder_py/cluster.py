@@ -1,3 +1,4 @@
+import csv
 import logging
 import os
 
@@ -43,78 +44,24 @@ def label_reactions_with_sig_and_tail(
             list of types of enzymes, and mapping between reactions and
             enzyme classes as well as signature or tailoring enymes
     """
-
-    mtlb1 = """
-        %MATLAB code
-        vFIO = fopen(vSignatureTailorFile);
-        vLine = fgetl(vFIO);
-        vHeader = regexp(vLine,'\t','split');
-        vInit = 20000;
-        vSTdata = cell(vInit,size(vHeader,2));
-        vLine = fgetl(vFIO);
-        vL = 1;
-        while ischar(vLine)
-            vSplit = regexp(vLine,'\t','split');
-            vSTdata(vL,:) = vSplit;
-            vLine = fgetl(vFIO);
-            vL = vL +1;
-        end
-        fclose(vFIO);
-        vSTdata = vSTdata(1:(vL-1),:);
-
-        vSTClasses = unique(vSTdata(:,2));
-        vSigOrTail = unique(vSTdata(:,3));
-        vMatchSTClasses = false(size(vSTdata,1),size(vSTClasses,1));
-        vMatchSigOrTail = false(size(vSTdata,1),size(vSigOrTail,1));
-        for vi = 1:size(vSTdata,1)
-            vMatchSTClasses(vi,:) = strcmp(vSTClasses,vSTdata(vi,2));
-            vMatchSigOrTail(vi,:) = strcmp(vSigOrTail,vSTdata(vi,3));
-        end
-
-    """
-    # vSTdata_star_IDs = ~cellfun('isempty',regexp(vSTdata(:,1),'\.\*','once'));
-
-    mtlb2 = """
-        vSTdata_star = vSTdata(vSTdata_star_IDs,:);
-        vSTdata = vSTdata(~vSTdata_star_IDs,:);
-        vMatchSTClasses_star = vMatchSTClasses(vSTdata_star_IDs,:);
-        vMatchSTClasses = vMatchSTClasses(~vSTdata_star_IDs,:);
-        vMatchSigOrTail_star = vMatchSigOrTail(vSTdata_star_IDs,:);
-        vMatchSigOrTail = vMatchSigOrTail(~vSTdata_star_IDs,:);
-
-        vR_STClasses = false(size(vReactions_all.(char(vReactions_all_Att(1,1))),1),size(vSTClasses,1));
-        vR_SigOrTail = false(size(vReactions_all.(char(vReactions_all_Att(1,1))),1),size(vSigOrTail,1));
-        for vi = 1:size(vReactions_all.(char(vReactions_all_Att(1,1))),1)
-            vIDs = strcmp(vSTdata(:,1),vReactions_all.(char(vReactions_all_Att(1,1)))(vi,1));
-            for vj = 1:size(vReactions_all.(char(vReactions_all_Att(1,3))),2)
-                vIDs = vIDs | strcmp(vSTdata(:,1),regexprep(vReactions_all.(char(vReactions_all_Att(1,3)))(vi,vj),'^EC-',''));
-            end
-            vIDs_find = find(vIDs,1,'first');
-            if size(vIDs_find,1)>0
-                vR_STClasses(vi,:) = vMatchSTClasses(vIDs_find,:);
-                vR_SigOrTail(vi,:) = vMatchSigOrTail(vIDs_find,:);
-            end
-        end
-        vColSig = strcmpi(vSigOrTail,'signature');
-"""
-
-    #      vTemp = regexp(vSTdata_star(:,1),'\.\*','split');
-    matlab3 = """
-        for vi = 1:size(vTemp)
-            vTemp2 = vTemp{vi,1};
-            vSTdata_star(vi,1) = vTemp2(1,1);
-        end
-        for vi = 1:size(vSTdata_star,1)
-            vIDs = strncmpi(regexprep(vReactions_all.(char(vReactions_all_Att(1,3)))(:,1),'^EC-',''),vSTdata_star(vi,1),size(char(vSTdata_star(vi,1)),2));
-            for vj = 2:size(vReactions_all.(char(vReactions_all_Att(1,3))),2)
-                vIDs = vIDs | strncmpi(regexprep(vReactions_all.(char(vReactions_all_Att(1,3)))(:,vj),'^EC-',''),vSTdata_star(vi,1),size(char(vSTdata_star(vi,1)),2));
-            end
-            vIDs = vIDs & ~vR_SigOrTail(vColSig,:);
-            vR_STClasses(vIDs,vMatchSTClasses_star(vi,:)) = 1;
-            vR_SigOrTail(vIDs,vMatchSigOrTail_star(vi,:)) = 1;
-        end
-    end"""
-    pass
+    stdata = pl.read_csv(
+        vSignatureTailorFile,
+        has_header=True,
+        separator="\t",
+        encoding="ISO-8859-1",
+        truncate_ragged_lines=True,
+    )
+    cols = stdata.columns
+    stclasses = stdata[cols[1]].unique()
+    sigortail = stdata[cols[2]].unique()
+    rxn_class = stdata.to_pandas().groupby(cols[0])[cols[1]].apply(list).to_dict()
+    rxn_sig_or_tail = stdata.to_pandas().groupby(cols[0])[cols[2]].apply(list).to_dict()
+    return ReactionLabels(
+        STClasses=stclasses,
+        SigOrTail=sigortail,
+        Rxn_STClasses=rxn_class,
+        Rxn_SigOrTail=rxn_sig_or_tail,
+    )
 
 
 def compute_local_duplication(
@@ -123,7 +70,6 @@ def compute_local_duplication(
     vBiomG_G,
     vKbRangeLD,
     vGeneRangeLD,
-    vVerbose,
 ) -> pl.DataFrame:
     """
     ---------------------------------------------------------------------------
@@ -145,8 +91,6 @@ def compute_local_duplication(
         vGeneRangeLD: Number of genes that space two genes from each other.
                       Genes that have more than this many intervening genes
                       between themare not called local duplicates.
-        vVerbose: Tells the code on how much of output should be printed out to
-                  the screen. (0 = nothing, 1 = little, 2 = more, ...)
 
     Returns:
         DataFrame with the columns:
@@ -168,9 +112,24 @@ def compute_local_duplication(
         vG_LD_ClustIDs = cell(vNgenes,1);
         vGStartbp = str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,2)))));
         vGEndbp = str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,3)))));
+    """
+    n_genes = len(vGeneLocation2)
+    for row in vGeneLocation2:
+        logging.debug(
+            f"Checking local duplication of Gene {row.gene} of {len(vGeneLocation2)}"
+        )
+        if row[0].startswith("Hypothetical_Gene_"):
+            start_g = row - vGeneRangeLD - 1 if row < (vGeneRangeLD - 1) else 1
+            end_g = (
+                row + vGeneRangeLD + 1
+                if (row + vGeneRangeLD + 1) < n_genes
+                else n_genes
+            )
+        """
         for vi = 1:vNgenes
             if vVerbose >= 2
-                fprintf('Checking Local duplication of Gene %i of %i\n', vi, vNgenes);
+                fprintf(
+                    'Checking Local duplication of Gene %i of %i\n', vi, vNgenes);
             end
             if ~strncmp(vGeneLocation2.(char(vGeneLocation_Att(1,1)))(vi,1),'Hypothetical_Gene_',18)
                 vStartG = vi - vGeneRangeLD - 1;
@@ -181,6 +140,10 @@ def compute_local_duplication(
                 if vEndG > vNgenes
                     vEndG = vNgenes;
                 end
+        """
+        ids = np.array(n_genes, 1)
+
+    """
                 vIDs = false(vNgenes,1);
                 vIDs(vStartG:vEndG,1) = 1;
                 vIDs(vi,1) = 0;
@@ -307,7 +270,8 @@ def introduce_hypo_genes(
                     vNi = size(vSeqGaps,1);
                     for vi = vNi:-1:1
                         if vVerbose >= 2
-                            fprintf('Estimate number of gaps: %i of %i\n', vNi - vi + 1, vNi);
+                            fprintf('Estimate number of gaps: %i of %i\n',
+                                    vNi - vi + 1, vNi);
                         end
                         vBreakAfter(vi,1) = vInterChrom(vSeqGaps_5(vi,1),4);
 
@@ -316,7 +280,8 @@ def introduce_hypo_genes(
                         end
                     end
                 else
-                    error('vHypoAmount not defined, needs to be defined for InsertHypos = 1.');
+                    error(
+                        'vHypoAmount not defined, needs to be defined for InsertHypos = 1.');
                 end
             else
                 error('Not other option (>1) programmed.');
@@ -357,22 +322,27 @@ def introduce_hypo_genes(
 
             %Increase the size of all variables that are connected to the gene
             %locations.
-            vBiomG_G_3 = logical(spalloc(size(vBiomG_G,1) + sum(vHypoToPlace),size(vBiomG_G,2),size(vBiomG_G,2)*2));
+            vBiomG_G_3 = logical(spalloc(
+                size(vBiomG_G,1) + sum(vHypoToPlace),size(vBiomG_G,2),size(vBiomG_G,2)*2));
 
             %Populate the new gene location variable with the hypothetical genes.
             vEnd_GeneLocation2 = size(vGeneLocation2.(char(vGeneLocation_Att(1,1))),1);
             vEnd_GeneLocation3 = size(vGeneLocation3.(char(vGeneLocation_Att(1,1))),1);
             for vi = size(vSeqGaps,1):-1:1
                 if vVerbose >= 2
-                    fprintf('Populate hypothetical genes: %i of %i\n', vNi - vi + 1, vNi);
+                    fprintf('Populate hypothetical genes: %i of %i\n',
+                            vNi - vi + 1, vNi);
                 end
                 if vHypoToPlace(vBreakAfter_sort_ID(vi,1),1) ~= 0
-                    vStart_GeneLocation2 = vBreakAfter(vBreakAfter_sort_ID(vi,1),1) + 1;
-                    vStart_GeneLocation3 = vEnd_GeneLocation3 - (vEnd_GeneLocation2 - vStart_GeneLocation2);
+                    vStart_GeneLocation2 = vBreakAfter(
+                        vBreakAfter_sort_ID(vi,1),1) + 1;
+                    vStart_GeneLocation3 = vEnd_GeneLocation3 - \
+                        (vEnd_GeneLocation2 - vStart_GeneLocation2);
                     for vl = 1:vHypoToPlace(vBreakAfter_sort_ID(vi,1),1)
                         vPlaceLastGeneEnd = str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,3)))(vStart_GeneLocation2-1,1)));
                         vPlaceBetweenGenes = str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,2)))(vStart_GeneLocation2,1))) - vPlaceLastGeneEnd - 1;
-                        vPlaceToInsert = vPlaceLastGeneEnd + floor(vPlaceBetweenGenes/(vHypoToPlace(vBreakAfter_sort_ID(vi,1),1)+1)*vl);
+                        vPlaceToInsert = vPlaceLastGeneEnd + \
+                            floor(vPlaceBetweenGenes/(vHypoToPlace(vBreakAfter_sort_ID(vi,1),1)+1)*vl);
                         for vk = 1:size(vGeneLocation_Att,2)
                             vGeneLocation3.(char(vGeneLocation_Att(1,vk)))(vStart_GeneLocation3:vEnd_GeneLocation3,:) = ...
                             vGeneLocation2.(char(vGeneLocation_Att(1,vk)))(vStart_GeneLocation2:vEnd_GeneLocation2,:);
@@ -392,7 +362,8 @@ def introduce_hypo_genes(
                         end
                     end
                     if vVerbose >= 2
-                        fprintf('Inserting Hypothetical genes: Copy old %i to %i to new %i to %i\n', vStart_GeneLocation2, vEnd_GeneLocation2, vStart_GeneLocation3, vEnd_GeneLocation3);
+                        fprintf('Inserting Hypothetical genes: Copy old %i to %i to new %i to %i\n',
+                                vStart_GeneLocation2, vEnd_GeneLocation2, vStart_GeneLocation3, vEnd_GeneLocation3);
                     end
                     vBiomG_G_3(vStart_GeneLocation3:vEnd_GeneLocation3,:) = vBiomG_G(vStart_GeneLocation2:vEnd_GeneLocation2,:);
                     vIDs_to_change = vInterChrom(:,5)>vBreakAfter(vBreakAfter_sort_ID(vi,1),1);
@@ -400,7 +371,8 @@ def introduce_hypo_genes(
                     vIDs_to_change = vInterChrom(:,4)>vBreakAfter(vBreakAfter_sort_ID(vi,1),1);
                     vInterChrom(vIDs_to_change,4) = vInterChrom(vIDs_to_change,4) + vHypoToPlace(vBreakAfter_sort_ID(vi,1),1);
                     vEnd_GeneLocation2 = vStart_GeneLocation2-1;
-                    vEnd_GeneLocation3 = vStart_GeneLocation3-(1+vHypoToPlace(vBreakAfter_sort_ID(vi,1),1));
+                    vEnd_GeneLocation3 = vStart_GeneLocation3- \
+                        (1+vHypoToPlace(vBreakAfter_sort_ID(vi,1),1));
                 end
             end
             vStart_GeneLocation3 = 1;
@@ -500,11 +472,13 @@ def introduce_hard_breaks(
             %vMaxInterGeneDist_temp = vMultiplierInterGeneDist*vPercentileForMaxInterGeneDist;
             %Use 95% Percentile Cutoff Instead
             vMaxInterGeneDist_temp = prctile(vInterChrom(:,3)-vInterChrom(:,2)+1, vPercentileForMaxInterGeneDist);
-            fprintf('Percentile used for intergenic distance: %ibp\nClusters broken when spanning distance larger: %ibp.\n', vPercentileForMaxInterGeneDist, vMaxInterGeneDist_temp);
+            fprintf('Percentile used for intergenic distance: %ibp\nClusters broken when spanning distance larger: %ibp.\n',
+                    vPercentileForMaxInterGeneDist, vMaxInterGeneDist_temp);
             if vMaxInterGeneDist == -1
                 vMaxInterGeneDist = vMaxInterGeneDist_temp;
             else
-                vMaxInterGeneDist = min([vMaxInterGeneDist,vMaxInterGeneDist_temp]);
+                vMaxInterGeneDist = min(
+                    [vMaxInterGeneDist,vMaxInterGeneDist_temp]);
             end
         end
 
@@ -515,7 +489,8 @@ def introduce_hard_breaks(
             if vMaxInterGeneDist == -1
                 vMaxInterGeneDist = vMaxInterGeneDist_temp*vMaxInterGeneDistByMedian;
             else
-                vMaxInterGeneDist = min([vMaxInterGeneDist,vMaxInterGeneDist_temp*vMaxInterGeneDistByMedian]);
+                vMaxInterGeneDist = min(
+                    [vMaxInterGeneDist,vMaxInterGeneDist_temp*vMaxInterGeneDistByMedian]);
             end
         end
 
@@ -553,7 +528,8 @@ def introduce_hard_breaks(
                     vTempChrom(vj,1) = cellstr([char(vUniqueChrom(vi,1)) '_' num2str(vj)]);
                 end
                 for vj = size(vTempHardGaps,1):-1:1
-                    vBreakAfter = vInterChrom(str2num(char(vTempHardGaps(vj,5))),4);
+                    vBreakAfter = vInterChrom(
+                        str2num(char(vTempHardGaps(vj,5))),4);
                     vTemp_IDs = strcmp(vGeneLocation2.(char(vGeneLocation_Att(1,4)))(:,1),vUniqueChrom(vi,1));
                     vTemp_IDs(1:vBreakAfter) = 0;
                     vGeneLocation2.(char(vGeneLocation_Att(1,4)))(vTemp_IDs,1) = vTempChrom(vj + 1,1);
@@ -652,12 +628,14 @@ def annotate_sequencing_gaps(
         vMaxInit = 7000000;
         if ispc()
             if ~exist([vFile '_GAPOutput'], 'file') || vOverwriteSeqGapInfo
-                f_get_Sequencing_Gaps(vFile, vPara, vVerbose, vOverwriteSeqGapInfo, vUnmaskedDNA)
+                f_get_Sequencing_Gaps(
+                    vFile, vPara, vVerbose, vOverwriteSeqGapInfo, vUnmaskedDNA)
             end
         else
             [~,vOutput] = system(['ls' ' ' '''' vFile '_GAPOutput''']);
             if strncmp(vOutput,'ls: cannot access', 17) || vOverwriteSeqGapInfo
-                f_get_Sequencing_Gaps(vFile, vPara, vVerbose, vOverwriteSeqGapInfo, vUnmaskedDNA)
+                f_get_Sequencing_Gaps(
+                    vFile, vPara, vVerbose, vOverwriteSeqGapInfo, vUnmaskedDNA)
             end
         end
 
@@ -702,7 +680,8 @@ def annotate_sequencing_gaps(
         end
         vBadUniqueChrom = unique(vSeqGaps(~vHasGeneLocChrom,1));
         for vi = 1:size(vBadUniqueChrom,1)
-            warning('DNA Fasta file ''%s'' contains chromosomes or scaffolds not covered with the gene position file: %s\n', vFile, char(vBadUniqueChrom(vi,1)));
+            warning('DNA Fasta file ''%s'' contains chromosomes or scaffolds not covered with the gene position file: %s\n',
+                    vFile, char(vBadUniqueChrom(vi,1)));
         end
         vKillSeqGaps = vKillSeqGaps | ~vHasGeneLocChrom;
         vSeqGaps = vSeqGaps(~vKillSeqGaps,:);
@@ -723,8 +702,10 @@ def annotate_sequencing_gaps(
             else
                 vInterGeneLocationIDs_find = find(vInterGeneLocationIDs);
                 vSeqGaps(vi,5) = cellstr(num2str(vInterGeneLocationIDs_find));
-                vSeqGapsStart = max([vInterGeneLocation(vInterGeneLocationIDs_find,2),str2num(char(vSeqGaps(vi,3)))]);
-                vSeqGapsEnd = min([vInterGeneLocation(vInterGeneLocationIDs_find,3),str2num(char(vSeqGaps(vi,3))) + str2num(char(vSeqGaps(vi,4))) - 1]);
+                vSeqGapsStart = max([vInterGeneLocation(
+                    vInterGeneLocationIDs_find,2),str2num(char(vSeqGaps(vi,3)))]);
+                vSeqGapsEnd = min([vInterGeneLocation(vInterGeneLocationIDs_find,3),str2num(
+                    char(vSeqGaps(vi,3))) + str2num(char(vSeqGaps(vi,4))) - 1]);
                 vSeqGaps(vi,6) = cellstr(num2str(vSeqGapsStart));
                 vSeqGaps(vi,7) = cellstr(num2str(vSeqGapsEnd-vSeqGapsStart+1));
             end
@@ -766,15 +747,22 @@ def get_sequencing_gaps(
         if ispc()
             if vOverwriteSeqGapInfo == 1 || ~exist([vFile '_GAPOutput'], 'file')
                 fprintf('Finding sequencing gaps is only set up for linux. Please precompute the the sequencing gaps (masked stretches of DNA) (e.g. on linux server).\n');
-                fprintf('Please use the follwing commands on Linux (use which and programname to find your paths):\n');
+                fprintf(
+                    'Please use the follwing commands on Linux (use which and programname to find your paths):\n');
                 vAWK_install_path = 'awk_install_path';
-                fprintf('%s -f enter_new_line_characters_in_fasta_file.awk ''%s''>''%s_temp1''\n',vAWK_install_path, vFile, vFile);
-                fprintf('tr -d ''\r'' < ''%s_temp1''>''%s_temp2''\n', vFile, vFile);
-                fprintf('tr -d ''\n'' < ''%s_temp2''>''%s_temp3''\n', vFile, vFile);
-                fprintf('%s -f get_new_line_in.awk ''%s_temp3''>''%s_temp4''\n', vAWK_install_path, vFile, vFile);
-                fprintf('%s -f get_positions_of_gap.awk ''%s_temp4''>''%s_GAPOutput''\n', vAWK_install_path, vFile, vFile);
+                fprintf('%s -f enter_new_line_characters_in_fasta_file.awk ''%s''>''%s_temp1''\n',
+                        vAWK_install_path, vFile, vFile);
+                fprintf('tr -d ''\r'' < ''%s_temp1''>''%s_temp2''\n',
+                        vFile, vFile);
+                fprintf('tr -d ''\n'' < ''%s_temp2''>''%s_temp3''\n',
+                        vFile, vFile);
+                fprintf('%s -f get_new_line_in.awk ''%s_temp3''>''%s_temp4''\n',
+                        vAWK_install_path, vFile, vFile);
+                fprintf('%s -f get_positions_of_gap.awk ''%s_temp4''>''%s_GAPOutput''\n',
+                        vAWK_install_path, vFile, vFile);
                 fprintf('Once you have done this, please store the resulting %s_GAPOutput file in the accoring folder of the DNA fasta file and rerun Plantcluster finder.\n', vFile);
-                error('Run aborted because PC is used in combination with sequencing gap finding\n');
+                error(
+                    'Run aborted because PC is used in combination with sequencing gap finding\n');
             end
         else
             if vVerbose >= 1
@@ -792,7 +780,8 @@ def get_sequencing_gaps(
                 fprintf('Get information gaps in genomes.\n');
             end
             if vPara <= 1
-                f_run_awk_skripts(vFile, vAWK_install_path, vVerbose, vOverwriteSeqGapInfo);
+                f_run_awk_skripts(vFile, vAWK_install_path,
+                                  vVerbose, vOverwriteSeqGapInfo);
             else
                 %Split Files into scaffolds
                 vFile_ID = 1;
@@ -851,7 +840,8 @@ def get_sequencing_gaps(
             f_analyze_PlantClusterGapFile([vFile '_GAPOutput'], vUnmaskedDNA, vVerbose);
         else
             if vVerbose >= 1
-                fprintf('File %s exists, not overwritten.\n', ['''' vFile '_GAPOutput_count.txt''']);
+                fprintf('File %s exists, not overwritten.\n', [
+                        '''' vFile '_GAPOutput_count.txt''']);
             end
         end
     end"""
@@ -900,7 +890,8 @@ def run_awk_skripts(vFile, vAWK_install_path, vVerbose, vOverwriteSeqGapInfo) ->
             end
         else
             if vVerbose >= 1
-                fprintf('File %s exists, not overwritten.\n', ['''' vFile '_temp1''']);
+                fprintf('File %s exists, not overwritten.\n',
+                        ['''' vFile '_temp1''']);
             end
         end
         [~,vOutput] = system(['ls' ' ' '''' vFile '_temp2''']);
@@ -918,7 +909,8 @@ def run_awk_skripts(vFile, vAWK_install_path, vVerbose, vOverwriteSeqGapInfo) ->
             end
         else
             if vVerbose >= 1
-                fprintf('File %s exists, not overwritten.\n', ['''' vFile '_temp2''']);
+                fprintf('File %s exists, not overwritten.\n',
+                        ['''' vFile '_temp2''']);
             end
         end
         [~,vOutput] = system(['ls' ' ' '''' vFile '_temp3''']);
@@ -936,7 +928,8 @@ def run_awk_skripts(vFile, vAWK_install_path, vVerbose, vOverwriteSeqGapInfo) ->
             end
         else
             if vVerbose >= 1
-                fprintf('File %s exists, not overwritten.\n', ['''' vFile '_temp3''']);
+                fprintf('File %s exists, not overwritten.\n',
+                        ['''' vFile '_temp3''']);
             end
         end
 
@@ -955,7 +948,8 @@ def run_awk_skripts(vFile, vAWK_install_path, vVerbose, vOverwriteSeqGapInfo) ->
             end
         else
             if vVerbose >= 1
-                fprintf('File %s exists, not overwritten.\n', ['''' vFile '_temp4''']);
+                fprintf('File %s exists, not overwritten.\n',
+                        ['''' vFile '_temp4''']);
             end
         end
 
@@ -976,12 +970,14 @@ def run_awk_skripts(vFile, vAWK_install_path, vVerbose, vOverwriteSeqGapInfo) ->
             end
         else
             if vVerbose >= 1
-                fprintf('File %s exists, not overwritten.\n', ['''' vFile '_GAPOutput''']);
+                fprintf('File %s exists, not overwritten.\n',
+                        ['''' vFile '_GAPOutput''']);
             end
         end
         [status,msg,~] = fileattrib([vFile '_GAPOutput'],'+w +x','a');
         if status~= 1
-            fprintf('Could not change file attribute of %s\n', ['''' vFile '_GAPOutput''']);
+            fprintf('Could not change file attribute of %s\n',
+                    ['''' vFile '_GAPOutput''']);
             error('Message was %s', msg);
         end
     end"""
@@ -1016,7 +1012,8 @@ def get_metabolic_domains(
 
     """
         % MATLAB code
-        [vRxnMetaDom, vRxnMetaDom_Att] = f_extract_results_with_header(vGenesMetabolicDomains_File);
+        [vRxnMetaDom, vRxnMetaDom_Att] = f_extract_results_with_header(
+            vGenesMetabolicDomains_File);
         for vi = 1:size(vRxnMetaDom_Att,2)
             for vj = 1:size(vRxnMetaDom.(char(vRxnMetaDom_Att(1,vi))),2)
                 vRxnMetaDom.(char(vRxnMetaDom_Att(1,vi)))(:,vj) = strtrim(vRxnMetaDom.(char(vRxnMetaDom_Att(1,vi)))(:,vj));
@@ -1030,7 +1027,8 @@ def get_metabolic_domains(
 
         for vi = 1:size(vUnique_MD,1)
             if sum(strcmp(vMD_to_annotate, vUnique_MD(vi,1))) == 0
-                warning('Discarding metabolic domain information of %s\n', char(vUnique_MD(vi,1)));
+                warning('Discarding metabolic domain information of %s\n',
+                        char(vUnique_MD(vi,1)));
             end
         end
 
@@ -1081,7 +1079,8 @@ def read_MCL_clustering_file(
         if vRemoveNonProtLocations == 1
             vProtinit = 300000;
             vProtein_IDs = cell(vProtinit,1);
-            vFIO = fopen(regexprep(vProtein_sequence_FastaFile, regexptranslate('escape', '.MCLTAB.dump.I20'),''));
+            vFIO = fopen(regexprep(vProtein_sequence_FastaFile,
+                         regexptranslate('escape', '.MCLTAB.dump.I20'),''));
             vLine = fgetl(vFIO);
             vPID = 1;
             while ischar(vLine)
@@ -1133,13 +1132,15 @@ def read_MCL_clustering_file(
             if vVerbose >= 2
                 fprintf('MCL: process protein %i of %i\n', vi, nvMapP);
             end
-            vIDs = ~cellfun('isempty',regexp(vFile_Data, regexptranslate('escape', vMapP(vi,1)), 'once'));
+            vIDs = ~cellfun('isempty',regexp(
+                vFile_Data, regexptranslate('escape', vMapP(vi,1)), 'once'));
             vG_MCL(vMapG_MapP(:,vi)==1,vIDs) = 1;
         end
 
         for vi = 1:size(vMapG,1)
             if sum(vG_MCL(vi,:)) == 0
-                fprintf('Warning: %s seems not to be part of the MCL clustering.\n',char(vMapG(vi,1)));
+                fprintf(
+                    'Warning: %s seems not to be part of the MCL clustering.\n',char(vMapG(vi,1)));
             end
         end
     end"""
@@ -1188,29 +1189,40 @@ def get_MCL_clustering(
         % MATLAB code
         if ~exist([vProtein_sequence_FastaFile '.MCLTAB.dump.I20'],'file') || vOverwriteMCLClustering == 1
             if ispc()
-                fprintf('MCL clustering is only set up for linux. Please precompute the MCL clustering file (e.g. on linux server).\n');
-                fprintf('Please use the follwing commands on Linux (use which and programname to find your paths):\n');
+                fprintf(
+                    'MCL clustering is only set up for linux. Please precompute the MCL clustering file (e.g. on linux server).\n');
+                fprintf(
+                    'Please use the follwing commands on Linux (use which and programname to find your paths):\n');
                 vMakeblastdb_install_path = 'makeblastdb_install_path';
                 vBlastp_install_path = 'blastp_install_path';
                 vMcxload_install_path = 'mcxload_install_path';
                 vMcl_install_path = 'mcl_install_path';
                 vMcxdump_install_path = 'mcxdump_install_path';
-                fprintf('%s -in %s -dbtype prot -out %s.blastDB -hash_index\n',vMakeblastdb_install_path,vProtein_sequence_FastaFile,vProtein_sequence_FastaFile);
-                fprintf('%s -query %s -db %s.blastDB -evalue 1 -out %s.blastOUT -outfmt "6 qseqid sseqid evalue bitscore length pident qstart qend sstart send"\n', vBlastp_install_path, vProtein_sequence_FastaFile, vProtein_sequence_FastaFile, vProtein_sequence_FastaFile);
-                fprintf('cut -f 1,2,3 %s.blastOUT > %s.MCLIN\n', vProtein_sequence_FastaFile, vProtein_sequence_FastaFile);
-                fprintf('%s -abc %s.MCLIN --stream-mirror --stream-neg-log10 -stream-tf ''ceil(200)'' -o %s.MCLMATRIX -write-tab %s.MCLTAB\n',vMcxload_install_path, vProtein_sequence_FastaFile, vProtein_sequence_FastaFile, vProtein_sequence_FastaFile);
-                fprintf('%s %s.MCLMATRIX -I 2\n',vMcl_install_path, vProtein_sequence_FastaFile);
-                fprintf('%s -icl %s.MCLMATRIX.I20 -tabr %s.MCLTAB -o %s.MCLTAB.dump.I20\n', vMcxdump_install_path, vProtein_sequence_FastaFile, vProtein_sequence_FastaFile, vProtein_sequence_FastaFile);
-                fprintf('Please use a Protein fasta file that contains only protein Identifiers as headers.\n')
+                fprintf('%s -in %s -dbtype prot -out %s.blastDB -hash_index\n',
+                        vMakeblastdb_install_path,vProtein_sequence_FastaFile,vProtein_sequence_FastaFile);
+                fprintf('%s -query %s -db %s.blastDB -evalue 1 -out %s.blastOUT -outfmt "6 qseqid sseqid evalue bitscore length pident qstart qend sstart send"\n',
+                        vBlastp_install_path, vProtein_sequence_FastaFile, vProtein_sequence_FastaFile, vProtein_sequence_FastaFile);
+                fprintf('cut -f 1,2,3 %s.blastOUT > %s.MCLIN\n',
+                        vProtein_sequence_FastaFile, vProtein_sequence_FastaFile);
+                fprintf('%s -abc %s.MCLIN --stream-mirror --stream-neg-log10 -stream-tf ''ceil(200)'' -o %s.MCLMATRIX -write-tab %s.MCLTAB\n',
+                        vMcxload_install_path, vProtein_sequence_FastaFile, vProtein_sequence_FastaFile, vProtein_sequence_FastaFile);
+                fprintf('%s %s.MCLMATRIX -I 2\n',vMcl_install_path,
+                        vProtein_sequence_FastaFile);
+                fprintf('%s -icl %s.MCLMATRIX.I20 -tabr %s.MCLTAB -o %s.MCLTAB.dump.I20\n', vMcxdump_install_path,
+                        vProtein_sequence_FastaFile, vProtein_sequence_FastaFile, vProtein_sequence_FastaFile);
+                fprintf(
+                    'Please use a Protein fasta file that contains only protein Identifiers as headers.\n')
                 fprintf('Once you have done this, please give the %s.MCLTAB.dump.I20 as Filename for the proteinfasta file and use option ''MCLClusterFile'' 1 to start PlantClusterFinder.\n',vProtein_sequence_FastaFile);
-                error('Run aborted because PC is used in combination with MCL clustering');
+                error(
+                    'Run aborted because PC is used in combination with MCL clustering');
             end
 
             [~, vMakeblastdb_install_path] = system('which makeblastdb');
             if strncmp(vMakeblastdb_install_path,'/usr/bin/which: no makeblastdb',size('/usr/bin/which: no makeblastdb',2))
                 error('No makeblastdb installed. Abort.\n');
             else
-                vMakeblastdb_install_path = regexprep(vMakeblastdb_install_path,'\n','');
+                vMakeblastdb_install_path = regexprep(
+                    vMakeblastdb_install_path,'\n','');
             end
 
             [~, vBlastp_install_path] = system('which blastp');
@@ -1224,7 +1236,8 @@ def get_MCL_clustering(
             if strncmp(vMcxload_install_path,'/usr/bin/which: no mcxload',size('/usr/bin/which: no mcxload',2))
                 error('No mcxload installed. Abort.\n');
             else
-                vMcxload_install_path = regexprep(vMcxload_install_path,'\n','');
+                vMcxload_install_path = regexprep(
+                    vMcxload_install_path,'\n','');
             end
 
             [~, vMcl_install_path] = system('which mcl');
@@ -1238,7 +1251,8 @@ def get_MCL_clustering(
             if strncmp(vMcxdump_install_path,'/usr/bin/which: no mcxdump',size('/usr/bin/which: no mcxdump',2))
                 error('No mcxdump installed. Abort.\n');
             else
-                vMcxdump_install_path = regexprep(vMcxdump_install_path,'\n','');
+                vMcxdump_install_path = regexprep(
+                    vMcxdump_install_path,'\n','');
             end
 
             [~, ~] = system([vMakeblastdb_install_path ' ' '-in' ' ' vProtein_sequence_FastaFile ' ' '-dbtype prot -out' ' ' vProtein_sequence_FastaFile '.blastDB -hash_index']);
@@ -1315,7 +1329,8 @@ def map_pgdb_reactions_to_genes(vPGDB_FlatFileFolder, **kwargs) -> GenesToReacti
     )
     G2P = kwargs.get("G2P", ("UNIQUE-ID", "PRODUCT"))
     P2P = kwargs.get("P2P", ("UNIQUE-ID", "COMPONENTS"))
-    P2E = kwargs.get("P2E", ("CATALYZES", "COMPONENTS"))
+    # ("CATALYZES", "COMPONENTS"))
+    P2E = kwargs.get("P2E", ("ENZYME", "CATALYZES"))
     E2R = kwargs.get("E2R", ("REACTION", "UNIQUE-ID"))
     R2Pa = ("UNIQUE-ID", "ENZYMATIC-REACTION")
 
@@ -1369,14 +1384,14 @@ def map_pgdb_reactions_to_genes(vPGDB_FlatFileFolder, **kwargs) -> GenesToReacti
     for i in range(len(P_P)):
         P_P[i, i] = 1
     sum_old = -1
-    sum_new = sum(sum(P_P))
+    sum_new = sum(P_P)
     while sum_new != sum_old:
         sum_old = sum_new
         for i in range(len(P_P)):
             ids1 = P_P[i, :] == 1 or P_P[:, i].transpose == 1
             P_P[i, ids1] = 1
             P_P[ids1, i] = 1
-        sum_new = sum(sum(P_P))
+        sum_new = sum(P_P)
 
     log.info("Match proteins and protein complexes to enzymereactions")
     P_E = match_pgdb_flat(proteins_all, enzrxns_all, P2E)
@@ -1392,10 +1407,12 @@ def map_pgdb_reactions_to_genes(vPGDB_FlatFileFolder, **kwargs) -> GenesToReacti
         P2_ID = [sum(P_P[P_ID, :] > 0)]
         E_ID = [sum(P_E[P2_ID, :] > 0)]
         R_ID = [sum(E_R2[E_ID, :] > 0)]
-        gene2rxn[gene_all_id, R_ID]
+        gene2rxn[gene_all_id, R_ID] = 1
 
 
-def match_pgdb_flat(Flat1, Flat2, Matchings) -> dict:
+def match_pgdb_flat(
+    flat1: pl.DataFrame, flat2: pl.DataFrame, matchings: tuple[str, str]
+) -> dict:
     """
     ---------------------------------------------------------------------------
 
@@ -1413,7 +1430,37 @@ def match_pgdb_flat(Flat1, Flat2, Matchings) -> dict:
         F1_F2: A mapping between items of the first pgdb file to the second
                 one.
     """
-
+    if matchings[0] not in flat2.columns:
+        log.error(f"Matching column {
+                  matchings[0]} not in input data {flat2.columns}")
+        raise Exception("Column-matching Mismatch")
+    if matchings[1] not in flat1.columns:
+        log.error(f"Matching column {
+                  matchings[1]} not in input data {flat1.columns}")
+        raise Exception("Column-matching Mismatch")
+    if flat2[matchings[0]].dtype == pl.Null or flat1[matchings[1]].dtype == pl.Null:
+        log.warning(f"Cannot map {matchings[1]} to {
+                    matchings[0]}: dtype is Null")
+        log.info(f"Columns of flats are are {flat1.columns}, {flat2.columns}")
+        return {}
+    flat2 = (
+        flat2.explode(matchings[0]) if flat2[matchings[0]].dtype == pl.List else flat2
+    )
+    flat1 = (
+        flat1.explode(matchings[1]) if flat1[matchings[1]].dtype == pl.List else flat1
+    )
+    joined_dbs = flat1.join(
+        flat2,
+        left_on=matchings[1],
+        right_on=matchings[0],
+        suffix="_right",
+        validate="1:m",
+    )
+    right_hand = matchings[1]
+    if matchings[1] in flat2.columns:
+        right_hand += "_right"
+    print("SUCCESSFUL JOIN", joined_dbs)
+    return {x: y for x, y in joined_dbs[[matchings[0], right_hand]].iter_rows()}
     """
         % MATLAB code
         vF1_F2 = false(size(vFlat1.(char(vFlatAttri1(1,1))),1),...
@@ -1604,7 +1651,8 @@ def map_PGDBs_to_conversion_file(
             for vi = 1:size(vMapT,1)
                 for vj = 1:size(vGenesDat_GeneInfo,2)
                     if vVerbose >= 2
-                        fprintf('Conversion transcript-ID %i, pgdb-ID %i\n', vi, vj);
+                        fprintf(
+                            'Conversion transcript-ID %i, pgdb-ID %i\n', vi, vj);
                     end
                     for vk = 1:size(vGenes_all.(char(vGenesDat_GeneInfo(1,vj))),2)
                         vMapG_Gpgdb(vMapG_MapT(:,vi),strcmpi(vGenes_all.(char(vGenesDat_GeneInfo(1,vj)))(:,vk),vMapT(vi,1))) = 1;
@@ -1818,7 +1866,8 @@ def find_intergenic_regions(vGeneLocation2, vUniqueChrom, vVerbose) -> pl.DataFr
             vInterGeneEnd_old = 0;
             while sum(vChrStrand) > 0
                 if vVerbose >= 2
-                    fprintf('Chr/Scaff %i of %i, %i left, intergenic region %i\n', vi, vNi, sum(vChrStrand), vIC);
+                    fprintf('Chr/Scaff %i of %i, %i left, intergenic region %i\n',
+                            vi, vNi, sum(vChrStrand), vIC);
                 end
                 vInterGeneStart = find(vChrStrand,1,'first');
                 vChrStrandNOT = ~vChrStrand;
@@ -1831,7 +1880,8 @@ def find_intergenic_regions(vGeneLocation2, vUniqueChrom, vVerbose) -> pl.DataFr
 
                 %% I think here the correct gene is not identified (either the front or the latter gene....
                 vInterChrom(vIC,:) = [vi, vInterGeneStart + vInterGeneEnd_old, vInterGeneEnd + vInterGeneEnd_old, ...
-                    find(vTemp_IDs1 & vGene_end_bp + 1 == vInterGeneStart + vInterGeneEnd_old,1,'last'), ...
+                    find(vTemp_IDs1 & vGene_end_bp + 1 == vInterGeneStart + \
+                         vInterGeneEnd_old,1,'last'), ...
                     find(vTemp_IDs1 & vGene_start_bp - 1 == vInterGeneEnd + vInterGeneEnd_old,1,'first')];
                 vIC = vIC + 1;
                 vInterGeneEnd_old = vInterGeneEnd_old + vInterGeneEnd;
@@ -1867,7 +1917,8 @@ def map_genelocation_to_conversion_file(vgenelocation2, vmapg, vverbose) -> dict
         vni = size(vgenelocation2.(char(vgenelocation_att(1,1))),1);
         for vi = 1:size(vgenelocation2.(char(vgenelocation_att(1,1))),1)
             if vverbose >= 2
-                fprintf('map gene location to id conversion file %i of %i\n', vi, vni);
+                fprintf(
+                    'map gene location to id conversion file %i of %i\n', vi, vni);
             end
             vbiomg_g(vi,:) = strcmp(vmapg,vgenelocation2.(char(vgenelocation_att(1,1)))(vi,1));
         end
@@ -2013,7 +2064,8 @@ def perform_clustering(
             vi = 1;
             while vi <= size(vBiomG_E,1)
                 if vVerbose >= 2
-                    fprintf('Potential Gene start %i of %i\n', vi, size(vBiomG_E,1));
+                    fprintf('Potential Gene start %i of %i\n',
+                            vi, size(vBiomG_E,1));
                 end
                 vStart = vi - 1 + find(vBiomG_E(vi:end,1),1,'first');
                 vEnd = vStart;
@@ -2113,19 +2165,23 @@ def perform_clustering(
 
             % Compute background of clusters
             % Get all sizes of clusters of this round
-            [vClusterBackground, vClusterBackgroundWrite] = f_compute_background(vClusterBackground, vClusters, vClusterBackgroundWrite, vGeneLocation2, vGeneLocation_Att, vBiomG_E, vC_IDs);
+            [vClusterBackground, vClusterBackgroundWrite] = f_compute_background(
+                vClusterBackground, vClusters, vClusterBackgroundWrite, vGeneLocation2, vGeneLocation_Att, vBiomG_E, vC_IDs);
 
             % Evaluate clusters for criterion (stepsize found?)
             if vVerbose >= 2
                 if vCriterion == 1
-                    fprintf('Number of enzymes - number of non-enzymes in clustered genes: %i\n', sum(vClusters(vC_IDs,4))-(sum(vClusters(vC_IDs,3)-vClusters(vC_IDs,2)+1)-sum(vClusters(vC_IDs,4))));
+                    fprintf('Number of enzymes - number of non-enzymes in clustered genes: %i\n', sum(vClusters(
+                        vC_IDs,4))-(sum(vClusters(vC_IDs,3)-vClusters(vC_IDs,2)+1)-sum(vClusters(vC_IDs,4))));
                 elseif vCriterion == 3
-                    fprintf('Number of enzymes - number of non-enzymes (no hypos) - 2* number of hypos in clustered genes: %i\n', sum(vClusters(vC_IDs,4))-(sum(vClusters(vC_IDs,3)-vClusters(vC_IDs,2)+1)-sum(vClusters(vC_IDs,4))-sum(vClusters(vC_IDs,5)))-2*sum(vClusters(vC_IDs,5)))
+                    fprintf('Number of enzymes - number of non-enzymes (no hypos) - 2* number of hypos in clustered genes: %i\n', sum(vClusters(vC_IDs,4))-(
+                        sum(vClusters(vC_IDs,3)-vClusters(vC_IDs,2)+1)-sum(vClusters(vC_IDs,4))-sum(vClusters(vC_IDs,5)))-2*sum(vClusters(vC_IDs,5)))
                 elseif vCriterion == 4
                     if vStepSize ~= 0
                         fprintf('Number of clustes more than last stepsize: %i\n', size(vClusters(vC_IDs,1)) - size(vClusters(:,1)==vStepSize-1));
                     else
-                        fprintf('Number of clustes Stepsize 0: %i\n', size(vClusters(vC_IDs,1)));
+                        fprintf('Number of clustes Stepsize 0: %i\n',
+                                size(vClusters(vC_IDs,1)));
                     end
                 end
             end
@@ -2133,9 +2189,11 @@ def perform_clustering(
                 if vStepSize == vMaxStepSize
                     vContinueSearch = 0;
                     vFinalStepsize = vStepSize;
-                    fprintf('Warning: maximal step size reached: %i. Consider increasing this variable.\n', vMaxStepSize)
+                    fprintf(
+                        'Warning: maximal step size reached: %i. Consider increasing this variable.\n', vMaxStepSize)
                 elseif sum(vC_IDs)==0
-                    fprintf('Warning: no clusters found for stepsize %i.\n', vStepSize);
+                    fprintf(
+                        'Warning: no clusters found for stepsize %i.\n', vStepSize);
                 elseif sum(vClusters(vC_IDs,4))/sum(vClusters(vC_IDs,3)-vClusters(vC_IDs,2)+1)<0.5
                     if vContinueSearch == 1
                         vFinalStepsize = vStepSize-1;
@@ -2151,9 +2209,11 @@ def perform_clustering(
                 if vStepSize == vMaxStepSize
                     vContinueSearch = 0;
                     vFinalStepsize = vStepSize;
-                    fprintf('Warning: maximal step size reached: %i. Consider increasing this variable.\n', vMaxStepSize)
+                    fprintf(
+                        'Warning: maximal step size reached: %i. Consider increasing this variable.\n', vMaxStepSize)
                 elseif sum(vC_IDs)==0
-                    fprintf('Warning: no clusters found for stepsize %i.\n', vStepSize);
+                    fprintf(
+                        'Warning: no clusters found for stepsize %i.\n', vStepSize);
                 elseif sum(vClusters(vC_IDs,4))-(sum(vClusters(vC_IDs,3)-vClusters(vC_IDs,2)+1)-sum(vClusters(vC_IDs,4))-sum(vClusters(vC_IDs,5)))-2*sum(vClusters(vC_IDs,5)) < 0
                     if vContinueSearch == 1
                         vFinalStepsize = vStepSize-1;
@@ -2164,9 +2224,11 @@ def perform_clustering(
                 if vStepSize == vMaxStepSize
                     vContinueSearch = 0;
                     vFinalStepsize = vStepSize;
-                    fprintf('Warning: maximal step size reached: %i. Consider increasing this variable.\n', vMaxStepSize)
+                    fprintf(
+                        'Warning: maximal step size reached: %i. Consider increasing this variable.\n', vMaxStepSize)
                 elseif sum(vC_IDs)==0
-                    fprintf('Warning: no clusters found for stepsize %i.\n', vStepSize);
+                    fprintf(
+                        'Warning: no clusters found for stepsize %i.\n', vStepSize);
                 elseif size(vClusters(vC_IDs,1)) - size(vClusters(:,1)==vStepSize-1) < 0
                     if vContinueSearch == 1
                         vFinalStepsize = vStepSize-1;
@@ -2244,7 +2306,8 @@ def compute_background(
 
     """
         % MATLAB code
-         vBackgroundToCheck = unique(vClusters(vC_IDs,3)-vClusters(vC_IDs,2)+1);
+         vBackgroundToCheck = unique(
+             vClusters(vC_IDs,3)-vClusters(vC_IDs,2)+1);
          % Check which backgrounds have already been produced and compute new backgrounds
          vi = 1;
          while vi <= size(vBackgroundToCheck,1)
@@ -2260,7 +2323,8 @@ def compute_background(
                  for vk = vClusterBackgroundWrite+vBackgroundToCheck(vi,1):-1:vClusterBackgroundWrite
                      vClusterBackground(vk,5) = sum(vClusterBackground(vk:vClusterBackgroundWrite+vBackgroundToCheck(vi,1),3))/vClusterBackground(vk,4);
                  end
-                 vClusterBackgroundWrite = vClusterBackgroundWrite + vBackgroundToCheck(vi,1) + 1;
+                 vClusterBackgroundWrite = vClusterBackgroundWrite + \
+                     vBackgroundToCheck(vi,1) + 1;
              end
              vi = vi + 1;
          end
@@ -2334,7 +2398,6 @@ def write_gene_output(
     vR_STClasses,
     vSigOrTail,
     vR_SigOrTail,
-    vVerbose,
     vOutputType,
 ) -> None:
     """
@@ -2360,8 +2423,6 @@ def write_gene_output(
                          first Results output file that will be generated.
         vGeneLocation2: DataFrame about the gene location information,
                         generated in PlantClusterFinder function.
-        vGeneLocation_Att: Describing the fields attributes of the Matlab
-                           structure vGeneLocation and vGeneLocation2.
         vFinalStepsize: Stepsize that was chosen by the criterion (clusters
                         contain in average more enzymes than non-enzymes).
         vStepSize_Max: Maximal stepsize that was computed.
@@ -2411,8 +2472,6 @@ def write_gene_output(
                     and so on.
         vR_SigOrTail: Mapping of Reactions in vReactions_all to the enzyme
                       types of vSigOrTail.
-        vVerbose: Tells the code on how much of output should be printed out to
-                  the screen. (0 = nothing, 1 = little, 2 = more, ...)
         vOutputType: Defines which type of output is given: simple (default
                      setting) gives only top n% for the final stepsize. verbose
                      gives all computed stepsize until the final stepsize. old
@@ -2421,35 +2480,48 @@ def write_gene_output(
     Returns:
         None (File is generated with the path of the first input argument)
     """
+    with open(vGeneOutputFile, "w") as fio:
+        writer = csv.writer(fio, separator="\t")
+        # write header
+        header = vGeneLocation2.columns[0:5] + [
+            "Enzyme",
+            "EC",
+            "RXN",
+            "Locally Duplicated",
+            "LD_ClusterIds",
+        ]
+        if vOutputType not in ["old", "simple", "verbose"]:
+            raise Exception(
+                "Output type not supported, options are 'old' 'simple' or 'verbose'"
+            )
+        elif vOutputType == "old":
+            for i in range(vStepSize_Max):
+                header += [
+                    f'{"CHOSEN " if i==vFinalStepsize else ""}Stepsize {i}',
+                    f'{"CHOSEN " if i==vFinalStepsize else ""}Stepsize {i}, Top {vTopPercentClusters}%',
+                ]
+        elif vOutputType == "simple":
+            header += [f"Stepsize {vFinalStepsize}, Top {vTopPercentClusters}%"]
+        elif vOutputType == "verbose":
+            for i in range(vStepSize_Max):
+                header += [
+                    f"Stepsize {i}",
+                    f"Stepsize {i}, Top {vTopPercentClusters}%",
+                ]
+        # metabolic domain info
+        header += vMD_to_annotate
+        header += ["Signature Tailoring Enzyme Class", "Signature or Tailoring"]
+
+        writer.writerow(header)
 
     """
         % MATLAB code
-        vFIO = fopen(vGeneOutputFile, 'w');
-
-        %% Print Header
         %Gene Location
         fprintf(vFIO, '%s\t%s\t%s\t%s\t%s', vGeneLocation_Att{1,1:5});
-        %Gene information
         fprintf(vFIO, '\tEnzyme\tEC\tRXN\tLocally Duplicated\tLD_ClusterIds');
-        %Clustering information
-        if strcmp(vOutputType,'old')
-            for vi = 0:vStepSize_Max
-                if vi == vFinalStepsize
-                    fprintf(vFIO, '\tCHOSEN Stepsize %i\tCHOSEN Stepsize %i, Top %i%%', vi, vi, vTopPercentClusters);
-                else
-                    fprintf(vFIO, '\tStepsize %i\tStepsize %i, Top %i%%', vi, vi, vTopPercentClusters);
-                end
-            end
-        elseif strcmp(vOutputType,'simple')
-            fprintf(vFIO, '\tStepsize %i, Top %i%%', vFinalStepsize, vTopPercentClusters);
-        elseif strcmp(vOutputType,'verbose')
-            for vi = 0:vFinalStepsize
-                fprintf(vFIO, '\tStepsize %i\tStepsize %i, Top %i%%', vi, vi, vTopPercentClusters);
-            end
-        else
-            error('Outputtype %s not supported.',vOutputType);
-        end
-        %Metabolic Domain info
+        for vi = 0:vFinalStepsize
+            fprintf(vFIO, '\tStepsize %i\tStepsize %i, Top %i%%',
+                    vi, vi, vTopPercentClusters);
         for vi = 1:size(vMD_to_annotate,1)
             fprintf(vFIO, '\t%s', char(vMD_to_annotate(vi,1)));
         end
@@ -2476,7 +2548,8 @@ def write_gene_output(
             vECstring = '';
             vRXNstring = '';
             if size(vRXN_IDs_find,2)>0
-                vRXNstring = char(vReactions_all.UNIQUE_ID(vRXN_IDs_find(1,1),1));
+                vRXNstring = char(
+                    vReactions_all.UNIQUE_ID(vRXN_IDs_find(1,1),1));
                 if ~isempty(vReactions_all.(char(vReactions_all_Att(1,3))){vRXN_IDs_find(1,1),1})
                     vECstring = char(vReactions_all.(char(vReactions_all_Att(1,3)))(vRXN_IDs_find(1,1),1));
                 end
@@ -2514,7 +2587,8 @@ def write_gene_output(
             vECstring = regexprep(vECstring, ', $', '');
             vECstring = regexprep(vECstring, '^, ', '');
             % Print gene information.
-            fprintf(vFIO, '\t%i\t%s\t%s', vBiomG_E(vi,1), vECstring, vRXNstring);
+            fprintf(vFIO, '\t%i\t%s\t%s', vBiomG_E(
+                vi,1), vECstring, vRXNstring);
             if isempty(vG_LD_ClustIDs{vi,1})
                 vG_LD_ClustIDs(vi,1) = cellstr('');
             end
@@ -2645,7 +2719,8 @@ def write_cluster_output(
                 fprintf(vFIO, '%i\t%s\t%i\t%s', vClusters(vi,1), ['C' num2str(vi)], vClusters_Top(vi,1), char(vGeneLocation2.(char(vGeneLocation_Att(1,6)))(vClusters(vi,2),1)));
                 vStartbp = min([str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,2)))(vClusters(vi,2):vClusters(vi,3),1)));str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,3)))(vClusters(vi,2):vClusters(vi,3),1)))]);
                 vEndbp = max([str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,2)))(vClusters(vi,2):vClusters(vi,3),1)));str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,3)))(vClusters(vi,2):vClusters(vi,3),1)))]);
-                fprintf(vFIO, '\t%i\t%i\t%i',vStartbp, vEndbp, vEndbp-vStartbp+1);
+                fprintf(vFIO, '\t%i\t%i\t%i',vStartbp,
+                        vEndbp, vEndbp-vStartbp+1);
                 fprintf(vFIO, '\t%i\t%i\t%i',vClusters(vi,3)-vClusters(vi,2)+1, sum(strncmp(vGeneLocation2.(char(vGeneLocation_Att(1,1)))(vClusters(vi,2):vClusters(vi,3)),'Hypothetical_Gene_',18)), vClusters(vi,4));
                 vClustersString = char(vGeneLocation2.(char(vGeneLocation_Att(1,1)))(vClusters(vi,2),1));
                 for vj = vClusters(vi,2)+1:vClusters(vi,3)
@@ -2811,7 +2886,8 @@ def analyze_plant_cluster_gap_file(vFileIn, vUnmaskedDNA, vVerbose) -> None:
 
         [vFOUT,vFOUTERR] = fopen([vFileIn '_count.txt'],'w');
         if vFOUT == -1
-            error('Tried to generate %s_count.txt file, error: %s\n', vFileIn, vFOUTERR);
+            error('Tried to generate %s_count.txt file, error: %s\n',
+                  vFileIn, vFOUTERR);
         end
         fprintf(vFOUT, 'Gapsize in bp\tNumber of Gaps\n');
         if exist('vCounter','var')
@@ -2853,22 +2929,31 @@ def read_in_pgdb_flat(pgdb_filename: str, attrib: tuple[str]) -> pl.DataFrame:
     # By encapsulating the parsing logic in a generator,
     #  it opens up the door to potentially deferring reading
     #  or simplifying asynchronous reading
-    def row_gen(fh, attrib):
+    def _row_gen(fh, attrib):
+        """
+        Generate a row from the pgdb flat file
+        """
         y = {att: None for att in attrib}
         for line in fh:
             if line.startswith("#"):
                 continue
             elif line.startswith("//"):
-                print(y)
                 yield y
                 y = {att: None for att in attrib}
                 continue
-            key, value = line.split(" - ")
-            if key in y:
-                y[key] = value.strip()
+            elif " - " in line:
+                key, *value = line.split(" - ")
+                value = (" - ".join(value)).strip()
+                if key in y:
+                    if key != "UNIQUE-ID" and y[key] is None:
+                        y[key] = [value]
+                    elif isinstance(y[key], list):
+                        y[key].append(value)
+                    else:
+                        y[key] = value
 
     with open(pgdb_filename, "r") as f:
-        pgdb_data = pl.DataFrame(list(row_gen(f, attrib)))
+        pgdb_data = pl.DataFrame(list(_row_gen(f, attrib)))
 
     return pgdb_data
 

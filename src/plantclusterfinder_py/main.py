@@ -778,7 +778,7 @@ def main():
             vReactions_all,
             vReactions_all_Att,
             vG2R,
-        ) = map_pgdb_reactions_to_genes(vPGDB_FlatFileFolder, verbose_level)
+        ) = map_pgdb_reactions_to_genes(vPGDB_FlatFileFolder)
         vPartFinished = 2
         if vTempsaves == 1:
             vPartFinished = _tempsaves(locals())
