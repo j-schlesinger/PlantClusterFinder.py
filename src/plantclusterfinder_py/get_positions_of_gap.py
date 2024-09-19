@@ -82,7 +82,9 @@ def groupbyseq(input_list: list, output_path, amino_acid: str, chromosome: str):
                 start_index = str(cur_group[0] + 1)
                 length = str(len(cur_group))
                 op.write(" ".join([chromosome, amino_acid, start_index, length]) + "\n")
-            except TypeError or IndexError as e:
+            except TypeError as e:
+                log.error("Error", e, list(map(itemgetter(1), g)))
+            except IndexError as e:
                 log.error("Error", e, list(map(itemgetter(1), g)))
 
 

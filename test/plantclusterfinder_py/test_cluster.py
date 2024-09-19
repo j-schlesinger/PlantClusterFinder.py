@@ -2,6 +2,9 @@ import polars as pl
 
 # Part 1
 
+# globals
+pgdb_dir = "./csubellipsoidea/pgdb/csubellipsoideacyc/1.0/data"
+
 
 def test_read_in_conversion_file():
     """The conversion file defines the genes, proteins, and reactions
@@ -21,7 +24,6 @@ def test_read_in_conversion_file():
 def test_read_in_pgdb_flat():
     """Used by map_pgdb_reactions_to_genes"""
 
-    pgdb_dir = "./csubellipsoidea/pgdb/csubellipsoideacyc/1.0/data"
     from plantclusterfinder_py.cluster import read_in_pgdb_flat
 
     gene_df = read_in_pgdb_flat(
@@ -35,11 +37,34 @@ def test_read_in_pgdb_flat():
 
 def test_match_pgdb_flat():
     """Used by map_pgdb_reactions_to_genes"""
-    assert 1 == 0  # TEST INCOMPLETE
+    from plantclusterfinder_py.cluster import match_pgdb_flat, read_in_pgdb_flat
+
+    flat1_t = ["A", "B", "C", "D"]
+    flat2_t = ["A", "D", "B", "C"]
+    flat1 = pl.DataFrame([{"ID": i, "P": j} for i, j in enumerate(flat1_t)])
+    flat2 = pl.DataFrame([{"ID": j, "Q": i} for i, j in enumerate(flat2_t)])
+    matched = match_pgdb_flat(flat1, flat2, ("ID", "P"))
+    assert 4 == len(matched)
+
+    integration_flat1 = read_in_pgdb_flat(
+        pgdb_dir + "/genes.dat", ("UNIQUE-ID", "PRODUCT", "ACCESSION-1")
+    )
+    integration_flat2 = read_in_pgdb_flat(
+        pgdb_dir + "/proteins.dat", ("UNIQUE-ID", "CATALYZES", "COMPONENTS")
+    )
+    integration_matched = match_pgdb_flat(
+        integration_flat1, integration_flat2, ("UNIQUE-ID", "PRODUCT")
+    )
+    assert 2_053 == len(integration_matched)  # TEST INCOMPLETE
 
 
 def test_map_pgdb_reactions_to_genes():
-    assert 1 == 0  # TEST INCOMPLETE
+    from plantclusterfinder_py.cluster import map_pgdb_reactions_to_genes
+
+    mapping_G2R = map_pgdb_reactions_to_genes(pgdb_dir)
+    assert 1 == len(mapping_G2R.ReactionsAll)
+    assert 1 == len(mapping_G2R.GenesAll)
+    assert 1 == len(mapping_G2R.Gene2Rxn)
 
 
 # Part 3
@@ -53,12 +78,11 @@ def test_matchPGDBs_to_MDs():
 
 # part 4
 def test_label_reactions_with_sig_and_tail():
-    pgdb_dir = "./csubellipsoidea/pgdb/csubellipsoideacyc/1.0/data"
     reactions_dat = pgdb_dir + "/reactions.dat"
     test_signature_enzymes_tsv = "Inputs/scaffold-tailoring-reactions-05082016.tab"
     from plantclusterfinder_py.cluster import label_reactions_with_sig_and_tail
 
-    labeled_reaction = label_reactions_with_sig_and_tail(
+    _labeled_reaction = label_reactions_with_sig_and_tail(
         reactions_dat, test_signature_enzymes_tsv
     )
     assert 1 == 0  # TEST IMCOMPLETE
@@ -66,7 +90,23 @@ def test_label_reactions_with_sig_and_tail():
 
 # part 5
 def test_map_PGDBs_to_conversion_file():
-    assert 1 == 0  # TEST INCOMPLETE
+    from plantclusterfinder_py.cluster import (
+        map_PGDBs_to_conversion_file,
+        read_in_conversion_file,
+    )
+
+    # from plantclusterfinder_py.cluster_datatypes import Conversion
+
+    conversion = read_in_conversion_file(
+        "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
+    )
+    genes_all = pl.DataFrame()  # TODO
+    gene_info_from_genes_dat = [""]  # TODO
+    ids_to_map = "GTP"
+    pgdb_conversions_dict = map_PGDBs_to_conversion_file(
+        conversion, genes_all, gene_info_from_genes_dat, ids_to_map
+    )
+    assert 1 == len(pgdb_conversions_dict)  # TEST INCOMPLETE
 
 
 # part 6

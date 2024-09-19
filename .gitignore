@@ -37,3 +37,5 @@ venv.bak/
 
 .pyre/
 .idea/
+
+octave-workspace/

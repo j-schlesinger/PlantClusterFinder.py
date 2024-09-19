@@ -55,12 +55,14 @@ mypy-extensions==1.0.0
 nodeenv==1.8.0
     # via pre-commit
 numpy==1.26.3
+    # via pandas
     # via pyarrow
     # via scipy
 packaging==23.2
     # via black
     # via pytest
     # via sphinx
+pandas==2.2.2
 pathspec==0.12.1
     # via black
 pdoc==14.4.0
@@ -86,8 +88,12 @@ pygments==2.17.2
     # via pdoc
     # via sphinx
 pytest==8.0.1
+python-dateutil==2.9.0.post0
+    # via pandas
 pythoncyc==2.0.2
     # via plantclusterfinder-py
+pytz==2024.2
+    # via pandas
 pyyaml==6.0.1
     # via pre-commit
 requests==2.31.0
@@ -97,6 +103,8 @@ scipy==1.12.0
     # via plantclusterfinder-py
 setuptools==69.1.1
     # via nodeenv
+six==1.16.0
+    # via python-dateutil
 snowballstemmer==2.2.0
     # via sphinx
 sphinx==7.2.6
@@ -116,7 +124,10 @@ typing-extensions==4.10.0
     # via mypy
     # via pydantic
     # via pydantic-core
+tzdata==2024.1
+    # via pandas
 urllib3==2.2.0
     # via requests
+uv==0.3.3
 virtualenv==20.25.1
     # via pre-commit
