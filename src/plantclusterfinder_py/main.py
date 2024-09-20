@@ -3,8 +3,10 @@ import math
 import os
 import re
 from argparse import ArgumentParser, RawTextHelpFormatter
+from pathlib import Path
+from typing import Any
 
-from scipy.io import loadmat, savemat
+from scipy.io import loadmat, savemat  # type: ignore
 
 from plantclusterfinder_py.cluster import (
     annotate_enyme_info_to_gene_location,
@@ -63,7 +65,7 @@ def save(filename: str, *args, caller_locals: dict = {}):
         raise Exception("Does not support non-regexp save functions")
 
 
-def load(filename: str, *variables):
+def load(filename: str, *variables) -> dict[str, Any]:
     """
     ---
     Load list of variables from a PlantClusterFinder MATLAB file
@@ -82,7 +84,7 @@ def load(filename: str, *variables):
         return {x: y for x, y in loadmat(filename).items if x in variables}
 
 
-def _tempsaves(caller_locals: dict):
+def _tempsaves(caller_locals: dict) -> dict[str, Any]:
     """
     Perfrom temporary save for PlantClusterFinder between steps
     Args:
@@ -125,7 +127,7 @@ def _tempsaves(caller_locals: dict):
     return ret
 
 
-def main():
+def main() -> None:
     """
     PlantClusterFinder 1.3
     PlantClusterFinder (PCF) detects metabolic gene clusters in a sequenced
@@ -679,10 +681,10 @@ def main():
     vHypoAmount = args.HypoAmount
     vOutputType = args.OutputType
 
-    error_message = ""
+    error_message: list[str] = []
     if not os.path.isdir(vPGDB_FlatFileFolder):
-        error_message += (
-            "Argument -pgdb " + f"{vPGDB_FlatFileFolder} was not a dirctory\n"
+        error_message.append(
+            "Argument -pgdb " + f"{vPGDB_FlatFileFolder} was not a dirctory"
         )
     test_file = {
         vMD_reactions_File: "Metabolic domains reaction file (-rmdf)",
@@ -696,47 +698,49 @@ def main():
         vGeneOutputFile: "Gene Output file (-gout)",
         vClusterOutputFile: "Cluster Output file (-cout)",
     }
-    log.info("Check files for reading and writing\n")
+    log.info("Check files for reading and writing")
     for filename, err in test_file.items():
         if not os.path.isfile(filename):
-            error_message += f"Could not find {err} at {filename}.\n"
+            error_message.append(f"Could not find {err} at {filename}.")
             continue
         try:
             with open(filename, "r") as f:
                 pass
         except FileNotFoundError as _:
-            error_message += f"File {filename} is a file that could not be found.\n"
+            error_message.append(f"File {filename} is a file that could not be found.")
         except PermissionError:
-            error_message += (
-                f"You do not have permission to read the {err}"
-                + " file at {filename}\n"
+            error_message.append(
+                f"You do not have permission to read the {err}" + " file at {filename}"
             )
         except OSError as e:
-            error_message += f"Cannot read {err} {filename} because of {e}.\n"
+            error_message.append(f"Cannot read {err} {filename} because of {e}.")
     test_writable_file = {
         vGeneOutputFile: "Gene Output file (-gout)",
         vClusterOutputFile: "Cluster Output file (-cout)",
     }
     for filename, err in test_writable_file.items():
         if os.path.isfile(filename):
-            error_message += (
-                "File already exists at " + f"{filename}, ({err}). Cannot overwrite.\n"
+            error_message.append(
+                "File already exists at " + f"{filename}, ({err}). Cannot overwrite."
             )
             continue
         try:
             with open(filename, "a") as f:
                 pass
         except FileNotFoundError:
-            error_message += f"File {filename} is a file that could not be found.\n"
+            error_message.append(f"File {filename} is a file that could not be found.")
         except PermissionError:
-            error_message += (
+            error_message.append(
                 f"You do not have permission to write to the {err}"
-                + " file at {filename}\n"
+                + " file at {filename}"
             )
         except OSError as e:
-            error_message += "Cannot write to " + f"{err} {filename} because of {e}.\n"
-    if error_message != "":
-        log.error(error_message)
+            error_message.append(
+                "Cannot write to " + f"{err} {filename} because of {e}."
+            )
+    if len(error_message) != 0:
+        for message in error_message:
+            log.error(message)
         exit(1)
 
     vPartFinished = 0
@@ -744,44 +748,44 @@ def main():
     # Using scipy.io.savemat to save .mat files
     # Matlab save(filename,)
     if vTempsaves == 1:
-        vPartFinished = _tempsaves(locals())
+        vPartFinished = _tempsaves(locals())["vPartFinished"]
     if os.path.isfile(vGeneLocation_File + "_tempsave.mat") and vRunAfterPart != 0:
         vPartFinished_old = vPartFinished
-        vPartFinished = load([vGeneLocation_File, "_tempsave.mat"], "vPartFinished")[
-            "vPartFinished"
-        ]
+        vPartFinished = load(
+            "".join([vGeneLocation_File, "_tempsave.mat"]), "vPartFinished"
+        )["vPartFinished"]
         if vPartFinished >= vRunAfterPart:
-            locals().update(load([vGeneLocation_File, "_tempsave.mat"]))
+            locals().update(load("".join([vGeneLocation_File, "_tempsave.mat"])))
             vPartFinished = vRunAfterPart
         elif vTempsavesOverwrite == 1:
             vPartFinished = vPartFinished_old
             del vPartFinished_old
         else:
-            locals.update(load([vGeneLocation_File, "_tempsave.mat"]))
+            locals().update(load("".join([vGeneLocation_File, "_tempsave.mat"])))
             del vPartFinished_old
 
     # Part1 Read in Gene-Transcript-Protein File
     if vPartFinished < 1:
         log.info(
-            "Read in file describing gene-ID, transcript-ID, and protein-ID conversion\n"
+            "Read in file describing gene-ID, transcript-ID, and protein-ID conversion"
         )
         conversion = read_in_conversion_file(vGeneTranscriptProtein_mapping_File)
         vPartFinished = 1
         if vTempsaves == 1:
-            vPartFinished = _tempsaves(locals())
+            vPartFinished = _tempsaves(locals())["vPartFinished"]
 
     # Part 2: Map PGDB Gene-ids to reactions
     if vPartFinished < 2:
-        log.info("Read in pgdb flat files\n")
+        log.info("Read in pgdb flat files")
         # ( vGenes_all, _, vReactions_all, vReactions_all_Att, vG2R,)
         vG2R = map_pgdb_reactions_to_genes(vPGDB_FlatFileFolder)
         vPartFinished = 2
         if vTempsaves == 1:
-            vPartFinished = _tempsaves(locals())
+            vPartFinished = _tempsaves(locals())["vPartFinished"]
 
     # Part 3: Map PGDB reactions to metabolic domains
     if vPartFinished < 3:
-        log.info("Read in and map metabolic domains\n")
+        log.info("Read in and map metabolic domains")
         # (vRxnMetaDom, vRxnMetaDom_Att, vR_MD) =
         annotated_metabolic_domains = get_metabolic_domains(
             vMD_reactions_File, vMD_to_annotate
@@ -791,22 +795,22 @@ def main():
         #    vG2R.Gene2Rxn, vR_MD, vG2R.ReactionsAll,  # vReactions_all, vRxnMetaDom,)
         vPartFinished = 3
         if vTempsaves == 1:
-            vPartFinished = _tempsaves(locals())
+            vPartFinished = _tempsaves(locals())["vPartFinished"]
 
     # Part 4: Label Reactions with signature and tailoring
     if vPartFinished < 4:
-        log.info(["Label reactions with signature and tailoring information\n"])
+        log.info(["Label reactions with signature and tailoring information"])
         # ( vSTClasses, vSigOrTail, vR_STClasses, vR_SigOrTail,)
         reaction_labels = label_reactions_with_sig_and_tail(
             vG2R.ReactionsAll, vSignatureTailorFile
         )
         vPartFinished = 4
         if vTempsaves == 1:
-            vPartFinished = _tempsaves(locals())
+            vPartFinished = _tempsaves(locals())["vPartFinished"]
 
     # % Map PGDB genes to Maping genes
     if vPartFinished < 5:
-        log.info("Map pgdb genes to conversion file gene-IDs\n")
+        log.info("Map pgdb genes to conversion file gene-IDs")
         vGenesDat_GeneInfo = vGenesDat_GeneInfo.replace("-", "_").upper()
         vMapG_Gpgdb = map_PGDBs_to_conversion_file(
             conversion,
@@ -816,14 +820,14 @@ def main():
         )
         vPartFinished = 5
         if vTempsaves == 1:
-            vPartFinished = _tempsaves(locals())
+            vPartFinished = _tempsaves(locals())["vPartFinished"]
 
     # % Create MCL clustering mapped to Maping genes
     if vPartFinished < 6:
         if vMCLClusterFile == 0:
             log.info(
                 "Create MCL clustering based on protein file"
-                + " and map cluster IDs to conversion gene-IDs\n"
+                + " and map cluster IDs to conversion gene-IDs"
             )
             # [vG_MCL, vProtein_IDs] =
             vG_MCL = get_MCL_clustering(
@@ -835,55 +839,57 @@ def main():
             )
         else:
             log.info(
-                "Read in MCL clustering and map cluster IDs to conversion gene-IDs\n"
+                "Read in MCL clustering and map cluster IDs to conversion gene-IDs"
             )
             vG_MCL = read_MCL_clustering_file(
-                f"{vProtein_sequence_FastaFile}.MCLTAB.dump.I20",
+                Path(f"{vProtein_sequence_FastaFile}.MCLTAB.dump.I20"),
                 conversion,
                 vRemoveNonProtLocations,
             )
         vPartFinished = 6
         if vTempsaves == 1:
-            vPartFinished = _tempsaves(locals())
+            vPartFinished = _tempsaves(locals())["vPartFinished"]
 
     # % Read in Gene Position File
     if vPartFinished < 7:
-        log.info("Read in gene position file\n")
-        vGeneLocation1 = extract_results_with_header(vGeneLocation_File)
-        log.debug("Gene Location File Attributes:\n")
+        log.info("Read in gene position file")
+        vGeneLocation1 = extract_results_with_header(vGeneLocation_File, vUnmaskedDNA)
+        log.debug("Gene Location File Attributes:")
         for i, attribute in enumerate(vGeneLocation1.columns):
-            log.debug("Attribute %i: %s\n", i, attribute)
+            log.debug("Attribute %i: %s", i, attribute)
             # Remove protein or transcript information
-            log.debug("Remove transcript information\n")
+            log.debug("Remove transcript information")
 
         vGeneLocation2 = remove_protein_transcript_info_from_genepositionfile(
             vGeneLocation1,
             conversion,
-            verbose_level,
         )
         del vGeneLocation1
         # Consolidate gene information (one entry per gene)
-        log.debug("Consolidate gene information\n")
+        log.debug("Consolidate gene information")
         (vUniqueChrom, vGeneLocation3) = consolidate_gene_info(vGeneLocation2)
         del vGeneLocation2
         # Sort genes according to their physical positon on the chromosomes
-        log.debug("Sort genes on the chromosomes\n")
-        vGeneLocation4 = sort_genes(vGeneLocation3, vUniqueChrom, verbose_level)
+        log.debug("Sort genes on the chromosomes")
+        vGeneLocation4 = sort_genes(
+            vGeneLocation3,
+            vUniqueChrom,
+        )
         del vGeneLocation3
         vPartFinished = 7
         if vTempsaves == 1:
-            vPartFinished = _tempsaves(locals())
-        vGeneLocation = locals.pop("vGeneLocation4")
+            vPartFinished = _tempsaves(locals())["vPartFinished"]
+        vGeneLocation = locals().pop("vGeneLocation4")
 
     # % Map Biomartfile to Gene Map
     if vPartFinished < 8:
-        log.info("Map gene location to conversion gene-IDs\n")
+        log.info("Map gene location to conversion gene-IDs")
         vBiomG_G = map_genelocation_to_conversion_file(vGeneLocation, conversion.MapG)
 
         # If chosen, remove gene position information about genes that are
         # not present in the protein fasta file.
         if vRemoveNonProtLocations == 1:
-            log.debug("Remove non-protein coding genes in gene locations.\n")
+            log.debug("Remove non-protein coding genes in gene locations.")
             (vGeneLocation, vBiomG_G) = remove_non_protein_fasta_gene_locations(
                 vGeneLocation,
                 conversion,
@@ -892,20 +898,20 @@ def main():
             )
         vPartFinished = 8
         if vTempsaves == 1:
-            vPartFinished = _tempsaves(locals())
+            vPartFinished = _tempsaves(locals())["vPartFinished"]
 
         # % Get places on genome that do not have genes encoded:
     if vPartFinished < 9:
-        log.info("Find intergenic regions\n")
+        log.info("Find intergenic regions")
         vInterChrom = find_intergenic_regions(vGeneLocation, vUniqueChrom)
         vPartFinished = 9
         if vTempsaves == 1:
-            vPartFinished = _tempsaves(locals())
+            vPartFinished = _tempsaves(locals())["vPartFinished"]
 
     # % Calculate percentile of gene size that should yield hypo genes
     if vPartFinished < 10:
         log.info(
-            "Calculate size of sequence gap that should be populated by hypothetical genes\n"
+            "Calculate size of sequence gap that should be populated by hypothetical genes"
         )
         vGeneLengthHypoMin = math.ceil(
             (vGeneLocation["gene end"] - vGeneLocation["gene start"]).quantile(
@@ -926,11 +932,11 @@ def main():
         """
         vPartFinished = 10
         if vTempsaves == 1:
-            vPartFinished = _tempsaves(locals())
+            vPartFinished = _tempsaves(locals())["vPartFinished"]
 
     # % Get sequencing gaps
     if vPartFinished < 11:
-        log.info("Identify sequencing gaps (bases encoded by N)\n")
+        log.info("Identify sequencing gaps (bases encoded by N)")
         if vGeneLengthHypoMin > 0 and vPreScreenGaps == 1:
             vSeqGaps = annotate_sequencing_gaps(
                 vDNA_FastaFile,
@@ -951,46 +957,42 @@ def main():
             )
             vPartFinished = 11
             if vTempsaves == 1:
-                vPartFinished = _tempsaves(locals())
+                vPartFinished = _tempsaves(locals())["vPartFinished"]
 
         # % Introduce Hardbreaks (split chromosomes)
     if vPartFinished < 12:
         if (
             vMaxInterGeneDist != -1
             or vMaxSeqGapSize != -1
-            or len(vSeqGapSizesChromBreak, 2) != 0
+            or len(vSeqGapSizesChromBreak) != 0
             or vPercentileForMaxInterGeneDist != -1
             or vMaxInterGeneDistByMedian != -1
         ):
-            log.info("Prevent clusters:\n")
+            log.info("Prevent clusters:")
         if vMaxSeqGapSize != -1:
             log.info(
-                "Prevent clusters spanning sequencing gaps longer or equal than %ibp\n",
+                "Prevent clusters spanning sequencing gaps longer or equal than %ibp",
                 vMaxSeqGapSize,
             )
         if len(vSeqGapSizesChromBreak) != 0:
-            vNumbers = str(vSeqGapSizesChromBreak[1, 1])
-            # FIXME: Validate vi is being set correctly
-            # FIXME: vNumbers is absolutely incorrect here
-            for vi in range(2, len(vSeqGapSizesChromBreak), 2):
-                vNumbers = vNumbers + ", " + str(vSeqGapSizesChromBreak(1, vi))
+            vNumbers = ", ".join(vSeqGapSizesChromBreak)
             log.info(
-                "Prevent clusters spanning sequencing gaps of length %sbp\n",
+                "Prevent clusters spanning sequencing gaps of length %sbp",
                 vNumbers,
             )
             if vMaxInterGeneDist != -1:
                 log.info(
-                    "Prevent clusters spanning intergenic distances longer or equal than %ibp\n",
+                    "Prevent clusters spanning intergenic distances longer or equal than %ibp",
                     vMaxInterGeneDist,
                 )
         if vPercentileForMaxInterGeneDist != -1:
             log.info(
-                "Prevent clusters spanning the top %i%% intergenic distances\n",
+                "Prevent clusters spanning the top %i%% intergenic distances",
                 vPercentileForMaxInterGeneDist,
             )
         if vMaxInterGeneDistByMedian != -1:
             log.info(
-                "Prevent clusters spanning intergenic distances longer or equal than %i * the median of gene sizes\n",
+                "Prevent clusters spanning intergenic distances longer or equal than %i * the median of gene sizes",
                 vMaxInterGeneDistByMedian,
             )
             # WARNING: Mutating vGeneLocation?
@@ -1010,12 +1012,12 @@ def main():
 
         vPartFinished = 12
         if vTempsaves == 1:
-            vPartFinished = _tempsaves(locals())
+            vPartFinished = _tempsaves(locals())["vPartFinished"]
 
     # % Populate Hypothetical genes
     if vPartFinished < 13:
         log.info(
-            "Introduce Hypothetical genes for gap" "s longer than %i bp\n",
+            "Introduce Hypothetical genes for gap" "s longer than %i bp",
             vGeneLengthHypoMin,
         )
         if vInsertHypos:
@@ -1025,7 +1027,7 @@ def main():
             else:
                 hard_breaks2 = introduce_hypo_genes(
                     hard_breaks1,
-                    vGeneLengthHypoMin,
+                    #  vGeneLengthHypoMin,
                     vBiomG_G,
                     vInsertHypos,
                     vHypoAmount,
@@ -1033,29 +1035,28 @@ def main():
 
         vPartFinished = 13
         if vTempsaves == 1:
-            vPartFinished = _tempsaves(locals())
+            vPartFinished = _tempsaves(locals())["vPartFinished"]
 
     # % Annotate Biomartfile with Enzymes (use Gene-protein mapping)
     if vPartFinished < 14:
-        log.info("Annotate gene location file with enzyme information\n")
+        log.info("Annotate gene location file with enzyme information")
         vBiomG_E = annotate_enyme_info_to_gene_location(
             vGeneLocation,
             vBiomG_G,
             vMapG_Gpgdb,
             vG2R,
-            verbose_level,
         )
         log.debug(
-            "Number of genes in location file identified as enzymes: %i\n",
-            sum(vBiomG_E),
+            "Number of genes in location file identified as enzymes: %i",
+            sum(vBiomG_E.values()),
         )
         vPartFinished = 14
         if vTempsaves == 1:
-            vPartFinished = _tempsaves(locals())
+            vPartFinished = _tempsaves(locals())["vPartFinished"]
 
     # % Compute LD information
     if vPartFinished < 15:
-        log.info("Compute local gene duplication per gene location\n")
+        log.info("Compute local gene duplication per gene location")
         # (vG_LD, vG_LD_ClustIDs) =
         local_duplications = compute_local_duplication(
             vGeneLocation,
@@ -1066,11 +1067,11 @@ def main():
         )
         vPartFinished = 15
         if vTempsaves == 1:
-            vPartFinished = _tempsaves(locals())
+            vPartFinished = _tempsaves(locals())["vPartFinished"]
 
     # % Perform clustering
     if vPartFinished < 16:
-        log.info("Perform clustering\n")
+        log.info("Perform clustering")
         # ( vClusters, vClusterBackground, vFinalStepsize, vStepSize_Max,)
         clusters = perform_clustering(
             vGeneLocation,
@@ -1088,19 +1089,19 @@ def main():
         )
         vPartFinished = 16
         if vTempsaves == 1:
-            vPartFinished = _tempsaves(locals())
+            vPartFinished = _tempsaves(locals())["vPartFinished"]
 
     # % Perform cutoff
     if vPartFinished < 17:
-        log.info("Perform cuttof at %i%%\n", vTopPercentClusters)
+        log.info("Perform cuttof at %i%%", vTopPercentClusters)
         vClusters_Top = perform_cutoff(clusters, vTopPercentClusters)
         vPartFinished = 17
         if vTempsaves == 1:
-            vPartFinished = _tempsaves(locals())
+            vPartFinished = _tempsaves(locals())["vPartFinished"]
 
     # % Produce Gene Outputfile
     if vPartFinished < 18:
-        log.info("Produce GeneOutputFile\n")
+        log.info("Produce GeneOutputFile")
         write_gene_output(
             vGeneOutputFile,
             vGeneLocation,
@@ -1116,16 +1117,15 @@ def main():
             annotated_metabolic_domains,
             vRpgdb_Rmd,
             reaction_labels,
-            verbose_level,
             vOutputType,
         )
         vPartFinished = 18
         if vTempsaves == 1:
-            vPartFinished = _tempsaves(locals())
+            vPartFinished = _tempsaves(locals())["vPartFinished"]
 
     # % Print cluster File
     if vPartFinished < 19:
-        log.info("Produce ClusterOutputFile\n")
+        log.info("Produce ClusterOutputFile")
         write_cluster_output(
             vClusterOutputFile,
             vGeneLocation,
@@ -1135,7 +1135,7 @@ def main():
         )
         vPartFinished = 19
         if vTempsaves == 1:
-            vPartFinished = _tempsaves(locals())
+            vPartFinished = _tempsaves(locals())["vPartFinished"]
 
     def help_content():
         """

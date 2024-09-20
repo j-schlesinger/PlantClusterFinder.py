@@ -2,6 +2,7 @@ import csv
 import logging
 import os
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import polars as pl
@@ -1803,7 +1804,7 @@ def remove_protein_transcript_info_from_genepositionfile(
 
 def consolidate_gene_info(
     vGeneLocation: pl.DataFrame,
-) -> tuple[pl.DataFrame, list[str]]:
+) -> tuple[list[str], pl.DataFrame]:
     """
     ---------------------------------------------------------------------------
 
@@ -1869,7 +1870,7 @@ def consolidate_gene_info(
             end
         end
     end"""
-    return (pl.DataFrame(), [])
+    return ([], pl.DataFrame())
 
 
 def sort_genes(vGeneLocation: pl.DataFrame, vUniqueChrom: list[str]) -> pl.DataFrame:
@@ -1985,7 +1986,7 @@ def find_intergenic_regions(
 
 
 def map_genelocation_to_conversion_file(
-    vGeneLocation: pl.DataFrame, vMapG: dict
+    vGeneLocation: pl.DataFrame, vMapG: set[str]
 ) -> dict:
     """
     ---------------------------------------------------------------------------
@@ -2021,7 +2022,10 @@ def map_genelocation_to_conversion_file(
 
 
 def annotate_enyme_info_to_gene_location(
-    vGeneLocation: pl.DataFrame, vBiomG_G: dict, vMapG_Gpgdb: dict, Gene2Rxn: dict
+    vGeneLocation: pl.DataFrame,
+    vBiomG_G: dict,
+    vMapG_Gpgdb: dict,
+    Gene2Rxn: GenesToReactions,
 ) -> dict[str, bool]:
     """
     ---------------------------------------------------------------------------
@@ -3054,7 +3058,7 @@ def remove_non_protein_fasta_gene_locations(
     vGeneLocation: pl.DataFrame,
     conversion: Conversion,
     vBiomG_G: dict,
-    vProtein_IDs: list[str],
+    vProtein_IDs: Optional[list[str]],
 ) -> tuple[pl.DataFrame, dict]:
     """
     ---------------------------------------------------------------------------
