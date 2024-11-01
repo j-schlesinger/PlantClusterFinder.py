@@ -1,5 +1,7 @@
 import polars as pl
+from collections import Counter
 from dataclasses import dataclass, field
+from plantclusterfinder_py.cluster_datatypes import Conversion
 
 @dataclass
 class GeneLoc:
@@ -22,10 +24,44 @@ class GeneLoc:
                 pl.when(pl.col(strand_col) == '+').then(pl.col(start_col)).otherwise(pl.col(end_col))
             ]
         )
+    
+    def map_to(self, conversion: Conversion, mapping_type: str):
+        """Map gene names to conversion.MapT and add a column 'Map_to_T'.
+        Args:
+            conversion (Conversion): An instance of Conversion containing gene sets (MapG, MapP, MapT).
+            mapping_type (str): The type of mapping to use ('G', 'P', or 'T').
+
+        Raises:
+            ValueError: If the selected gene set is empty or if mapping_type is invalid.
+        """
+
+        if mapping_type == 'G':
+            mapping_genes = conversion.MapG
+        elif mapping_type == 'P':
+            mapping_genes = conversion.MapP
+        elif mapping_type == 'T':
+            mapping_genes = conversion.MapT
+        else:
+            raise ValueError("Invalid mapping type! Choose 'G' for Gene, 'P' for Protein, or 'T' for Transcript.")
+        
+        # Check if the selected gene set is valid
+        if not mapping_genes:
+            raise ValueError(f"Selected mapping type '{mapping_type}' has no genes to map.")
+
+        # Count occurrences of each gene in the mapping_genes
+        gene_count = Counter(mapping_genes)
+
+        # Create a new column with the count of each gene
+        column_name = f"Map_to_{mapping_type}"  # Set the column name based on the mapping type
+        self.data = self.data.with_columns(
+            pl.col("gene name").map_dict(gene_count).fillna(0).cast(pl.Int32).alias(column_name)
+        )
 
     def __repr__(self):
         """Return a string representation of the DataFrame."""
         return self.data.__repr__()
+
+
 
 # Example usage
 if __name__ == "__main__":
