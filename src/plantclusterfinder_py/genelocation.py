@@ -5,6 +5,30 @@ from plantclusterfinder_py.cluster_datatypes import Conversion
 
 @dataclass
 class GeneLoc:
+    """
+    --------------------------------------------------------------------------------
+
+    A class for handling genomic data in tabular form using Polars DataFrame. This 
+    class provides functionality for loading genomic data, sorting genes, and mapping
+    gene names to specific gene sets such as Genes, Proteins, or Transcripts.
+
+    --------------------------------------------------------------------------------
+
+     Attributes:
+        file_path (str): The file path to the genomic data CSV file.
+        data (pl.DataFrame): The Polars DataFrame that stores the genomic data.
+
+    Methods:
+        __post_init__: Automatically loads the data from the file path into a Polars DataFrame.
+        __len__: Returns the number of rows (genes) in the DataFrame.
+        sort_genes: Sorts genes by chromosome and position (start or end) depending on strand orientation.
+        map_to: Maps gene names to a specified gene set (Gene, Protein, or Transcript) and adds a new column
+                with the mapping counts.
+        __repr__: Returns a string representation of the DataFrame for quick inspection.
+
+    Raises:
+        ValueError: If an invalid mapping type is provided or if the selected gene set is empty.
+    """
     file_path: str
     data: pl.DataFrame = field(init=False)
 
@@ -66,16 +90,18 @@ class GeneLoc:
 # Example usage
 if __name__ == "__main__":
     
-    gene_loc = GeneLoc(file_path='file_path')
+    gene_loc = GeneLoc(file_path='C:/Users/mainakd2/GitHub/PlantClusterFinder.py/csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt')
 
     # Get the length of the DataFrame
     print(f"Number of entries: {len(gene_loc)}")
 
+
     # Sort the genes
-    gene_loc.sort_genes(chromosome_col='chromosome', 
-                        start_col='gene_start', 
-                        end_col='gene_end', 
-                        strand_col='strand')
+    gene_loc.sort_genes(chromosome_col='Chromosome Name', 
+                        start_col='Gene Start', 
+                       end_col='Gene End', 
+                       strand_col='strand')
     
     # Display the sorted DataFrame
+    print("The unsorted dataframe:\n")
     print(gene_loc)
