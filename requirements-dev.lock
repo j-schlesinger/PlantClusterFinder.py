@@ -71,7 +71,7 @@ platformdirs==4.2.0
     # via virtualenv
 pluggy==1.4.0
     # via pytest
-polars==0.20.13
+polars==1.14.0
     # via plantclusterfinder-py
 pre-commit==3.6.2
 pyarrow==17.0.0

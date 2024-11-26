@@ -1,6 +1,7 @@
 import csv
 import logging
 import os
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -1008,39 +1009,26 @@ def get_metabolic_domains(
         AnnotatedMetabolicDomains object with all items stored in Metabolic domain file aw well as
             mappings for metabolic domains of interest described in `MD_to_annotate`.
     """
-    rxn_meta_dom = pl.read_csv(vGenesMetabolicDomains_File)
+    # TODO: Why does this file have \r EOL char?
+    rxn_meta_dom = (
+        pl.read_csv(vGenesMetabolicDomains_File, separator="\t", eol_char="\r")
+        .unpivot(
+            [f"Class{n+1}" for n in range(6)],
+            index=["Reaction ID", "Pathway"],
+            value_name="Metabolic Domain",
+        )
+        .filter(pl.col("Metabolic Domain") != "NA")
+        .select(pl.col("Reaction ID"), pl.col("Pathway"), pl.col("Metabolic Domain"))
+    )
 
-    # TODO: If I can combine the columns into one first, this wouldn't need a set
-    rxn_meta_dom_cols = rxn_meta_dom.columns
-    unique_md_set = set(rxn_meta_dom[rxn_meta_dom_cols[2]].unique())
-    for i in range(3, len(rxn_meta_dom_cols)):
-        unique_md_set = unique_md_set.union(rxn_meta_dom[rxn_meta_dom_cols[i]].unique())
-    unique_md = tuple(unique_md_set)
-    del unique_md_set
-
-    for md in unique_md:
-        if md != vMD_to_annotate:
-            log.warning("Discarding metabolic domain information of", md)
-    """
-
-        vR_MD = false(size(vRxnMetaDom.(char(vRxnMetaDom_Att(1,1))),1),size(vMD_to_annotate,1));
-        for vi = 1:size(vMD_to_annotate,1)
-            for vj = 3:size(vRxnMetaDom_Att,2)
-                vR_MD(strcmp(vRxnMetaDom.(char(vRxnMetaDom_Att(1,vj)))(:,1),vMD_to_annotate(vi,1)),vi) = 1;
-            end
-        end
-    end
-    """
-    # FIXME: verify this logic is correct
-    rxn_2_md = dict()
-    for vmd_value in vMD_to_annotate:
-        for j in rxn_meta_dom_cols:
-            rxn_2_md[j] = vmd_value
-    return AnnotatedMetabolicDomains(RxnMetaDom=rxn_meta_dom, Rxn2MetaDom=rxn_2_md)
+    return AnnotatedMetabolicDomains(
+        RxnMetaDom=rxn_meta_dom, Rxn2MetaDom=rxn_meta_dom.rows_by_key(key="Reaction ID")
+    )
 
 
 def read_MCL_clustering_file(
     vFile: Path,
+    vProtein_sequence_FastaFile: Path,
     conversion: Conversion,
     vRemoveNonProtLocations: bool,
 ) -> MclClusterData:
@@ -1076,6 +1064,14 @@ def read_MCL_clustering_file(
                          regexptranslate('escape', '.MCLTAB.dump.I20'),''));
             vLine = fgetl(vFIO);
             vPID = 1;
+        """
+    protein_ids = []
+    with open(vProtein_sequence_FastaFile, "r") as fasta_file:
+        for line in fasta_file:
+            if line.startswith(">"):
+                protein_ids.append(line[1:].strip())
+
+    _ = """
             while ischar(vLine)
                 if strncmp(vLine,'>',1)
                     vTempLine = regexp(vLine, ' ', 'split');
@@ -1095,53 +1091,25 @@ def read_MCL_clustering_file(
         end
     """
     # then
-    _ = """
-        vInitMax = 100000;
-        vFile_Data = cell(vInitMax,1);
-        vFIO = fopen(vFile);
-        vLine = fgetl(vFIO);
-        vL = 1;
-        if ischar(vLine)
-            vFile_Data(vL,1) = cellstr(vLine);
-        end
-        vLine = fgetl(vFIO);
-        vL = 2;
-        while ischar(vLine)
-            if vVerbose >= 2
-                fprintf('MCL_Line %i\n', vL);
-            end
-            if vL <= vInitMax
-                vFile_Data(vL,1) = cellstr(vLine);
-            else
-                vFile_Data = [vFile_Data; cellstr(vLine)];
-            end
-            vLine = fgetl(vFIO);
-            vL = vL + 1;
-        end
-        fclose(vFIO);
-        vFile_Data = vFile_Data(1:vL-1,1);
+    # init_max = 100_000
+    mcl_cluster_data = []
+    clusters_by_p: dict[str, list[int]] = dict()
+    with open(vFile, "r") as f:
+        for i, line in enumerate(f):
+            log.debug(f"MCL_Line {i}")
+            # if i <= init_max:
+            prots_in_cluster = line.strip().split()
+            mcl_cluster_data.append(prots_in_cluster)
+            for prot in prots_in_cluster:
+                clusters_by_p[prot] = clusters_by_p.get(prot, []) + [i]
 
-        vG_MCL = false(size(vMapG_MapP,1),vL-1);
-        nvMapP = size(vMapP,1);
-        for vi = 1:nvMapP
-            if vVerbose >= 2
-                fprintf('MCL: process protein %i of %i\n', vi, nvMapP);
-            end
-            vIDs = ~cellfun('isempty',regexp(
-                vFile_Data, regexptranslate('escape', vMapP(vi,1)), 'once'));
-            vG_MCL(vMapG_MapP(:,vi)==1,vIDs) = 1;
-        end
+    # gs = {p: conversion.MapP_MapG[p] for p in clusters_by_p.keys()}
+    clusters_by_g = {
+        conversion.MapP_MapG[p][0]: clust for p, clust in clusters_by_p.items()
+    }
+    proteins_list = list(clusters_by_p.keys())
 
-        for vi = 1:size(vMapG,1)
-            if sum(vG_MCL(vi,:)) == 0
-                fprintf(
-                    'Warning: %s seems not to be part of the MCL clustering.\n',char(vMapG(vi,1)));
-            end
-        end
-    end"""
-    return MclClusterData(
-        Gene2MCLClusters=dict(), Protein_IDs=[]
-    )  # FIXME: return value
+    return MclClusterData(Gene2MCLClusters=clusters_by_g, Protein_IDs=proteins_list)
 
 
 def get_MCL_clustering(
@@ -1216,11 +1184,13 @@ def get_MCL_clustering(
     app_path: dict[str, Path] = dict()
     for app in apps:
         # TODO: Get exit code?
-        output: str = os.execvp("which", [app])
-        if output.code > 0:
+        output: subprocess.CompletedProcess = subprocess.run(
+            ["which", app], capture_output=True
+        )
+        if output.returncode > 0:
             missing_apps.append(app)
         else:
-            app_path[app] = Path(output.text)
+            app_path[app] = Path(str(output.stdout, "utf-8").strip())
     if len(missing_apps) > 0:
         raise Exception(
             f"The following applications are not in $PATH: {', '.join(missing_apps)}"
@@ -1246,7 +1216,7 @@ def get_MCL_clustering(
         "-out",
         f"{vProtein_sequence_FastaFile}.blastOUT",
         "-outfmt",
-        "6 qseqid sseqid evalue bitscore length pident qstart qend sstart send",
+        "'6 qseqid sseqid evalue bitscore length pident qstart qend sstart send'",
     ]
     if vParallelize > 1:
         command_for["blastp"].extend(["-num_threads", str(vParallelize)])
@@ -1285,13 +1255,18 @@ def get_MCL_clustering(
     ]
 
     for app in apps:
-        print(f"{app_path[app]} {" ".join(command_for[app])}")
-        os.execvp(app_path[app], command_for[app])
+        log.info(f"{app_path[app]} {" ".join(command_for[app])}")
+        subprocess.run(
+            str(app_path[app]) + " " + " ".join(command_for[app]),
+            shell=True,
+            check=True,
+        )
 
     return read_MCL_clustering_file(
         Path(
             f"{vProtein_sequence_FastaFile}.{overwrite_dump_workaround}MCLTAB.dump.I20"
         ),
+        vProtein_sequence_FastaFile,
         conversion,
         vRemoveNonProtLocations,
     )
@@ -1355,11 +1330,12 @@ def map_pgdb_reactions_to_genes(
     _reactions_attributes = kwargs.get(
         "ReactionsAttributes", ("UNIQUE-ID", "ENZYMATIC-REACTION", "EC-NUMBER")
     )
-    G2P = kwargs.get("G2P", ("UNIQUE-ID", "PRODUCT"))
+    G2P = kwargs.get("G2P", ("PRODUCT", "UNIQUE-ID"))
     P2P = kwargs.get("P2P", ("UNIQUE-ID", "COMPONENTS"))
     # ("CATALYZES", "COMPONENTS"))
-    P2E = kwargs.get("P2E", ("ENZYME", "CATALYZES"))
+    P2E = kwargs.get("P2E", ("CATALYZES", "UNIQUE-ID"))
     E2R = kwargs.get("E2R", ("REACTION", "UNIQUE-ID"))
+    # R2E = kwargs.get("R2E", ("UNIQUE-ID", "REACTION"))
     # this was in the original code, but it's not used
     # R2Pa = ("UNIQUE-ID", "ENZYMATIC-REACTION")
 
@@ -1387,7 +1363,11 @@ def map_pgdb_reactions_to_genes(
 
     # Read in all attributes and store them
     log.info("Reading in genes.dat")
-    genes_all = read_in_pgdb_flat(vPGDB_FlatFileFolder / "genes.dat", genes_attributes)
+    genes_all = read_in_pgdb_flat(
+        vPGDB_FlatFileFolder / "genes.dat",
+        genes_attributes,
+        unique_keys=genes_attributes,
+    )
     log.info("Reading in proteins.dat")
     proteins_all = read_in_pgdb_flat(
         vPGDB_FlatFileFolder / "proteins.dat", proteins_attributes
@@ -1403,11 +1383,20 @@ def map_pgdb_reactions_to_genes(
 
     # Match flat files to each other
     log.info("Matching genes to proteins")
-    G2_P = match_pgdb_flat(genes_all, proteins_all, G2P)
+    G2_P = match_pgdb_flat(
+        genes_all, proteins_all, G2P, primary_id="GENE-ID", secondary_id="PROTIEN-ID"
+    )
     log.info("Matching proteins to protein-complexes")
-    P_P = match_pgdb_flat(proteins_all, proteins_all, P2P)
+    P_P = match_pgdb_flat(
+        proteins_all,
+        proteins_all,
+        P2P,
+        primary_id="PROTIEN-ID",
+        secondary_id="COMPONENTS",
+    )
 
-    # I'm not quite sure what this is for
+    # collect all proteins associated with a primary protein ID
+    _ = """
     for i in range(len(P_P)):
         P_P[i, i] = 1
     sum_old = -1
@@ -1419,32 +1408,51 @@ def map_pgdb_reactions_to_genes(
             P_P[i, ids1] = 1
             P_P[ids1, i] = 1
         sum_new = sum(P_P)
+    """
 
     log.info("Match proteins and protein complexes to enzymereactions")
-    P_E = match_pgdb_flat(proteins_all, enzrxns_all, P2E)
+    P_E = match_pgdb_flat(
+        proteins_all,
+        enzrxns_all,
+        P2E,
+        primary_id="PROTIEN-ID",
+        secondary_id="ENZYME-ID",
+    )
     log.info("Matching enzymereactions to reactions")
-    E_R2 = match_pgdb_flat(enzrxns_all, reactions_all, E2R)
+    E2_R = match_pgdb_flat(
+        enzrxns_all,
+        reactions_all,
+        E2R,
+        # R2_E = match_pgdb_flat(
+        #    reactions_all,
+        # enzrxns_all,
+        #        R2E,
+        primary_id="ENZYME-ID",
+        secondary_id="REACTION-ID",
+    )
 
     # Match Genes to reactions directly.
     log.info("Match genes to to reactions")
     # initialize matrix the size of [G2_P, E_R2]
-    # FIXME: change logic to use pl.DataFrame
-    gene2rxn = np.zeros((len(G2_P), len(E_R2)))
-    for gene_all_id in range(len(G2_P)):
-        P_ID = G2_P[gene_all_id, :] == 1
-        P2_ID = [sum(P_P[P_ID, :] > 0)]
-        E_ID = [sum(P_E[P2_ID, :] > 0)]
-        R_ID = [sum(E_R2[E_ID, :] > 0)]
-        gene2rxn[gene_all_id, R_ID] = 1
+    # gene2rxn = (
+    gene_prot = G2_P.join(P_P, on="PROTIEN-ID", validate="1:1")
+    gene_prot_enz = gene_prot.join(P_E, on="PROTIEN-ID")
+    gene_prot_enz_reaction = gene_prot_enz.join(E2_R, on="ENZYME-ID")
+    G2_R = gene_prot_enz_reaction.select(pl.col("GENE-ID"), pl.col("REACTION-ID"))
+    gene2rxn = G2_R.rows_by_key("GENE-ID")
 
     return GenesToReactions(
-        GenesAll=genes_all, ReactionsAll=reactions_all, Gene2Rxn=dict()
+        GenesAll=genes_all, ReactionsAll=reactions_all, Gene2Rxn=gene2rxn
     )
 
 
 def match_pgdb_flat(
-    flat1: pl.DataFrame, flat2: pl.DataFrame, matchings: tuple[str, str]
-) -> dict:
+    flat1: pl.DataFrame,
+    flat2: pl.DataFrame,
+    matchings: tuple[str, str],
+    primary_id: str = "UNIQUE-ID",
+    secondary_id: str = "UNIQUE-ID_right",
+) -> pl.DataFrame:
     """
     ---------------------------------------------------------------------------
 
@@ -1462,41 +1470,43 @@ def match_pgdb_flat(
         F1_F2: A mapping between items of the first pgdb file to the second
                 one.
     """
-    if matchings[1] not in flat1.columns:
+    if matchings[0] not in flat1.columns:
         log.error(f"Matching column {
-                  matchings[1]} not in input data {flat1.columns}")
+                  matchings[0]} not in input data {flat1.columns}, note the other table's columns are {flat2.columns}")
         raise Exception("Column-matching Mismatch")
-    if matchings[0] not in flat2.columns:
+    if matchings[1] not in flat2.columns:
         log.error(f"Matching column {
-                  matchings[0]} not in input data {flat2.columns}")
+                  matchings[1]} not in input data {flat2.columns}, note the other table's columns are {flat1.columns}")
         raise Exception("Column-matching Mismatch")
-    if flat1[matchings[1]].dtype == pl.Null or flat2[matchings[0]].dtype == pl.Null:
-        log.warning(f"Cannot map {matchings[0]} to {
-                    matchings[1]}: dtype is Null")
+    if flat1[matchings[0]].dtype == pl.Null:
+        log.error(f"Primary table join ID {[matchings[0]]} is null dtype, cannot join")
         log.info(f"Columns of flats are are {flat1.columns}, {flat2.columns}")
-        return {}
+        raise Exception("Column-matching Mismatch")
+    if flat2[matchings[1]].dtype == pl.Null:
+        log.warning(f"Cannot map {matchings[0]} to {
+                    matchings[1]}: dtype is Null, returning Null for second column")
+        log.info(f"Columns of flats are are {flat1.columns}, {flat2.columns}")
+        return flat1.select(
+            pl.col(matchings[0]).alias(primary_id), pl.lit(None).alias(secondary_id)
+        )
     flat2 = (
-        flat2.explode(matchings[0]) if flat2[matchings[0]].dtype == pl.List else flat2
+        flat2.explode(matchings[1]) if flat2[matchings[1]].dtype == pl.List else flat2
     )
     flat1 = (
-        flat1.explode(matchings[1]) if flat1[matchings[1]].dtype == pl.List else flat1
+        flat1.explode(matchings[0]) if flat1[matchings[0]].dtype == pl.List else flat1
     )
     joined_dbs = flat1.join(
         flat2,
-        left_on=matchings[1],
-        right_on=matchings[0],
+        left_on=matchings[0],
+        right_on=matchings[1],
         suffix="_right",
-        validate="1:m",
+        # validate="1:m",
     )
-    flat2_adjusted_columns = flat2.columns
-    for col in flat2_adjusted_columns:
-        if col in flat1.columns:
-            col += "_right"
-    flat1_id_col = flat1.columns[0]
     log.debug("SUCCESSFUL JOIN", joined_dbs)
-    return {
-        x: y for x, y in joined_dbs[[flat1_id_col] + flat2_adjusted_columns].iter_rows()
-    }
+    ret = joined_dbs.select(
+        pl.col("UNIQUE-ID").alias(primary_id), pl.col(matchings[0]).alias(secondary_id)
+    )
+    return ret
     """
         % MATLAB code
         vF1_F2 = false(size(vFlat1.(char(vFlatAttri1(1,1))),1),...
@@ -1542,20 +1552,18 @@ def read_in_conversion_file(
     Raises
     """
     conversion_data = pl.read_csv(
-        vGeneTranscriptProtein_mapping_File, separator="\t", dtypes=[pl.String] * 3
+        vGeneTranscriptProtein_mapping_File,
+        separator="\t",
+        schema_overrides={
+            x: pl.String for x in ["Gene Name", "Transcript Name", "Protein Name"]
+        },
     )
     column_names = conversion_data.columns
     conversion_len = len(conversion_data)
     log.debug(
         "Read in conversion data, %d rows, columns are %s", conversion_len, column_names
     )
-    conversion = Conversion(
-        MapG=set(conversion_data[column_names[0]].unique()),
-        MapT=set(conversion_data[column_names[1]].unique()),
-        MapP=set(conversion_data[column_names[2]].unique()),
-        MapG_MapT={x[0]: x[1] for x in conversion_data.iter_rows()},
-        MapG_MapP={x[0]: x[2] for x in conversion_data.iter_rows()},
-    )
+    conversion = Conversion(df=conversion_data)
     # Validate conversion before output
     # TODO: are unclean protein ID files an unrecoverable error?
     if len(conversion.MapG_MapT) < len(conversion.MapG):
@@ -1589,7 +1597,6 @@ def match_PGDBs_to_MDs(
     Gene2Rxn: GenesToReactions,
     annotated_metabolic_domains: AnnotatedMetabolicDomains,
 ) -> dict:
-    #    Gene2Rxn: pl.DataFrame, vR_MD: pl.DataFrame, reactions_all: pl.DataFrame, vRxnMetaDom: pl.DataFrame,) -> dict:
     """
     ---------------------------------------------------------------------------
 
@@ -1607,30 +1614,18 @@ def match_PGDBs_to_MDs(
 
     Returns:
         vRpgdb_Rmd: A mapping between reactions stored in the pgdb and the
-                    reactions given in the metabolic domain file
+                    reactions given in the metabolic domain file. Used by write_gene_output.
     """
 
-    _ = """
-        % MATLAB code
-
-        vRpgdb_Rmd = false(size(Gene2Rxn,2),size(vR_MD,1));
-        for vi = 1:size(vReactions_all.(char(vReactions_all_Att(1,1))),1)
-            vRpgdb_Rmd(vi,
-                strcmp(vRxnMetaDom.(char(vRxnMetaDom_Att(1,1)))
-                       ,vReactions_all.(char(vReactions_all_Att(1,1)))(vi,1))
-                    ) = 1;
-        end
-    end"""
-    rpgdb_rmd = dict()
-    # FIXME: rxn_meta_dom is now a DataFrame, should be used as such
-    for reaction in Gene2Rxn.ReactionsAll.iter_rows(named=True):
-        # key = strcmp(RxnMetaDom[0], reaction[0])  # what does strcmp do?
-        # I'm not certain if this is quite what I'm looking for
-        # I think I want a dict of UNIQUE-ID:reaction["Reaction"] in annotated_metabolic_domains.RxnMetaDom["Reaction"]
-        rpgdb_rmd[reaction["UNIQUE-ID"]] = (
-            annotated_metabolic_domains.RxnMetaDom["Reaction"] == reaction["Reaction"]
+    return (
+        Gene2Rxn.ReactionsAll.join(
+            annotated_metabolic_domains.RxnMetaDom,
+            left_on="UNIQUE-ID",
+            right_on="Reaction ID",
         )
-    return rpgdb_rmd
+        .select(pl.col("UNIQUE-ID").alias("REACTION-ID"), pl.col("Metabolic Domain"))
+        .rows_by_key(key="REACTION-ID")
+    )
 
 
 def map_PGDBs_to_conversion_file(
@@ -1662,65 +1657,47 @@ def map_PGDBs_to_conversion_file(
         A dictionary mapping between Genes in the conversion file and genes
                      stored in the pgdb genes.dat file.
     """
+    if vPGDBIdsToMap not in "GTP":
+        log.error("Invalid PGDBIdsToMap mapping value, valid values are G, T, and P")
+        raise Exception("Invalid Mapping Value")
 
-    _ = """
-        % MATLAB code
-        vPGDBIdsToMap_bin = false(3,1);
-        if ~isempty(regexp(vPGDBIdsToMap,'G','once'))
-            vPGDBIdsToMap_bin(1,1) = 1;
-        end
-        if ~isempty(regexp(vPGDBIdsToMap,'T','once'))
-            vPGDBIdsToMap_bin(2,1) = 1;
-        end
-        if ~isempty(regexp(vPGDBIdsToMap,'P','once'))
-            vPGDBIdsToMap_bin(3,1) = 1;
-        end
-    """
-    _ = """
-        vMapG_Gpgdb = false(size(vMapG,1),size(vGenes_all.(char(vGenesDat_GeneInfo(1,1))),1));
-        if vPGDBIdsToMap_bin(1,1) == 1
-            for vi = 1:size(vMapG,1)
-                for vj = 1:size(vGenesDat_GeneInfo,2)
-                    if vVerbose >= 2
-                        fprintf('Conversion gene-ID %i, pgdb-ID %i\n', vi, vj);
-                    end
-                    for vk = 1:size(vGenes_all.(char(vGenesDat_GeneInfo(1,vj))),2)
-                        vMapG_Gpgdb(vi,strcmpi(vGenes_all.(char(vGenesDat_GeneInfo(1,vj)))(:,vk),vMapG(vi,1))) = 1;
-                    end
-                end
-            end
-        end
-    """
-    _ = """
-        if vPGDBIdsToMap_bin(2,1) == 1
-            for vi = 1:size(vMapT,1)
-                for vj = 1:size(vGenesDat_GeneInfo,2)
-                    if vVerbose >= 2
-                        fprintf(
-                            'Conversion transcript-ID %i, pgdb-ID %i\n', vi, vj);
-                    end
-                    for vk = 1:size(vGenes_all.(char(vGenesDat_GeneInfo(1,vj))),2)
-                        vMapG_Gpgdb(vMapG_MapT(:,vi),strcmpi(vGenes_all.(char(vGenesDat_GeneInfo(1,vj)))(:,vk),vMapT(vi,1))) = 1;
-                    end
-                end
-            end
-        end
-    """
-    _ = """
-        if vPGDBIdsToMap_bin(3,1) == 1
-            for vi = 1:size(vMapP,1)
-                for vj = 1:size(vGenesDat_GeneInfo,2)
-                    if vVerbose >= 2
-                        fprintf('Conversion protein-ID %i, pgdb-ID %i\n', vi, vj);
-                    end
-                    for vk = 1:size(vGenes_all.(char(vGenesDat_GeneInfo(1,vj))),2)
-                        vMapG_Gpgdb(vMapG_MapP(:,vi),strcmpi(vGenes_all.(char(vGenesDat_GeneInfo(1,vj)))(:,vk),vMapP(vi,1))) = 1;
-                    end
-                end
-            end
-        end
-    end"""
-    return dict()  # FIXME: return value
+    gene_map = dict()
+    if "G" in vPGDBIdsToMap:
+        gene_map = (
+            Conversion.df.join(
+                vGenes_all, left_on="Gene Name", right_on=vGenesDat_GeneInfo[0]
+            )
+            .select(pl.col("Gene Name"), pl.col("UNIQUE-ID"))
+            .rows_by_key(key="UNIQUE-ID")
+        )
+
+    transcript_map = dict()
+    if "T" in vPGDBIdsToMap:
+        transcript_map = (
+            Conversion.df.join(
+                vGenes_all, left_on="Transcript Name", right_on=vGenesDat_GeneInfo[0]
+            )
+            .select(pl.col("Transcript Name"), pl.col("UNIQUE-ID"))
+            .rows_by_key(key="UNIQUE-ID")
+        )
+
+    protein_map = dict()
+    if "P" in vPGDBIdsToMap:
+        protein_map = (
+            Conversion.df.join(
+                vGenes_all, left_on="Protein Name", right_on=vGenesDat_GeneInfo[0]
+            )
+            .select(pl.col("Protein Name"), pl.col("UNIQUE-ID"))
+            .rows_by_key(key="UNIQUE-ID")
+        )
+
+    ret_keys = (
+        set(gene_map.keys()).union(protein_map.keys()).union(transcript_map.keys())
+    )
+    return {
+        x: gene_map.get(x, []) + transcript_map.get(x, []) + protein_map.get(x, [])
+        for x in ret_keys
+    }
 
 
 def remove_protein_transcript_info_from_genepositionfile(
@@ -2005,23 +1982,10 @@ def map_genelocation_to_conversion_file(
                 in the conversion file.
     """
 
-    _ = """
-    % MATLAB Code
-    %     vbiomg_g = false(size(vgenelocation2.(char(vgenelocation_att(1,1))),1),size(vmapg,1));
-        vbiomg_g = logical(spalloc(size(vgenelocation2.(char(vgenelocation_att(1,1))),1),size(vmapg,1),size(vgenelocation2.(char(vgenelocation_att(1,1))),1)*2));
-        vni = size(vgenelocation2.(char(vgenelocation_att(1,1))),1);
-        for vi = 1:size(vgenelocation2.(char(vgenelocation_att(1,1))),1)
-            if vverbose >= 2
-                fprintf(
-                    'map gene location to id conversion file %i of %i\n', vi, vni);
-            end
-            vbiomg_g(vi,:) = strcmp(vmapg,vgenelocation2.(char(vgenelocation_att(1,1)))(vi,1));
-        end
-    end"""
-    return dict()  # FIXME: Return value
+    return {g: g for g in vMapG if g in vGeneLocation.select(pl.col("Gene Name"))}
 
 
-def annotate_enyme_info_to_gene_location(
+def annotate_enzyme_info_to_gene_location(
     vGeneLocation: pl.DataFrame,
     vBiomG_G: dict,
     vMapG_Gpgdb: dict,
@@ -2065,6 +2029,12 @@ def annotate_enyme_info_to_gene_location(
             end
         end
     end"""
+    N = len(vGeneLocation)
+    for i in vGeneLocation:
+        log.debug(f"Annotate enzymes for gene {i} out of {N}")
+        # g_g_id = vBiomG_G[i]
+        # mapg_gpgdb = mapg_gpgdb[g_g_id]
+        # gene2rxn[mapg_gpgdb]
     return dict()  # FIXME: return value
 
 
@@ -3004,7 +2974,9 @@ def analyze_plant_cluster_gap_file(vFileIn: Path, vUnmaskedDNA: bool) -> None:
     end"""
 
 
-def read_in_pgdb_flat(pgdb_filename: Path, attrib: tuple[str]) -> pl.DataFrame:
+def read_in_pgdb_flat(
+    pgdb_filename: Path, attrib: tuple[str], unique_keys: tuple[str] = ("UNIQUE-ID",)
+) -> pl.DataFrame:
     """
     ---------------------------------------------------------------------------
 
@@ -3025,7 +2997,7 @@ def read_in_pgdb_flat(pgdb_filename: Path, attrib: tuple[str]) -> pl.DataFrame:
     # By encapsulating the parsing logic in a generator,
     #  it opens up the door to potentially deferring reading
     #  or simplifying asynchronous reading
-    def _row_gen(fh, attrib):
+    def _row_gen(fh, attrib, unique_keys):
         """
         Generate a row from the pgdb flat file
         """
@@ -3041,15 +3013,18 @@ def read_in_pgdb_flat(pgdb_filename: Path, attrib: tuple[str]) -> pl.DataFrame:
                 key, *value = line.split(" - ")
                 value = (" - ".join(value)).strip()
                 if key in y:
-                    if key != "UNIQUE-ID" and y[key] is None:
-                        y[key] = [value]
-                    elif isinstance(y[key], list):
-                        y[key].append(value)
+                    if y[key] is None:
+                        if key in unique_keys:
+                            y[key] = value
+                        else:
+                            y[key] = [value]
+                    elif not isinstance(y[key], list):
+                        y[key] = [y[key], value]
                     else:
-                        y[key] = value
+                        y[key].append(value)
 
-    with pgdb_filename.open() as f:
-        pgdb_data = pl.DataFrame(list(_row_gen(f, attrib)))
+    with open(pgdb_filename, "r") as f:
+        pgdb_data = pl.DataFrame(list(_row_gen(f, attrib, unique_keys)))
 
     return pgdb_data
 

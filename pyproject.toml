@@ -9,7 +9,7 @@ dependencies = [
     "scipy>=1.12.0",
     "pythoncyc>=2.0.2",
     "pydantic>=2.6.3",
-    "polars>=0.20.13",
+    "polars>=1.14.0",
     "pyarrow>=17.0.0",
 ]
 readme = "README.md"

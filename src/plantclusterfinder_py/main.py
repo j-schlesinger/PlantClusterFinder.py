@@ -9,7 +9,7 @@ from typing import Any
 from scipy.io import loadmat, savemat  # type: ignore
 
 from plantclusterfinder_py.cluster import (
-    annotate_enyme_info_to_gene_location,
+    annotate_enzyme_info_to_gene_location,
     annotate_sequencing_gaps,
     compute_local_duplication,
     consolidate_gene_info,
@@ -284,14 +284,14 @@ def main() -> None:
     parser.add_argument(
         "--GenesDat_GeneInfo",
         nargs="+",
-        default=["Unique-ID", "Accession-1", "Accession-2"],
+        default=["UNIQUE-ID", "ACCESSION-1", "ACCESSION-2"],
         type=str,
         action="extend",
         help="""
         Needs to be followed by a list of Attributes in
          genes.dat. Defines where gene ID information
          should be searched for.
-         Default is 'Unique-ID', 'Accession-1', 'Accession-2'""",
+         Default is 'UNIQUE-ID', 'ACCESSION-1', 'ACCESSION-2'""",
     )
     parser.add_argument(
         "--MCLClusterFile",
@@ -833,9 +833,9 @@ def main() -> None:
             vG_MCL = get_MCL_clustering(
                 vProtein_sequence_FastaFile,
                 conversion,
-                vPara,
                 vOverwriteMCLClustering,
                 vRemoveNonProtLocations,
+                vParallelize=vPara,
             )
         else:
             log.info(
@@ -843,6 +843,7 @@ def main() -> None:
             )
             vG_MCL = read_MCL_clustering_file(
                 Path(f"{vProtein_sequence_FastaFile}.MCLTAB.dump.I20"),
+                vProtein_sequence_FastaFile,
                 conversion,
                 vRemoveNonProtLocations,
             )
@@ -1040,7 +1041,7 @@ def main() -> None:
     # % Annotate Biomartfile with Enzymes (use Gene-protein mapping)
     if vPartFinished < 14:
         log.info("Annotate gene location file with enzyme information")
-        vBiomG_E = annotate_enyme_info_to_gene_location(
+        vBiomG_E = annotate_enzyme_info_to_gene_location(
             vGeneLocation,
             vBiomG_G,
             vMapG_Gpgdb,
