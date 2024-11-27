@@ -1475,13 +1475,13 @@ def match_pgdb_flat(
     if matchings[0] not in flat1.columns:
         log.error(
             f"Matching column {matchings[0]} not in input data"
-            + " {flat1.columns}, note the other table's columns are {flat2.columns}"
+            + f" {flat1.columns}, note the other table's columns are {flat2.columns}"
         )
         raise Exception("Column-matching Mismatch")
     if matchings[1] not in flat2.columns:
         log.error(
             f"Matching column {matchings[1]} not in input data"
-            + " {flat2.columns}, note the other table's columns are {flat1.columns}"
+            + f" {flat2.columns}, note the other table's columns are {flat1.columns}"
         )
         raise Exception("Column-matching Mismatch")
     if flat1[matchings[0]].dtype == pl.Null:
@@ -1489,8 +1489,10 @@ def match_pgdb_flat(
         log.info(f"Columns of flats are are {flat1.columns}, {flat2.columns}")
         raise Exception("Column-matching Mismatch")
     if flat2[matchings[1]].dtype == pl.Null:
-        log.warning(f"Cannot map {matchings[0]} to {
-                    matchings[1]}: dtype is Null, returning Null for second column")
+        log.warning(
+            f"Cannot map {matchings[0]} to {matchings[1]}"
+            + ": dtype is Null, returning Null for second column"
+        )
         log.info(f"Columns of flats are are {flat1.columns}, {flat2.columns}")
         return flat1.select(
             pl.col(matchings[0]).alias(primary_id), pl.lit(None).alias(secondary_id)
