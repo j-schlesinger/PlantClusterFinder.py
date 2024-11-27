@@ -170,7 +170,7 @@ def test_read_MCL_clustering_File():
         False,  # do not remove proteins
     )
     assert 9627 == len(mcl_cluster_data.Gene2MCLClusters)  # TEST INCOMPLETE
-    assert 9627 == len(mcl_cluster_data.Protein_IDs)  # TEST INCOMPLETE
+    assert 9_627 == len(mcl_cluster_data.Protein_IDs)  # TEST INCOMPLETE
 
 
 def test_get_MCL_clustering():
@@ -189,7 +189,7 @@ def test_get_MCL_clustering():
         False,  # remove protein locations
         vParallelize=1,
     )
-    assert 1 == len(mcl_cluster.Gene2MCLClusters)
+    assert 9_627 == len(mcl_cluster.Gene2MCLClusters)
 
 
 # part 7

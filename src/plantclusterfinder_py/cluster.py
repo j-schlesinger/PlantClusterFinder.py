@@ -1183,7 +1183,6 @@ def get_MCL_clustering(
     missing_apps: list[str] = []
     app_path: dict[str, Path] = dict()
     for app in apps:
-        # TODO: Get exit code?
         output: subprocess.CompletedProcess = subprocess.run(
             ["which", app], capture_output=True
         )
@@ -1244,6 +1243,8 @@ def get_MCL_clustering(
         f"{vProtein_sequence_FastaFile}.MCLMATRIX",
         "-I",
         "2",
+        "-o",
+        f"{vProtein_sequence_FastaFile}.MCLMATRIX.I20",
     ]
     overwrite_dump_workaround = "" if vOverwriteMCLClustering else f"{os.getpid()}."
     command_for["mcxdump"] = [
@@ -1472,12 +1473,16 @@ def match_pgdb_flat(
                 one.
     """
     if matchings[0] not in flat1.columns:
-        log.error(f"Matching column {
-                  matchings[0]} not in input data {flat1.columns}, note the other table's columns are {flat2.columns}")
+        log.error(
+            f"Matching column {matchings[0]} not in input data"
+            + " {flat1.columns}, note the other table's columns are {flat2.columns}"
+        )
         raise Exception("Column-matching Mismatch")
     if matchings[1] not in flat2.columns:
-        log.error(f"Matching column {
-                  matchings[1]} not in input data {flat2.columns}, note the other table's columns are {flat1.columns}")
+        log.error(
+            f"Matching column {matchings[1]} not in input data"
+            + " {flat2.columns}, note the other table's columns are {flat1.columns}"
+        )
         raise Exception("Column-matching Mismatch")
     if flat1[matchings[0]].dtype == pl.Null:
         log.error(f"Primary table join ID {[matchings[0]]} is null dtype, cannot join")
@@ -1695,8 +1700,11 @@ def map_PGDBs_to_conversion_file(
     ret_keys = (
         set(gene_map.keys()).union(protein_map.keys()).union(transcript_map.keys())
     )
+    # TODO: is there a way to just pass dataframes to result?
     return {
-        x: gene_map.get(x, []) + transcript_map.get(x, []) + protein_map.get(x, [])
+        x: list(gene_map.get(x, []))
+        + list(transcript_map.get(x, []))
+        + list(protein_map.get(x, []))
         for x in ret_keys
     }
 
