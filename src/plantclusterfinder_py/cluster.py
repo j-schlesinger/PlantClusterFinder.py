@@ -1257,7 +1257,7 @@ def get_MCL_clustering(
     ]
 
     for app in apps:
-        log.info(f"{app_path[app]} {" ".join(command_for[app])}")
+        log.info(f"{app_path[app]} {' '.join(command_for[app])}")
         subprocess.run(
             str(app_path[app]) + " " + " ".join(command_for[app]),
             shell=True,
