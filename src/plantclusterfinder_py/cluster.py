@@ -119,7 +119,7 @@ def compute_local_duplication(
     n_genes = len(vGeneLocation)
     for row in vGeneLocation.iter_rows(named=True):
         log.debug(
-            f"Checking local duplication of Gene {row["gene name"]} of {len(vGeneLocation)}"
+            f"Checking local duplication of Gene {row['gene name']} of {len(vGeneLocation)}"
         )
         if list(row.keys())[0].startswith("Hypothetical_Gene_"):
             _start_g = (
@@ -1192,8 +1192,9 @@ def get_MCL_clustering(
         else:
             app_path[app] = Path(str(output.stdout, "utf-8").strip())
     if len(missing_apps) > 0:
+        missing_apps_msg = ", ".join(missing_apps)
         raise Exception(
-            f"The following applications are not in $PATH: {', '.join(missing_apps)}"
+            f"The following applications are not in $PATH: {missing_apps_msg}"
         )
 
     command_for: dict[str, list[str]] = dict()
@@ -1233,7 +1234,7 @@ def get_MCL_clustering(
         "--stream-mirror",
         "--stream-neg-log10",
         "-stream-tf",
-        "ceil(200)",
+        "'ceil(200)'",
         "-o",
         f"{vProtein_sequence_FastaFile}.MCLMATRIX",
         "-write-tab",
@@ -1727,14 +1728,14 @@ def remove_protein_transcript_info_from_genepositionfile(
         **vGeneLocation**: DataFrame about the gene location information,
                        generated in PlantClusterFinder function.
     """
-    vGeneLocation["Map_to_T"] = vGeneLocation["gene name"].apply(
+    vGeneLocation["Map_to_T"] = vGeneLocation["gene name"].map_elements(
         lambda x: sum([1 for y in conversion.MapT if y == x])
     )
-    vGeneLocation["Map_to_P"] = vGeneLocation["gene name"].apply(
-        lambda x: sum([1 for y in conversion.MapT if y == x])
+    vGeneLocation["Map_to_P"] = vGeneLocation["gene name"].map_elements(
+        lambda x: sum([1 for y in conversion.MapP if y == x])
     )
-    vGeneLocation["Map_to_G"] = vGeneLocation["gene name"].apply(
-        lambda x: sum([1 for y in conversion.MapT if y == x])
+    vGeneLocation["Map_to_G"] = vGeneLocation["gene name"].map_elements(
+        lambda x: sum([1 for y in conversion.MapG if y == x])
     )
     if any(vGeneLocation["Map_to_G"] > 1):
         raise Exception(
@@ -1743,7 +1744,7 @@ def remove_protein_transcript_info_from_genepositionfile(
         )
 
     # FIXME: I'm not certain this logic is correct
-    vGeneLocation["Map_to_G"] = vGeneLocation["Map_to_G"].apply(
+    vGeneLocation["Map_to_G"] = vGeneLocation["Map_to_G"].map_elements(
         lambda x: 1 if sum(x) == 1 else sum([1 for y in conversion.MapG if y == x])
     )
     if any(vGeneLocation["Map_to_G"] > 1):

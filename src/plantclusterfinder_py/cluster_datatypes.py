@@ -1,7 +1,7 @@
-from typing import Optional
+from typing import Any, Optional
 
 import polars as pl
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel
 
 # import numpy as np
 
@@ -85,9 +85,8 @@ class GenesToReactions(BaseModel):
 class Conversion(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
     df: pl.DataFrame
-    _cache = dict()
+    _cache: dict[Any, Any] = dict()
 
-    @computed_field
     @property
     def MapG(self) -> set[str]:
         if "MapG" in self._cache:
@@ -96,7 +95,6 @@ class Conversion(BaseModel):
         self._cache["MapG"] = set(self.df.get_column("Gene Name").unique())
         return self._cache["MapG"]
 
-    @computed_field
     @property
     def MapT(self) -> set[str]:
         if "MapT" in self._cache:
@@ -105,7 +103,6 @@ class Conversion(BaseModel):
         self._cache["MapT"] = set(self.df.get_column("Transcript Name").unique())
         return self._cache["MapT"]
 
-    @computed_field
     @property
     def MapP(self) -> set[str]:
         if "MapP" in self._cache:
@@ -114,7 +111,6 @@ class Conversion(BaseModel):
         self._cache["MapP"] = set(self.df.get_column("Protein Name").unique())
         return self._cache["MapP"]
 
-    @computed_field
     @property
     def MapG_MapT(self) -> dict:
         if "MapG_MapT" in self._cache:
@@ -125,7 +121,6 @@ class Conversion(BaseModel):
         ).rows_by_key(key="Gene Name")
         return self._cache["MapG_MapT"]
 
-    @computed_field
     @property
     def MapG_MapP(self) -> dict:
         if "MapG_MapP" in self._cache:
@@ -137,7 +132,6 @@ class Conversion(BaseModel):
         ).rows_by_key(key="Gene Name")
         return self._cache["MapG_MapP"]
 
-    @computed_field
     @property
     def MapP_MapG(self) -> dict:
         if "MapP_MapG" in self._cache:
