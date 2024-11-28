@@ -194,32 +194,64 @@ def test_get_MCL_clustering():
 
 # part 7
 def test_extract_results_with_header():
-    assert 1 == 0  # TEST INCOMPLETE
+    # GeneLocation Test
+    from plantclusterfinder_py.cluster import extract_results_with_header
+
+    gene_location = extract_results_with_header(
+        Path("csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt"),
+        False,
+    )
+
+    assert 5 == len(gene_location.columns)
+    assert 9_629 == len(gene_location)
 
 
 def test_remove_protein_transcript_info_from_genepositionfile():
-    assert 1 == 0  # TEST INCOMPLETE
+    # GeneLocation Test
+    from plantclusterfinder_py.cluster import (
+        extract_results_with_header,
+        read_in_conversion_file,
+        remove_protein_transcript_info_from_genepositionfile,
+    )
+
+    gene_location = extract_results_with_header(
+        Path("csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt"),
+        False,
+    )
+    conversion = read_in_conversion_file(
+        "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
+    )
+    gene_location = remove_protein_transcript_info_from_genepositionfile(
+        gene_location, conversion
+    )
+    assert 7 == len(gene_location.columns)
+    assert 9_629 == len(gene_location)
 
 
 def test_consolidate_gene_info():
+    # Genelocation Test
     assert 1 == 0  # TEST INCOMPLETE
 
 
 def test_sort_genes():
+    # GeneLocation Test
     assert 1 == 0  # TEST INCOMPLETE
 
 
 # Part 8
 def test_map_genelocation_to_conversion_file():
+    # GeneLocation Test
     assert 1 == 0  # TEST INCOMPLETE
 
 
 def test_remove_non_protein_fasta_gene_locations():
+    # GeneLocation Test
     assert 1 == 0  # TEST INCOMPLETE
 
 
 # Part 9
 def test_find_intergenic_regions():
+    # GeneLocation test
     assert 1 == 0  # TEST INCOMPLETE
 
 

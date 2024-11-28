@@ -3,7 +3,7 @@ import logging
 import os
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import polars as pl
@@ -70,7 +70,7 @@ def label_reactions_with_sig_and_tail(
 def compute_local_duplication(
     vGeneLocation: pl.DataFrame,
     mcl_cluster_data: MclClusterData,
-    vBiomG_G: dict,
+    vBiomG_G: Dict[Any, Any],
     vKbRangeLD: int,
     vGeneRangeLD: int,
 ) -> pl.DataFrame:
@@ -206,7 +206,7 @@ def compute_local_duplication(
 
 def introduce_hypo_genes(
     hard_breaks: HardBreaks,
-    vBiomG_G: dict,
+    vBiomG_G: Dict[Any, Any],
     insert_hypos: bool = False,
     vHypoAmount: int = 0,
 ) -> HardBreaks:
@@ -385,15 +385,15 @@ def introduce_hypo_genes(
 
 def introduce_hard_breaks(
     vGeneLocation: pl.DataFrame,
-    vUniqueChrom: list[str],
+    vUniqueChrom: List[str],
     vInterChrom: pl.DataFrame,
     vSeqGaps: pl.DataFrame,
     vMaxSeqGapSize: int,
     vMaxInterGeneDist: int,
     vPercentileForMaxInterGeneDist: float,
     vMaxInterGeneDistByMedian: int,
-    vBiomG_G: dict,
-    vHardBreakGaps: list[int] = [],
+    vBiomG_G: Dict[Any, Any],
+    vHardBreakGaps: List[int] = [],
 ) -> HardBreaks:
     """
     ---------------------------------------------------------------------------
@@ -543,7 +543,7 @@ def introduce_hard_breaks(
 def annotate_sequencing_gaps(
     vFile: Path,
     vInterGeneLocation: pl.DataFrame,
-    vUniqueChrom: list[str],
+    vUniqueChrom: List[str],
     vUnmaskedDNA: bool = True,
     vParallelize: int = 1,
     vOverwriteSeqGapInfo: bool = False,
@@ -1093,7 +1093,7 @@ def read_MCL_clustering_file(
     # then
     # init_max = 100_000
     mcl_cluster_data = []
-    clusters_by_p: dict[str, list[int]] = dict()
+    clusters_by_p: Dict[str, List[int]] = dict()
     with open(vFile, "r") as f:
         for i, line in enumerate(f):
             log.debug(f"MCL_Line {i}")
@@ -1180,8 +1180,8 @@ def get_MCL_clustering(
             end
     """
     apps = ["makeblastdb", "blastp", "cut", "mcxload", "mcl", "mcxdump"]
-    missing_apps: list[str] = []
-    app_path: dict[str, Path] = dict()
+    missing_apps: List[str] = []
+    app_path: Dict[str, Path] = dict()
     for app in apps:
         output: subprocess.CompletedProcess = subprocess.run(
             ["which", app], capture_output=True
@@ -1196,7 +1196,7 @@ def get_MCL_clustering(
             f"The following applications are not in $PATH: {missing_apps_msg}"
         )
 
-    command_for: dict[str, list[str]] = dict()
+    command_for: Dict[str, List[str]] = dict()
     command_for["makeblastdb"] = [
         "-in",
         str(vProtein_sequence_FastaFile),
@@ -1639,7 +1639,7 @@ def match_PGDBs_to_MDs(
 def map_PGDBs_to_conversion_file(
     Conversion: Conversion,
     vGenes_all: pl.DataFrame,
-    vGenesDat_GeneInfo: list[str],
+    vGenesDat_GeneInfo: List[str],
     vPGDBIdsToMap: str,
 ) -> dict:
     """
@@ -1738,30 +1738,23 @@ def remove_protein_transcript_info_from_genepositionfile(
         **vGeneLocation**: DataFrame about the gene location information,
                        generated in PlantClusterFinder function.
     """
-    vGeneLocation["Map_to_T"] = vGeneLocation["gene name"].map_elements(
-        lambda x: sum([1 for y in conversion.MapT if y == x])
-    )
-    vGeneLocation["Map_to_P"] = vGeneLocation["gene name"].map_elements(
-        lambda x: sum([1 for y in conversion.MapP if y == x])
-    )
-    vGeneLocation["Map_to_G"] = vGeneLocation["gene name"].map_elements(
-        lambda x: sum([1 for y in conversion.MapG if y == x])
-    )
-    if any(vGeneLocation["Map_to_G"] > 1):
+    vGeneLocation = vGeneLocation.join(conversion.df, on="Gene Name")
+    if (
+        vGeneLocation.select(
+            pl.col(["Gene Name", "Protein Name", "Transcript Name"])
+            .is_unique()
+            .not_()
+            .any()
+        )
+        .transpose()
+        .to_series(0)
+        .any()
+    ):
         raise Exception(
             "Gene / Transcript / Protein location file (Gene position file) matches several entries to more than one gene.\nPlease clean up entries for %s in your input files.\n",
             vGeneLocation["Map_to_G"][0],
         )
 
-    # FIXME: I'm not certain this logic is correct
-    vGeneLocation["Map_to_G"] = vGeneLocation["Map_to_G"].map_elements(
-        lambda x: 1 if sum(x) == 1 else sum([1 for y in conversion.MapG if y == x])
-    )
-    if any(vGeneLocation["Map_to_G"] > 1):
-        raise Exception(
-            "Gene / Transcript / Protein location file (Gene position file) has an entry %s that is not covered by your gene ID conversion file.\nPlease add the entry.\n",
-            vGeneLocation["Map_to_G"][0],
-        )
     return vGeneLocation
 
     _ = """
@@ -1792,7 +1785,7 @@ def remove_protein_transcript_info_from_genepositionfile(
 
 def consolidate_gene_info(
     vGeneLocation: pl.DataFrame,
-) -> tuple[list[str], pl.DataFrame]:
+) -> tuple[List[str], pl.DataFrame]:
     """
     ---------------------------------------------------------------------------
 
@@ -1813,14 +1806,14 @@ def consolidate_gene_info(
 
     Returns:
         Tuple containing the following values
+        - **vUniqueChrom**: A list with unique entries of all chromosome and scaffold
+                      names.
         - **vGeneLocation**: DataFrame about the gene location information.
                        - gene name
                        - gene start (bp)
                        - gene end (bp)
                        - chromosome
                        - strand
-        - **vUniqueChrom**: A list with unique entries of all chromosome and scaffold
-                      names.
     """
 
     _ = """
@@ -1858,10 +1851,13 @@ def consolidate_gene_info(
             end
         end
     end"""
-    return ([], pl.DataFrame())
+    return (
+        vGeneLocation.select(pl.col("Chromosome Name").unique()).to_series(0).to_list(),
+        vGeneLocation,
+    )
 
 
-def sort_genes(vGeneLocation: pl.DataFrame, vUniqueChrom: list[str]) -> pl.DataFrame:
+def sort_genes(vGeneLocation: pl.DataFrame, vUniqueChrom: List[str]) -> pl.DataFrame:
     """
     ---------------------------------------------------------------------------
 
@@ -1906,7 +1902,7 @@ def sort_genes(vGeneLocation: pl.DataFrame, vUniqueChrom: list[str]) -> pl.DataF
 
 
 def find_intergenic_regions(
-    vGeneLocation: pl.DataFrame, vUniqueChrom: list[str]
+    vGeneLocation: pl.DataFrame, vUniqueChrom: List[str]
 ) -> pl.DataFrame:
     """
     ---------------------------------------------------------------------------
@@ -1993,15 +1989,17 @@ def map_genelocation_to_conversion_file(
                 in the conversion file.
     """
 
-    return {g: g for g in vMapG if g in vGeneLocation.select(pl.col("Gene Name"))}
+    return vGeneLocation.select(pl.col(["Gene Name", "Transcript Name"])).rows_by_key(
+        key="Gene Name"
+    )
 
 
 def annotate_enzyme_info_to_gene_location(
     vGeneLocation: pl.DataFrame,
-    vBiomG_G: dict,
-    vMapG_Gpgdb: dict,
+    vBiomG_G: Dict[Any, Any],
+    vMapG_Gpgdb: Dict[Any, Any],
     Gene2Rxn: GenesToReactions,
-) -> dict[str, bool]:
+) -> Dict[str, bool]:
     """
     ---------------------------------------------------------------------------
 
@@ -2051,14 +2049,14 @@ def annotate_enzyme_info_to_gene_location(
 
 def perform_clustering(
     vGeneLocation: pl.DataFrame,
-    vBiomG_E: dict,
+    vBiomG_E: Dict[Any, Any],
     vEnzMinForClusters: int,
     vKbRangeLD: int,
     vGeneRangeLD: int,
     mcl_cluster_data: MclClusterData,
-    vBiomG_G: dict,
+    vBiomG_G: Dict[Any, Any],
     genes_to_reactions: GenesToReactions,
-    vMapG_Gpgdb: dict,
+    vMapG_Gpgdb: Dict[Any, Any],
     vCriterion: int,
     vMinStepSize: int = 5,
     vMaxStepSize: int = 20,
@@ -2329,8 +2327,8 @@ def compute_background(
     vClusters: Clusters,
     vClusterBackgroundWrite,
     vGeneLocation: pl.DataFrame,
-    vBiomG_E: list[int],
-    vC_IDs: list[str],
+    vBiomG_E: List[int],
+    vC_IDs: List[str],
 ) -> tuple[pl.DataFrame, int]:
     """
     ---------------------------------------------------------------------------
@@ -2408,7 +2406,7 @@ def compute_background(
     return (pl.DataFrame(), 0)  # FIXME: return values
 
 
-def perform_cutoff(clusters: Clusters, vTopPercentClusters: int) -> list[float]:
+def perform_cutoff(clusters: Clusters, vTopPercentClusters: int) -> List[float]:
     """
     ---------------------------------------------------------------------------
 
@@ -2456,16 +2454,16 @@ def write_gene_output(
     vGeneOutputFile: Path,
     vGeneLocation2: pl.DataFrame,
     clusters: Clusters,
-    vTopPercentClusters: list[float],
-    vMD_to_annotate: list[str],
+    vTopPercentClusters: List[float],
+    vMD_to_annotate: List[str],
     Gene2Rxn: GenesToReactions,
-    vMapG_Gpgdb: dict,
-    vBiomG_G: dict,
-    vBiomG_E: dict,
+    vMapG_Gpgdb: Dict[Any, Any],
+    vBiomG_G: Dict[Any, Any],
+    vBiomG_E: Dict[Any, Any],
     local_duplications: pl.DataFrame,
-    vClusters_Top: list[float],
+    vClusters_Top: List[float],
     annotated_metabolic_domains: AnnotatedMetabolicDomains,
-    vRpgdb_Rmd: dict,
+    vRpgdb_Rmd: Dict[Any, Any],
     reaction_labels: ReactionLabels,
     vOutputType: str,
 ) -> None:
@@ -2725,7 +2723,7 @@ def write_cluster_output(
     vClusterOutputFile: Path,
     vGeneLocation: pl.DataFrame,
     clusters: Clusters,
-    vClusters_Top: list[float],
+    vClusters_Top: List[float],
     vOutputType: str,
 ) -> None:
     if vOutputType not in ["old", "simple", "verbose"]:
@@ -3041,10 +3039,10 @@ def read_in_pgdb_flat(
 
 
 def remove_non_protein_fasta_gene_locations(
-    vGeneLocation: pl.DataFrame,
+    GeneLocation: pl.DataFrame,
     conversion: Conversion,
-    vBiomG_G: dict,
-    vProtein_IDs: Optional[list[str]],
+    vBiomG_G: Dict[Any, Any],
+    vProtein_IDs: Optional[List[str]],
 ) -> tuple[pl.DataFrame, dict]:
     """
     ---------------------------------------------------------------------------
@@ -3056,10 +3054,9 @@ def remove_non_protein_fasta_gene_locations(
     ---------------------------------------------------------------------------
 
     Args:
-        GeneLocation2: DataFrame about the gene location information,
+        GeneLocation: DataFrame about the gene location information,
                         generated in PlantClusterFinder function.
-        MapP: Unique list of protein IDs stored in the conversion file.
-        MapG_MapP: Mapping between vMapG and vMapP
+        conversion: Conversion object between genes, transcripts, and proteins
         BiomG_G: Mapping between the Gene location file and the gene-IDs in the
                   conversion file.
         Protein_IDs: A cell array of all protein-IDs that are stored in the
@@ -3085,4 +3082,10 @@ def remove_non_protein_fasta_gene_locations(
         end
         vBiomG_G = vBiomG_G(vGeneLoc_in_Prot_F,:);
     end"""
-    return (pl.DataFrame(), dict())  # FIXME: return value
+    if vProtein_IDs is None:
+        return (GeneLocation, vBiomG_G)
+    gene_names = [vBiomG_G[id] for id in vProtein_IDs]
+    return (
+        GeneLocation.filter(pl.col("Gene Name") in gene_names),
+        vBiomG_G,
+    )
