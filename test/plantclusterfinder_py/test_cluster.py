@@ -1,3 +1,4 @@
+import random
 from pathlib import Path
 
 import polars as pl
@@ -230,29 +231,100 @@ def test_remove_protein_transcript_info_from_genepositionfile():
 
 def test_consolidate_gene_info():
     # Genelocation Test
-    assert 1 == 0  # TEST INCOMPLETE
+    from plantclusterfinder_py.cluster import (
+        consolidate_gene_info,
+        extract_results_with_header,
+    )
+
+    gene_location = extract_results_with_header(
+        Path("csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt"),
+        False,
+    )
+    gene_info, gene_location = consolidate_gene_info(gene_location)
+    assert 1 == len(gene_info)  # TEST INCOMPLETE
 
 
 def test_sort_genes():
     # GeneLocation Test
-    assert 1 == 0  # TEST INCOMPLETE
+    from plantclusterfinder_py.cluster import extract_results_with_header, sort_genes
+
+    gene_location = extract_results_with_header(
+        Path("csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt"),
+        False,
+    )
+    sorted_gene_location = sort_genes(gene_location, [])
+
+    assert 1 == len(sorted_gene_location)  # TEST INCOMPLETE
 
 
 # Part 8
 def test_map_genelocation_to_conversion_file():
-    # GeneLocation Test
-    assert 1 == 0  # TEST INCOMPLETE
+    # GeneLocation Test, possibly redundant
+    from plantclusterfinder_py.cluster import (
+        extract_results_with_header,
+        map_genelocation_to_conversionfile,
+        read_in_conversion_file,
+    )
+
+    conversion = read_in_conversion_file(
+        Path(
+            "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
+        )
+    )
+    gene_location = extract_results_with_header(
+        Path("csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt"),
+        False,
+    )
+    BiomG_G = map_genelocation_to_conversionfile(gene_location, conversion.MapG)
+    assert 1 == len(BiomG_G)  # TEST INCOMPLETE
 
 
 def test_remove_non_protein_fasta_gene_locations():
     # GeneLocation Test
-    assert 1 == 0  # TEST INCOMPLETE
+    from plantclusterfinder_py.cluster import (
+        extract_results_with_header,
+        map_genelocation_to_conversionfile,
+        read_in_conversion_file,
+        remove_non_protein_fasta_gene_locations,
+    )
+
+    conversion = read_in_conversion_file(
+        Path(
+            "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
+        )
+    )
+    gene_location = extract_results_with_header(
+        Path("csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt"),
+        False,
+    )
+    BiomG_G = map_genelocation_to_conversionfile(gene_location, conversion.MapG)
+    protein_ids = [random.choose(BiomG_G.keys()) for x in range(100)]
+    cleaned_gene_location = remove_non_protein_fasta_gene_locations(
+        gene_location, conversion, BiomG_G, protein_ids
+    )
+    unclean_gene_location = remove_non_protein_fasta_gene_locations(
+        gene_location, conversion, BiomG_G, []
+    )
+    assert len(gene_location) == len(unclean_gene_location)
+    assert 100 == len(cleaned_gene_location)  # TEST INCOMPLETE
 
 
 # Part 9
 def test_find_intergenic_regions():
     # GeneLocation test
-    assert 1 == 0  # TEST INCOMPLETE
+    from plantclusterfinder_py.cluster import (
+        extract_results_with_header,
+        find_intergenic_regions,
+    )
+
+    gene_location = extract_results_with_header(
+        Path("csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt"),
+        False,
+    )
+    intergenic_regions = find_intergenic_regions(
+        gene_location, gene_location.select_seq(3).unique().to_list()
+    )
+    assert 1 == len(intergenic_regions)  # TEST INCOMPLETE
 
 
 # Part 10: No Cluster Functions
@@ -261,7 +333,18 @@ def test_find_intergenic_regions():
 # part 11
 def test_analyze_plant_cluster_gap_file():
     """Used by get_sequencing_gaps"""
-    assert 1 == 0  # TEST INCOMPLETE
+    from plantclusterfinder_py.cluster import analyze_plant_cluster_gap_file
+
+    test_gap_output = Path(
+        "./csubellipsoidea/Gapanalysis_expected_results/CsubellipsoideaC_169_227_v2.0.hardmasked.fa_GAPOutput"
+    )
+    (filename, gap_output_count) = analyze_plant_cluster_gap_file(
+        test_gap_output,
+        False,
+        file_output=False,
+    )
+    assert 337 == len(gap_output_count)  # TEST INCOMPLETE
+    assert str(test_gap_output) + "_count.txt" == filename  # TEST INCOMPLETE
 
 
 def test_run_awk_skripts():

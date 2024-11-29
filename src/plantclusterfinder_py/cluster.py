@@ -3,7 +3,7 @@ import logging
 import os
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import polars as pl
@@ -17,6 +17,7 @@ from plantclusterfinder_py.cluster_datatypes import (
     MclClusterData,
     ReactionLabels,
 )
+from plantclusterfinder_py.get_positions_of_gap import get_positions_of_gap
 
 log = logging.getLogger(__name__)
 
@@ -712,21 +713,26 @@ def annotate_sequencing_gaps(
 
 
 def get_sequencing_gaps(
-    vFile: Path, vParallelize: int, vOverwriteSeqGapInfo: bool, vUnmaskedDNA: bool
+    vFile: Path,
+    vParallelize: int,
+    vOverwriteSeqGapInfo: bool = False,
+    vUnmaskedDNA: bool = False,
 ) -> None:
     """
     ---------------------------------------------------------------------------
-      Function that screens a DNA fasta file for masked streches of DNA
+      Function that screens a DNA FASTA file for masked streches of DNA
       (masked by N).
 
+      Creates a _GAPOutput file from the FASTA file, then creates a
+      _GAPOutput_count.txt file by running analyze_plant_cluster_gap_file()
     ---------------------------------------------------------------------------
     Args:
-        vFile: Fasta file of the masked genome nucleotide sequences.
+        vFile: FASTA file of the masked genome nucleotide sequences.
         vParallelize: Defines if multiple cpus should be used for computation of parts
                of algorithm. Active if larger than 1.
-        vOverwriteSeqGapInfo: If set to 1, the code enforces masked nucleotide
+        vOverwriteSeqGapInfo: If set to True, the code enforces masked nucleotide
                               analysis for finding sequencing gaps (default is
-                              0, no enforcement).
+                              False, no enforcement).
         vUnmaskedDNA: Option to ignore the error if you use unmasked DNA files.
     Returns:
         None (File is generated with the path of the first input argument,
@@ -734,6 +740,16 @@ def get_sequencing_gaps(
     Raises:
         IOError: if file cannot be generated.
     """
+    if vOverwriteSeqGapInfo:
+        if vFile.exists():
+            log.error("Cannot overwrite existing _GAPOutput with tag set")
+            raise Exception("Overwrite Protection Enforcement of Existing Gap File")
+    get_positions_of_gap(
+        vFile, vFile.with_suffix(vFile.suffix + "_GAPOutput"), parallelize=vParallelize
+    )
+    analyze_plant_cluster_gap_file(
+        vFile.with_suffix(vFile.suffix + "_GAPOutput"), vUnmaskedDNA
+    )
 
     _ = """
         % MATLAB code
@@ -1857,7 +1873,7 @@ def consolidate_gene_info(
     )
 
 
-def sort_genes(vGeneLocation: pl.DataFrame, vUniqueChrom: List[str]) -> pl.DataFrame:
+def sort_genes(GeneLocation: pl.DataFrame, vUniqueChrom: List[str]) -> pl.DataFrame:
     """
     ---------------------------------------------------------------------------
 
@@ -1898,7 +1914,14 @@ def sort_genes(vGeneLocation: pl.DataFrame, vUniqueChrom: List[str]) -> pl.DataF
             end
         end
     end"""
-    return pl.DataFrame()  # FIXME: return value
+    return GeneLocation.sort(
+        by=[
+            pl.col("Chromosome Name"),
+            pl.when("-" not in pl.col("Strand"))
+            .then(pl.col("Gene Start (bp)"))
+            .otherwise(pl.col("Gene End (bp)")),
+        ]
+    )
 
 
 def find_intergenic_regions(
@@ -2801,7 +2824,6 @@ def write_cluster_output(
 def extract_results_with_header(
     vFile: Path, vUnmaskedDNA: bool, vSplitter: str = "\t"
 ) -> pl.DataFrame:
-    # NOTE: I'm pretty sure the csv module already handles this
     """
     ---------------------------------------------------------------------------
 
@@ -2833,65 +2855,10 @@ def extract_results_with_header(
     """
     return pl.read_csv(vFile, separator=vSplitter)
 
-    """
-        % MATLAB code
-        vSplitter = '\t';
-        if nargin > 1
-            for vi = 1:2:size(varargin,2)
-                if strcmp(varargin{vi},'vSplitter')
-                    vSplitter = varargin{vi+1};
-                end
-            end
-        end
-        vFIO = fopen(vFile);
-        vLine = fgetl(vFIO);
-        vSplit = regexp(vLine,vSplitter,'split');
-        vHeader = vSplit;
-        for vi = 1:size(vHeader,2)
-            vHeader(1,vi) = cellstr(strtrim(char(vHeader(1,vi))));
-            vHeader(1,vi) = regexprep(vHeader(1,vi),' ','_');
-    """
 
-    #            vHeader(1,vi) = regexprep(vHeader(1,vi),'\)','_');
-    #            vHeader(1,vi) = regexprep(vHeader(1,vi),'\(','_');
-    #            vHeader(1,vi) = regexprep(vHeader(1,vi),'\(','_');
-    #            vHeader(1,vi) = regexprep(vHeader(1,vi),'#','_');
-    #            vHeader(1,vi) = regexprep(vHeader(1,vi),'\/','_');
-    #            vHeader(1,vi) = regexprep(vHeader(1,vi),'\-','_');
-    #            vHeader(1,vi) = regexprep(vHeader(1,vi),'\.','_');
-    _ = """
-            if sum(strcmp(vHeader(1,1:vi-1),vHeader(1,vi)))>0
-                vj = 1;
-                while sum(strcmp(vHeader(1,1:vi-1),[char(vHeader(1,vi)) '_' num2str(vj)]))>0
-                    vj = vj + 1;
-                end
-                vHeader(1,vi) = cellstr([char(vHeader(1,vi)) '_' num2str(vj)]);
-            end
-            if strcmp(vHeader(1,vi),'')
-                vHeader(1,vi) = cellstr(['Attribute_' num2str(vi)]);
-            end
-            vOutput.(char(vHeader(1,vi))) = cell(1,1);
-        end
-
-        vLine = fgetl(vFIO);
-        vW = 0;
-        while ischar(vLine)
-            vSplit = regexp(vLine,vSplitter,'split');
-            for vi = 1:size(vSplit,2)
-                if exist('vSpacer','var')
-                    vOutput.(char(vHeader(1,vi)))(vW + 1,1) = regexprep(regexprep(vSplit(1,vi),['^' vSpacer],''),[vSpacer '$' ],'');
-                else
-                    vOutput.(char(vHeader(1,vi)))(vW + 1,1) = vSplit(1,vi);
-                end
-            end
-            vLine = fgetl(vFIO);
-            vW = vW + 1;
-        end
-        fclose(vFIO);
-    end"""
-
-
-def analyze_plant_cluster_gap_file(vFileIn: Path, vUnmaskedDNA: bool) -> None:
+def analyze_plant_cluster_gap_file(
+    vFileIn: Path, vUnmaskedDNA: bool, file_output: bool = True
+) -> Optional[Tuple[str, Dict[int, int]]]:
     """
     ---------------------------------------------------------------------------
 
@@ -2902,85 +2869,36 @@ def analyze_plant_cluster_gap_file(vFileIn: Path, vUnmaskedDNA: bool) -> None:
 
     Args:
         vFileIn: Full path to the _GAPOutput file that whould be analyzed
-                 (produced within PlantClusterFinder.
+                 (produced within PlantClusterFinder)
         vUnmaskedDNA: Option to ignore the error if you use unmasked DNA files.
+        file_output: Whether output is directed to file or to
 
     Returns:
-        **None** (File with list of sequencing gaps numbers is generated with
-        ending _count)
+        **Optional[str]** (File with list of sequencing gaps numbers is generated with
+        ending _count.txt if file_output is set to True)
     """
     if not vFileIn.is_file():
         raise Exception(f"vFileIn {vFileIn} is not a file or does not exist")
-    _gap_output = pl.read_csv(vFileIn)
-    _f_out = vFileIn.with_stem(vFileIn.stem + "_count.txt")
-    """
-        % MATLAB code
-        vInit = 7000000;
-        [vFIN,vFINERR] = fopen(vFileIn);
-        if vFIN == -1
-            error('Tried to open %s file, error: %s\n', vFileIn, vFINERR);
-        end
-        vLine = fgetl(vFIN);
-        if ~ischar(vLine)
-            error('%s is empty.\n',vFileIn);
-        end
-        vCounter = zeros(vInit,2);
-        vCounter_write = 0;
-        vL = 1;
-        while ischar(vLine)
-            if vVerbose >= 2
-                fprintf('Analyze Sequencing gap file line %i\n', vL)
-            end
-            vSplit = regexp(vLine,' ','split');
-            if strcmp(vSplit(1,2),'N')
-                if vCounter_write+1 > vInit
-                    vCounter = [vCounter;zeros(10000,2)];
-                    vInit = vInit + 10000;
-                end
-                if sum(vCounter(:,1) == str2num(char(vSplit(1,4)))) == 0
-                    vCounter(vCounter_write+1,:) = [str2num(char(vSplit(1,4))),1];
-                    vCounter_write = vCounter_write + 1;
-                else
-                    vPlace = vCounter(:,1) == str2num(char(vSplit(1,4)));
-                    vCounter(vPlace,2) = vCounter(vPlace,2) + 1;
-                end
-            end
-            vLine = fgetl(vFIN);
-            vL = vL + 1;
-        end
-        fclose(vFIN);
-        vCounter = vCounter(1:vCounter_write,:);
-
-        if ~exist('vCounter','var') && vUnmaskedDNA == 0
-            error('DNA fasta File does not have masked DNA.\nIf you want to ignore this error, use Option ''UnmaskedDNA 1''\n');
-        elseif ~exist('vCounter','var')
-            warning('DNA fasta File does not have masked DNA.\n You used Option ''UnmaskedDNA 1'' with the intention to use Unmasked DNA file.\n');
-        end
-
-        [vFOUT,vFOUTERR] = fopen([vFileIn '_count.txt'],'w');
-        if vFOUT == -1
-            error('Tried to generate %s_count.txt file, error: %s\n',
-                  vFileIn, vFOUTERR);
-        end
-        fprintf(vFOUT, 'Gapsize in bp\tNumber of Gaps\n');
-        if exist('vCounter','var')
-            [~, vSortIds] = sort(vCounter(:,2),'descend');
-            vCounter = vCounter(vSortIds,:);
-            vi = 1;
-            while vi <= size(vCounter,1)
-                vIDs = vCounter(:,2) == vCounter(vi,2);
-                vCounter2 = vCounter(vIDs,:);
-                [~, vSortIds2] = sort(vCounter2(:,1));
-                vCounter2 = vCounter2(vSortIds2,:);
-                vCounter(vIDs,:) = vCounter2;
-                vi = vi + sum(vIDs);
-            end
-            for vi = 1:size(vCounter,1)
-                fprintf(vFOUT, '%i\t%i\n',vCounter(vi,1),vCounter(vi,2));
-            end
-        end
-        fclose(vFOUT);
-    end"""
+    _gap_output = (
+        pl.read_csv(
+            vFileIn,
+            separator=" ",
+            has_header=False,
+            new_columns=["scaffold", "amino acid", "start index", "length"],
+        )
+        .filter(pl.col("amino acid") == "N")
+        .group_by("length")
+        .len()
+        .rows_by_key(key="length")
+    )
+    _f_out = vFileIn.with_suffix(vFileIn.suffix + "_count.txt")
+    if not file_output:
+        return (str(_f_out), _gap_output)
+    with open(_f_out, "w") as f:
+        f.write("Gapsize in bp\tNumber of Gaps\n")
+        for k, v in sorted(_gap_output.items(), key=lambda x: -x[1][0]):
+            f.write(f"{k}\t{v[0]}\n")
+    return None
 
 
 def read_in_pgdb_flat(

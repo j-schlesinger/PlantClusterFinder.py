@@ -5,6 +5,7 @@ from argparse import ArgumentParser
 from collections import deque
 from itertools import groupby
 from operator import itemgetter
+from pathlib import Path
 
 log = logging.getLogger()
 
@@ -49,7 +50,7 @@ def read_fasta(fp):
         yield name, "".join(seq)
 
 
-def groupbyseq(input_list: list, output_path, amino_acid: str, chromosome: str):
+def groupbyseq(input_list: list, output_path, amino_acid: str, chromosome: str) -> None:
     """
     This function writes the sequence groups to a file given the inputs
 
@@ -88,7 +89,9 @@ def groupbyseq(input_list: list, output_path, amino_acid: str, chromosome: str):
                 log.error("Error", e, list(map(itemgetter(1), g)))
 
 
-def get_positions_of_gap(input_path: str, output_path: str):
+def get_positions_of_gap(
+    input_path: Path, output_path: Path, parallelize: int = 1
+) -> None:
     """
     Get the positions of gaps from the input FASTA and save them in an
         output file.
@@ -97,7 +100,10 @@ def get_positions_of_gap(input_path: str, output_path: str):
         input_path: Path of input amino acid FASTA file.
         output_path: Path of writable output file. This will be created
             if it does not exist, otherwise it will be appended to.
+        parallelize: Paralellize processing of FASTA file (not implemented)
     """
+    if parallelize != 1:
+        log.warning("Parallelization of get_positions_of_gap not implemented")
     with open(input_path, "r") as fp:
         for seq_name, seq_aa in read_fasta(fp):
             fasta_id = re.split(r"[\t\s|]", seq_name)[0].replace(">", "")
@@ -124,8 +130,8 @@ def main():
         help="The path of the output groups",
     )
     args = parser.parse_args()
-    input_path = args.input_path
-    output_path = args.output_path
+    input_path = Path(args.input_path)
+    output_path = Path(args.output_path)
 
     try:
         os.remove(output_path)
