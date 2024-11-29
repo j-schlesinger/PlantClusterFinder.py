@@ -548,6 +548,8 @@ def annotate_sequencing_gaps(
     vUnmaskedDNA: bool = True,
     vParallelize: int = 1,
     vOverwriteSeqGapInfo: bool = False,
+    vSeqGapSizesChromBreak: List[int] = [],
+    vGeneLengthHypoMin: int = -1,
 ) -> pl.DataFrame:
     """
     ---------------------------------------------------------------------------
@@ -564,12 +566,12 @@ def annotate_sequencing_gaps(
                      before and gene after a intergenic region.
         vUniqueChrom: A list with unique entries of all chromosome and scaffold
                       names.
-        vParallelize: Number of parallel processes to run.
-        vUnmaskedDNA: Option to ignore the error if you use unmasked DNA files.
-        vOverwriteSeqGapInfo: If set to True, the code enforces masked nucleotide
+    Optional Args:
+        - **vUnmaskedDNA**: Option to ignore the error if you use unmasked DNA files.
+        - **vParallelize**: Number of parallel processes to run.
+        - **vOverwriteSeqGapInfo**: If set to True, the code enforces masked nucleotide
                               analysis for finding sequencing gaps (default is
                               False, no enforcement).
-    Optional Args:
         - **vSeqGapSizesChromBreak**: A list of numbers. The masked nucleotides
                                 sequences of these specific lengths are
                                 preventing cluster formation (Default is an
@@ -619,7 +621,13 @@ def annotate_sequencing_gaps(
         if vGeneLengthHypoMin ~= -1 && vSet ~= 2
             error('f_annotate_Sequencing_Gaps needs both SeqGapSizesChromBreak and GeneLengthHypoMin to be set or to be unset.');
         end
-
+    """
+    if not (vGeneLengthHypoMin == -1 or vSeqGapSizesChromBreak == []):
+        log.error(
+            "annotate_sequencing_gaps needs both SeqGapSizesChromBreak and GeneLengthHypoMin to be set or to be unset."
+        )
+        raise Exception("Incompatable parameters in annotate_sequencing_gaps function")
+    _ = """
         vMaxInit = 7000000;
         if ispc()
             if ~exist([vFile '_GAPOutput'], 'file') || vOverwriteSeqGapInfo
@@ -657,9 +665,19 @@ def annotate_sequencing_gaps(
         end
         fclose(vFIO);
         vSeqGaps = vSeqGaps(1:(vL-1),:);
-
-        %find the intergenic region of the gap, if the gap is present within a
-        %gene model, get rid of the gap.
+    """
+    gap_output_file = vFile.with_suffix(vFile.suffix + "_GAPOutput")
+    if vOverwriteSeqGapInfo or not gap_output_file.exists():
+        get_sequencing_gaps(vFile, 1, vOverwriteSeqGapInfo, vUnmaskedDNA)
+    sequencing_gaps = pl.read_csv(
+        gap_output_file,
+        separator=" ",
+        has_header=False,
+        new_columns=["scaffold", "amino acid", "start index", "length"],
+    )
+    # find the intergenic region of the gap, if the gap is present within a
+    # gene model, get rid of the gap.
+    _ = """
         vSeqGaps = [vSeqGaps, cell(size(vSeqGaps,1),3)];
         vSeqGaps_3 = str2num(char(vSeqGaps(:,3)));
         vSeqGaps_4 = str2num(char(vSeqGaps(:,4)));
@@ -709,7 +727,9 @@ def annotate_sequencing_gaps(
     %     vSeqGaps_3 = vSeqGaps_3(~vKillSeqGaps,:);
     %     vSeqGaps_4 = vSeqGaps_4(~vKillSeqGaps,:);
     end"""
-    return pl.DataFrame()  # FIXME: return value
+    # FIXME: only gaps which are in intergenic regions
+    # & indicate which intergenic region
+    return sequencing_gaps
 
 
 def get_sequencing_gaps(
@@ -750,253 +770,6 @@ def get_sequencing_gaps(
     analyze_plant_cluster_gap_file(
         vFile.with_suffix(vFile.suffix + "_GAPOutput"), vUnmaskedDNA
     )
-
-    _ = """
-        % MATLAB code
-        if ispc()
-            if vOverwriteSeqGapInfo == 1 || ~exist([vFile '_GAPOutput'], 'file')
-                fprintf('Finding sequencing gaps is only set up for linux. Please precompute the the sequencing gaps (masked stretches of DNA) (e.g. on linux server).\n');
-                fprintf(
-                    'Please use the follwing commands on Linux (use which and programname to find your paths):\n');
-                vAWK_install_path = 'awk_install_path';
-                fprintf('%s -f enter_new_line_characters_in_fasta_file.awk ''%s''>''%s_temp1''\n',
-                        vAWK_install_path, vFile, vFile);
-                fprintf('tr -d ''\r'' < ''%s_temp1''>''%s_temp2''\n',
-                        vFile, vFile);
-                fprintf('tr -d ''\n'' < ''%s_temp2''>''%s_temp3''\n',
-                        vFile, vFile);
-                fprintf('%s -f get_new_line_in.awk ''%s_temp3''>''%s_temp4''\n',
-                        vAWK_install_path, vFile, vFile);
-                fprintf('%s -f get_positions_of_gap.awk ''%s_temp4''>''%s_GAPOutput''\n',
-                        vAWK_install_path, vFile, vFile);
-                fprintf('Once you have done this, please store the resulting %s_GAPOutput file in the accoring folder of the DNA fasta file and rerun Plantcluster finder.\n', vFile);
-                error(
-                    'Run aborted because PC is used in combination with sequencing gap finding\n');
-            end
-    """
-    # run the following
-    #  - `enter_new_line_characters_in_fasta_file.awk`
-    #  - remove \r and \n characters
-    #  - `get_new_line_in.awk`
-    #  - `get_positions_of_gap.awk` > %s_GAPOutput
-
-    _ = """
-        else
-            if vVerbose >= 1
-                fprintf('Check awk installation.\n');
-            end
-            [~, vAWK_install_path] = system('which awk');
-            if strncmp(vAWK_install_path,'/usr/bin/which: no awk',22)
-                error('No awk installed. Abort.\n');
-            else
-                vAWK_install_path = regexprep(vAWK_install_path,'\n','');
-            end
-
-            % Linearize the fasta files of the genomes
-            if vVerbose >= 1
-                fprintf('Get information gaps in genomes.\n');
-            end
-            if vPara <= 1
-                f_run_awk_skripts(vFile, vAWK_install_path,
-                                  vVerbose, vOverwriteSeqGapInfo);
-            else
-                %Split Files into scaffolds
-                vFile_ID = 1;
-                vFIO = fopen(vFile);
-                vFIO_temp = fopen([vFile '_' num2str(vFile_ID)],'w');
-                vLine = fgetl(vFIO);
-                if strncmp(vLine,'>',1)
-                    fprintf(vFIO_temp,[vLine '\n']);
-                else
-        error('First line in DNA Fasta file is not a header\n');
-                end
-                vLine = fgetl(vFIO);
-                while ischar(vLine)
-                    if strncmp(vLine,'>',1)
-                        fclose(vFIO_temp);
-                        vFile_ID = vFile_ID + 1;
-                        vFIO_temp = fopen([vFile '_' num2str(vFile_ID)],'w');
-                        fprintf(vFIO_temp,[vLine '\n']);
-                    else
-                        fprintf(vFIO_temp,[vLine '\n']);
-                    end
-                    vLine = fgetl(vFIO);
-                end
-                fclose(vFIO_temp);
-                fclose(vFIO);
-
-                %open matlabpool
-                vPool = parpool('local',vPara-1);
-
-                %Run the commands individually with parfor
-                parfor vi = 1:size(vFile_ID)
-                    f_run_awk_skripts([vFile '_' num2str(vi)], vAWK_install_path, vVerbose, vOverwriteSeqGapInfo);
-                end
-
-                %close matlabpool
-                delete(vPool);
-
-                %Build result files together
-                vFIO = fopen([vFile '_GAPOutput_count.txt'],'w');
-                for vi = 1:size(vFile_ID)
-                    vFIO_temp = fopen([vFile '_' num2str(vi) '_GAPOutput_count.txt']);
-                    vLine = fgetl(vFIO_temp);
-                    while ischar(vLine)
-                        fprintf(vFIO, [vLine '\n']);
-                        vLine = fgetl(vFIO_temp);
-                    end
-                    fclose(vFIO_temp);
-                end
-                fclose(vFIO);
-            end
-        end
-
-        %Produce the Gap analysis file
-        [~,vOutput] = system(['ls' ' ' '''' vFile '_GAPOutput_count.txt''']);
-        if vOverwriteSeqGapInfo == 1 || strncmp(vOutput,'ls: cannot access', 17)
-            f_analyze_PlantClusterGapFile([vFile '_GAPOutput'], vUnmaskedDNA, vVerbose);
-        else
-            if vVerbose >= 1
-                fprintf('File %s exists, not overwritten.\n', [
-                        '''' vFile '_GAPOutput_count.txt''']);
-            end
-        end
-    end"""
-
-
-def run_awk_skripts(
-    vFile: Path, vAWK_install_path: Path, vOverwriteSeqGapInfo: bool
-) -> None:
-    """
-    ---------------------------------------------------------------------------
-
-      Function that uses awk to process the masked DNA fasta file to search for
-      sequencing gaps.
-
-    ---------------------------------------------------------------------------
-    Args:
-        vFile: Full path to a dna Fasta file. Note, the folder the DNA fasta
-               file needs to be writable for the temporary and result files
-               generated.
-        vAWK_install_path: Path to the installation of awk.
-        vOverwriteSeqGapInfo: If set, the code enforces masked nucleotide
-                              analysis for finding sequencing gaps.
-    Returns:
-        None (Temporary (_temp1, _temp2, _temp3, _temp4) and Gapouptu
-             (_GAPOutput) files generated.
-    Raises:
-        Exception: If AWK scripts do not run successfully
-        IOError: If *_GAPOutput files cannot be generated
-    """
-
-    _ = """
-        % MATLAB code
-        [~,vOutput] = system(['ls' ' ' '''' vFile '_temp1''']);
-        if vOverwriteSeqGapInfo == 1 || strncmp(vOutput,'ls: cannot access', 17)
-            if vVerbose >= 2
-                fprintf('Next command running:\n');
-                fprintf([vAWK_install_path ' ' '-f enter_new_line_characters_in_fasta_file.awk' ' ' '''' vFile '''>''' vFile '_temp1''']);
-                fprintf('\n');
-            end
-            [vStatus, vOutput] = system([vAWK_install_path ' ' '-f enter_new_line_characters_in_fasta_file.awk' ' ' '''' vFile '''>''' vFile '_temp1''']);
-            if vVerbose >= 2
-                fprintf('Status was %i\n', vStatus);
-                fprintf('Output was:\n');
-                fprintf('%s\n', vOutput);
-            end
-        else
-            if vVerbose >= 1
-                fprintf('File %s exists, not overwritten.\n',
-                        ['''' vFile '_temp1''']);
-            end
-        end
-        [~,vOutput] = system(['ls' ' ' '''' vFile '_temp2''']);
-        if vOverwriteSeqGapInfo == 1 || strncmp(vOutput,'ls: cannot access', 17)
-            if vVerbose >= 2
-                fprintf('Next command running:\n');
-                fprintf(['tr -d ''\r'' <' ' ' '''' vFile '_temp1''>''' vFile '_temp2''']);
-                fprintf('\n');
-            end
-            [vStatus, vOutput] = system(['tr -d ''\r'' <' ' ' '''' vFile '_temp1''>''' vFile '_temp2''']);
-            if vVerbose >= 2
-                fprintf('Status was %i\n', vStatus);
-                fprintf('Output was:\n');
-                fprintf('%s\n', vOutput);
-            end
-        else
-            if vVerbose >= 1
-                fprintf('File %s exists, not overwritten.\n',
-                        ['''' vFile '_temp2''']);
-            end
-        end
-        [~,vOutput] = system(['ls' ' ' '''' vFile '_temp3''']);
-        if vOverwriteSeqGapInfo == 1 || strncmp(vOutput,'ls: cannot access', 17)
-            if vVerbose >= 2
-                fprintf('Next command running:\n');
-                fprintf(['tr -d ''\n'' <' ' ' '''' vFile '_temp2''>''' vFile '_temp3''']);
-                fprintf('\n');
-            end
-            [vStatus, vOutput] = system(['tr -d ''\n'' <' ' ' '''' vFile '_temp2''>''' vFile '_temp3''']);
-            if vVerbose >= 2
-                fprintf('Status was %i\n', vStatus);
-                fprintf('Output was:\n');
-                fprintf('%s\n', vOutput);
-            end
-        else
-            if vVerbose >= 1
-                fprintf('File %s exists, not overwritten.\n',
-                        ['''' vFile '_temp3''']);
-            end
-        end
-
-        [~,vOutput] = system(['ls' ' ' '''' vFile '_temp4''']);
-        if vOverwriteSeqGapInfo == 1 || strncmp(vOutput,'ls: cannot access', 17)
-            if vVerbose >= 2
-                fprintf('Next command running:\n');
-                fprintf([vAWK_install_path ' ' '-f get_new_line_in.awk' ' ' '''' vFile '_temp3''>''' vFile '_temp4''']);
-                fprintf('\n');
-            end
-            [vStatus, vOutput] = system([vAWK_install_path ' ' '-f get_new_line_in.awk' ' ' '''' vFile '_temp3''>''' vFile '_temp4''']);
-            if vVerbose >= 2
-                fprintf('Status was %i\n', vStatus);
-                fprintf('Output was:\n');
-                fprintf('%s\n', vOutput);
-            end
-        else
-            if vVerbose >= 1
-                fprintf('File %s exists, not overwritten.\n',
-                        ['''' vFile '_temp4''']);
-            end
-        end
-
-        % Search for sequencing gaps (searches for continuous stretches of
-        % ATCGatcg* and Nn s, and lists them in a new file
-        [~,vOutput] = system(['ls' ' ' '''' vFile '_GAPOutput''']);
-        if vOverwriteSeqGapInfo == 1 || strncmp(vOutput,'ls: cannot access', 17)
-            if vVerbose >= 2
-                fprintf('Next command running:\n');
-                fprintf([vAWK_install_path ' ' '-f get_positions_of_gap.awk' ' ' '''' vFile '_temp4''>''' vFile '_GAPOutput''']);
-                fprintf('\n');
-            end
-            [vStatus, vOutput] = system([vAWK_install_path ' ' '-f get_positions_of_gap.awk' ' ' '''' vFile '_temp4''>''' vFile '_GAPOutput''']);
-            if vVerbose >= 2
-                fprintf('Status was %i\n', vStatus);
-                fprintf('Output was:\n');
-                fprintf('%s\n', vOutput);
-            end
-        else
-            if vVerbose >= 1
-                fprintf('File %s exists, not overwritten.\n',
-                        ['''' vFile '_GAPOutput''']);
-            end
-        end
-        [status,msg,~] = fileattrib([vFile '_GAPOutput'],'+w +x','a');
-        if status~= 1
-            fprintf('Could not change file attribute of %s\n',
-                    ['''' vFile '_GAPOutput''']);
-            error('Message was %s', msg);
-        end
-    end"""
 
 
 def get_metabolic_domains(
@@ -1070,44 +843,12 @@ def read_MCL_clustering_file(
     """
     if vRemoveNonProtLocations:
         _protein_init = 300_000
-        # TODO: the rest of the function
-    _ = """
-        % MATLAB code
-        if vRemoveNonProtLocations == 1
-            vProtinit = 300000;
-            vProtein_IDs = cell(vProtinit,1);
-            vFIO = fopen(regexprep(vProtein_sequence_FastaFile,
-                         regexptranslate('escape', '.MCLTAB.dump.I20'),''));
-            vLine = fgetl(vFIO);
-            vPID = 1;
-        """
     protein_ids = []
     with open(vProtein_sequence_FastaFile, "r") as fasta_file:
         for line in fasta_file:
             if line.startswith(">"):
                 protein_ids.append(line[1:].strip())
 
-    _ = """
-            while ischar(vLine)
-                if strncmp(vLine,'>',1)
-                    vTempLine = regexp(vLine, ' ', 'split');
-                    if vPID <= vProtinit
-                        vProtein_IDs(vPID,1) = cellstr(regexprep(vTempLine, '^>', ''));
-                    else
-                        vProtein_IDs = [vProtein_IDs; cellstr(regexprep(vTempLine, '^>', ''))];
-                    end
-                    vPID = vPID + 1;
-                end
-                vLine = fgetl(vFIO);
-            end
-            fclose(vFIO);
-            vProtein_IDs = vProtein_IDs(1:(vPID-1),:);
-        else
-            vProtein_IDs = cell(0,1);
-        end
-    """
-    # then
-    # init_max = 100_000
     mcl_cluster_data = []
     clusters_by_p: Dict[str, List[int]] = dict()
     with open(vFile, "r") as f:
@@ -1119,7 +860,6 @@ def read_MCL_clustering_file(
             for prot in prots_in_cluster:
                 clusters_by_p[prot] = clusters_by_p.get(prot, []) + [i]
 
-    # gs = {p: conversion.MapP_MapG[p] for p in clusters_by_p.keys()}
     clusters_by_g = {
         conversion.MapP_MapG[p][0]: clust for p, clust in clusters_by_p.items()
     }
@@ -1163,38 +903,6 @@ def get_MCL_clustering(
         as well as a list of protein-IDs stored in the fasta file.
     """
 
-    _ = """
-        % MATLAB code
-        if ~exist([vProtein_sequence_FastaFile '.MCLTAB.dump.I20'],'file') || vOverwriteMCLClustering == 1
-            if ispc()
-                fprintf(
-                    'MCL clustering is only set up for linux. Please precompute the MCL clustering file (e.g. on linux server).\n');
-                fprintf(
-                    'Please use the follwing commands on Linux (use which and programname to find your paths):\n');
-                vMakeblastdb_install_path = 'makeblastdb_install_path';
-                vBlastp_install_path = 'blastp_install_path';
-                vMcxload_install_path = 'mcxload_install_path';
-                vMcl_install_path = 'mcl_install_path';
-                vMcxdump_install_path = 'mcxdump_install_path';
-                fprintf('%s -in %s -dbtype prot -out %s.blastDB -hash_index\n',
-                        vMakeblastdb_install_path,vProtein_sequence_FastaFile,vProtein_sequence_FastaFile);
-                fprintf('%s -query %s -db %s.blastDB -evalue 1 -out %s.blastOUT -outfmt "6 qseqid sseqid evalue bitscore length pident qstart qend sstart send"\n',
-                        vBlastp_install_path, vProtein_sequence_FastaFile, vProtein_sequence_FastaFile, vProtein_sequence_FastaFile);
-                fprintf('cut -f 1,2,3 %s.blastOUT > %s.MCLIN\n',
-                        vProtein_sequence_FastaFile, vProtein_sequence_FastaFile);
-                fprintf('%s -abc %s.MCLIN --stream-mirror --stream-neg-log10 -stream-tf ''ceil(200)'' -o %s.MCLMATRIX -write-tab %s.MCLTAB\n',
-                        vMcxload_install_path, vProtein_sequence_FastaFile, vProtein_sequence_FastaFile, vProtein_sequence_FastaFile);
-                fprintf('%s %s.MCLMATRIX -I 2\n',vMcl_install_path,
-                        vProtein_sequence_FastaFile);
-                fprintf('%s -icl %s.MCLMATRIX.I20 -tabr %s.MCLTAB -o %s.MCLTAB.dump.I20\n', vMcxdump_install_path,
-                        vProtein_sequence_FastaFile, vProtein_sequence_FastaFile, vProtein_sequence_FastaFile);
-                fprintf(
-                    'Please use a Protein fasta file that contains only protein Identifiers as headers.\n')
-                fprintf('Once you have done this, please give the %s.MCLTAB.dump.I20 as Filename for the proteinfasta file and use option ''MCLClusterFile'' 1 to start PlantClusterFinder.\n',vProtein_sequence_FastaFile);
-                error(
-                    'Run aborted because PC is used in combination with MCL clustering');
-            end
-    """
     apps = ["makeblastdb", "blastp", "cut", "mcxload", "mcl", "mcxdump"]
     missing_apps: List[str] = []
     app_path: Dict[str, Path] = dict()
@@ -1531,26 +1239,6 @@ def match_pgdb_flat(
         pl.col("UNIQUE-ID").alias(primary_id), pl.col(matchings[0]).alias(secondary_id)
     )
     return ret
-    """
-        % MATLAB code
-        vF1_F2 = false(size(vFlat1.(char(vFlatAttri1(1,1))),1),...
-                      size(vFlat2.(char(vFlatAttri2(1,1))),1));
-        for vMatchings_ID = 1:size(vMatchings,1)
-            for vvFlat1_ID = 1:size(vFlat1.(char(vFlatAttri1(1,vMatchings(vMatchings_ID,1)))),1)
-                if vVerbose >= 2
-                    fprintf('Match PGDB FlatFiles ID %i of %i\n',vvFlat1_ID,size(vFlat1.(char(vFlatAttri1(1,1))),1));
-                end
-
-                vFlat2_temp = false(size(vFlat2.(char(vFlatAttri2(1,vMatchings(vMatchings_ID,2)))),1),1);
-                for vFlat1_Dim = 1:size(vFlat1.(char(vFlatAttri1(1,vMatchings(vMatchings_ID,1)))),2)
-                    for vFlat2_Dim = 1:size(vFlat2.(char(vFlatAttri2(1,vMatchings(vMatchings_ID,2)))),2)
-                        vFlat2_temp = vFlat2_temp | strcmp(vFlat2.(char(vFlatAttri2(1,vMatchings(vMatchings_ID,2))))(:,vFlat2_Dim),vFlat1.(char(vFlatAttri1(1,vMatchings(vMatchings_ID,1))))(vvFlat1_ID,vFlat1_Dim));
-                    end
-                end
-                vF1_F2(vvFlat1_ID,vFlat2_temp) = 1;
-            end
-        end
-    end"""
 
 
 def read_in_conversion_file(
@@ -1770,33 +1458,7 @@ def remove_protein_transcript_info_from_genepositionfile(
             "Gene / Transcript / Protein location file (Gene position file) matches several entries to more than one gene.\nPlease clean up entries for %s in your input files.\n",
             vGeneLocation["Map_to_G"][0],
         )
-
     return vGeneLocation
-
-    _ = """
-        % MATLAB code
-        vNi = size(vGeneLocation.(char(vGeneLocation_Att(1,1))),1);
-        for vi = 1:vNi
-            if vVerbose >= 2
-                fprintf('Processing transcript %i of %i\n', vi, vNi);
-            end
-            vCurrID = vGeneLocation.(char(vGeneLocation_Att(1,1)))(vi,1);
-            vCurrID_T = strcmpi(conversion.MapT,vCurrID);
-            vCurrID_P = strcmpi(conversion.MapP,vCurrID);
-            vCurrID_G = sum(conversion.MapG_MapT(:,vCurrID_T,1),2)>0 & sum(conversion.MapG_MapP(:,vCurrID_P,1),2)>0;
-
-            if sum(vCurrID_G) > 1
-                error('Gene / Transcript / Protein location file (Gene position file) matches several entries to more than one gene.\nPlease clean up entries for %s in your input files.\n', char(vCurrID));
-            elseif sum(vCurrID_G) == 1
-                vGeneLocation.(char(vGeneLocation_Att(1,1)))(vi,1) = conversion.MapG(vCurrID_G,1);
-            else
-                vCurrID_G = strcmpi(conversion.MapG,vCurrID);
-                if sum(vCurrID_G) == 0
-                    error('Gene / Transcript / Protein location file (Gene position file) has an entry %s that is not covered by your gene ID conversion file.\nPlease add the entry.\n', char(vCurrID));
-                end
-            end
-        end
-    end"""
 
 
 def consolidate_gene_info(
@@ -1832,41 +1494,7 @@ def consolidate_gene_info(
                        - strand
     """
 
-    _ = """
-        % MATLAB code
-        vUniqueChrom = unique(vGeneLocation.(char(vGeneLocation_Att(1,4))));
-        vNi = size(vUniqueChrom,1);
-        for vi = 1:vNi
-            if vVerbose >= 2
-                fprintf('Consolidate gene information from %i of %i\n', vi, vNi);
-            end
-            vTemp_IDs1 = strcmp(vGeneLocation.(char(vGeneLocation_Att(1,4))),vUniqueChrom(vi,1));
-            vTemp_IDs1_find = find(vTemp_IDs1);
-            [~,vTemp_IDs2] = sort(vGeneLocation.(char(vGeneLocation_Att(1,1)))(vTemp_IDs1,1));
-            for vj = 1:size(vGeneLocation_Att,2)
-                vTempGeneLocation.(char(vGeneLocation_Att(1,vj))) = vGeneLocation.(char(vGeneLocation_Att(1,vj)))(vTemp_IDs1_find(vTemp_IDs2),:);
-            end
-            vj = 2;
-            while vj <= size(vTempGeneLocation.(char(vGeneLocation_Att(1,1))),1)
-                if strcmp(vTempGeneLocation.(char(vGeneLocation_Att(1,1)))(vj,1),vTempGeneLocation.(char(vGeneLocation_Att(1,1)))(vj-1,1))
-                    vTempGeneLocation.(char(vGeneLocation_Att(1,2)))(vj-1,1) = cellstr(num2str(min([str2num(char(vTempGeneLocation.(char(vGeneLocation_Att(1,2)))(vj-1,1))),str2num(char(vTempGeneLocation.(char(vGeneLocation_Att(1,2)))(vj,1)))])));
-                    vTempGeneLocation.(char(vGeneLocation_Att(1,3)))(vj-1,1) = cellstr(num2str(max([str2num(char(vTempGeneLocation.(char(vGeneLocation_Att(1,3)))(vj-1,1))),str2num(char(vTempGeneLocation.(char(vGeneLocation_Att(1,3)))(vj,1)))])));
-                    for vk = 1:size(vGeneLocation_Att,2)
-                        vTempGeneLocation.(char(vGeneLocation_Att(1,vk))) = vTempGeneLocation.(char(vGeneLocation_Att(1,vk)))([1:(vj-1),(vj+1):end],:);
-                    end
-                    vj = vj - 1;
-                end
-                vj = vj + 1;
-            end
-            if ~exist('vGeneLocation2', 'var')
-                vGeneLocation2 = vTempGeneLocation;
-            else
-                for vk = 1:size(vGeneLocation_Att,2)
-                    vGeneLocation2.(char(vGeneLocation_Att(1,vk))) = [vGeneLocation2.(char(vGeneLocation_Att(1,vk)));vTempGeneLocation.(char(vGeneLocation_Att(1,vk)))];
-                end
-            end
-        end
-    end"""
+    # TODO: This may be better served by a transformation on GeneLocation
     return (
         vGeneLocation.select(pl.col("Chromosome Name").unique()).to_series(0).to_list(),
         vGeneLocation,
@@ -1894,26 +1522,6 @@ def sort_genes(GeneLocation: pl.DataFrame, vUniqueChrom: List[str]) -> pl.DataFr
                         generated in PlantClusterFinder function.
     """
 
-    _ = """
-        % MATLAB code
-        vGene_start_bp = str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,2)))(:,1)));
-        vGene_end_bp = str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,3)))(:,1)));
-        vGene_strand = strcmp(vGeneLocation2.(char(vGeneLocation_Att(1,5))),'1');
-        vNi = size(vUniqueChrom,1);
-        for vi = 1:vNi
-            if vVerbose >= 2
-                fprintf('Sorting chromosome or scaffold %i of %i\n', vi, vNi);
-            end
-            vTemp_IDs1 = strcmp(vGeneLocation2.(char(vGeneLocation_Att(1,4))),vUniqueChrom(vi,1));
-            vTemp_IDs1_find = find(vTemp_IDs1);
-            vStart = vGene_start_bp;
-            vStart(vGene_strand==0,1) = vGene_end_bp(vGene_strand==0,1);
-            [~,vTemp_IDs2] = sort(vStart(vTemp_IDs1));
-            for vk = 1:size(vGeneLocation_Att,2)
-                vGeneLocation2.(char(vGeneLocation_Att(1,vk)))(vTemp_IDs1,:) = vGeneLocation2.(char(vGeneLocation_Att(1,vk)))(vTemp_IDs1_find(vTemp_IDs2),:);
-            end
-        end
-    end"""
     return GeneLocation.sort(
         by=[
             pl.col("Chromosome Name"),
