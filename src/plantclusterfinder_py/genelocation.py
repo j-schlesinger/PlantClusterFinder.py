@@ -1,7 +1,8 @@
 import polars as pl
 from collections import Counter
 from dataclasses import dataclass, field
-from plantclusterfinder_py.cluster_datatypes import Conversion
+#from plantclusterfinder_py.cluster_datatypes import Conversion
+from cluster_datatypes import Conversion
 
 @dataclass
 class GeneLoc:
@@ -40,14 +41,21 @@ class GeneLoc:
         """Return the length of the DataFrame."""
         return len(self.data) # or self.data.height using polars
 
-    def sort_genes(self, chromosome_col: str, start_col: str, end_col: str, strand_col: str):
-        """Sort the DataFrame by chromosome name and then conditionally by start or end based on strand."""
-        self.data = self.data.sort(
-            by=[
-                chromosome_col,
-                pl.when(pl.col(strand_col) == '+').then(pl.col(start_col)).otherwise(pl.col(end_col))
-            ]
-        )
+def sort_genes(self, chromosome_idx: int, start_idx: int, end_idx: int, strand_idx: int):
+    """Sort the DataFrame by chromosome index and then conditionally by start or end based on strand."""
+    
+    # Access columns by index using .to_list() method to convert to a list
+    self.data = self.data.sort(
+        by=[
+            # Column at the given chromosome index
+            pl.col(self.data.columns[chromosome_idx]),
+            
+            # Conditional sorting based on strand using start or end column indices
+            pl.when(pl.col(self.data.columns[strand_idx]) == '-')
+              .then(pl.col(self.data.columns[end_idx]))
+              .otherwise(pl.col(self.data.columns[start_idx]))
+        ]
+    )
     
     def map_to(self, conversion: Conversion, mapping_type: str):
         """Map gene names to conversion.MapT and add a column 'Map_to_T'.
@@ -90,17 +98,15 @@ class GeneLoc:
 # Example usage
 if __name__ == "__main__":
     
-    gene_loc = GeneLoc(file_path='C:/Users/mainakd2/GitHub/PlantClusterFinder.py/csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt')
+    gene_loc = GeneLoc(file_path='E:/GitHub/PlantClusterFinder.py/csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt')
 
     # Get the length of the DataFrame
     print(f"Number of entries: {len(gene_loc)}")
 
 
     # Sort the genes
-    gene_loc.sort_genes(chromosome_col='Chromosome Name', 
-                        start_col='Gene Start', 
-                       end_col='Gene End', 
-                       strand_col='strand')
+    gene_loc.sort_genes(chromosome_idx=3, start_idx=1, end_idx=2, strand_idx=4)
+
     
     # Display the sorted DataFrame
     print("The unsorted dataframe:\n")
