@@ -3,7 +3,7 @@ import logging
 import os
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 import polars as pl
@@ -1526,7 +1526,7 @@ def sort_genes(GeneLocation: pl.DataFrame, vUniqueChrom: List[str]) -> pl.DataFr
     return GeneLocation.sort(
         by=[
             pl.col("Chromosome Name"),
-            pl.when("-" not in pl.col("Strand"))
+            pl.when(pl.col("Strand").str.contains("-", literal=True).not_())
             .then(pl.col("Gene Start (bp)"))
             .otherwise(pl.col("Gene End (bp)")),
         ]
@@ -2467,7 +2467,7 @@ def extract_results_with_header(
 
 def analyze_plant_cluster_gap_file(
     vFileIn: Path, vUnmaskedDNA: bool, file_output: bool = True
-) -> Optional[Tuple[str, Dict[int, int]]]:
+) -> Optional[Tuple[str, Dict[Any, Iterable[Any]]]]:
     """
     ---------------------------------------------------------------------------
 
@@ -2505,8 +2505,8 @@ def analyze_plant_cluster_gap_file(
         return (str(_f_out), _gap_output)
     with open(_f_out, "w") as f:
         f.write("Gapsize in bp\tNumber of Gaps\n")
-        for k, v in sorted(_gap_output.items(), key=lambda x: -x[1][0]):
-            f.write(f"{k}\t{v[0]}\n")
+        for k, v in sorted(_gap_output.items(), key=lambda x: -list(x)[1][0]):
+            f.write(f"{k}\t{list(v)[0]}\n")
     return None
 
 
