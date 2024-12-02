@@ -1,8 +1,9 @@
 import csv
 import logging
 import os
+import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 import polars as pl
@@ -16,6 +17,7 @@ from plantclusterfinder_py.cluster_datatypes import (
     MclClusterData,
     ReactionLabels,
 )
+from plantclusterfinder_py.get_positions_of_gap import get_positions_of_gap
 
 log = logging.getLogger(__name__)
 
@@ -69,7 +71,7 @@ def label_reactions_with_sig_and_tail(
 def compute_local_duplication(
     vGeneLocation: pl.DataFrame,
     mcl_cluster_data: MclClusterData,
-    vBiomG_G: dict,
+    vBiomG_G: Dict[Any, Any],
     vKbRangeLD: int,
     vGeneRangeLD: int,
 ) -> pl.DataFrame:
@@ -118,7 +120,7 @@ def compute_local_duplication(
     n_genes = len(vGeneLocation)
     for row in vGeneLocation.iter_rows(named=True):
         log.debug(
-            f"Checking local duplication of Gene {row["gene name"]} of {len(vGeneLocation)}"
+            f"Checking local duplication of Gene {row['gene name']} of {len(vGeneLocation)}"
         )
         if list(row.keys())[0].startswith("Hypothetical_Gene_"):
             _start_g = (
@@ -205,7 +207,7 @@ def compute_local_duplication(
 
 def introduce_hypo_genes(
     hard_breaks: HardBreaks,
-    vBiomG_G: dict,
+    vBiomG_G: Dict[Any, Any],
     insert_hypos: bool = False,
     vHypoAmount: int = 0,
 ) -> HardBreaks:
@@ -384,15 +386,15 @@ def introduce_hypo_genes(
 
 def introduce_hard_breaks(
     vGeneLocation: pl.DataFrame,
-    vUniqueChrom: list[str],
+    vUniqueChrom: List[str],
     vInterChrom: pl.DataFrame,
     vSeqGaps: pl.DataFrame,
     vMaxSeqGapSize: int,
     vMaxInterGeneDist: int,
     vPercentileForMaxInterGeneDist: float,
     vMaxInterGeneDistByMedian: int,
-    vBiomG_G: dict,
-    vHardBreakGaps: list[int] = [],
+    vBiomG_G: Dict[Any, Any],
+    vHardBreakGaps: List[int] = [],
 ) -> HardBreaks:
     """
     ---------------------------------------------------------------------------
@@ -542,10 +544,12 @@ def introduce_hard_breaks(
 def annotate_sequencing_gaps(
     vFile: Path,
     vInterGeneLocation: pl.DataFrame,
-    vUniqueChrom: list[str],
+    vUniqueChrom: List[str],
     vUnmaskedDNA: bool = True,
     vParallelize: int = 1,
     vOverwriteSeqGapInfo: bool = False,
+    vSeqGapSizesChromBreak: List[int] = [],
+    vGeneLengthHypoMin: int = -1,
 ) -> pl.DataFrame:
     """
     ---------------------------------------------------------------------------
@@ -562,12 +566,12 @@ def annotate_sequencing_gaps(
                      before and gene after a intergenic region.
         vUniqueChrom: A list with unique entries of all chromosome and scaffold
                       names.
-        vParallelize: Number of parallel processes to run.
-        vUnmaskedDNA: Option to ignore the error if you use unmasked DNA files.
-        vOverwriteSeqGapInfo: If set to True, the code enforces masked nucleotide
+    Optional Args:
+        - **vUnmaskedDNA**: Option to ignore the error if you use unmasked DNA files.
+        - **vParallelize**: Number of parallel processes to run.
+        - **vOverwriteSeqGapInfo**: If set to True, the code enforces masked nucleotide
                               analysis for finding sequencing gaps (default is
                               False, no enforcement).
-    Optional Args:
         - **vSeqGapSizesChromBreak**: A list of numbers. The masked nucleotides
                                 sequences of these specific lengths are
                                 preventing cluster formation (Default is an
@@ -617,7 +621,13 @@ def annotate_sequencing_gaps(
         if vGeneLengthHypoMin ~= -1 && vSet ~= 2
             error('f_annotate_Sequencing_Gaps needs both SeqGapSizesChromBreak and GeneLengthHypoMin to be set or to be unset.');
         end
-
+    """
+    if not (vGeneLengthHypoMin == -1 or vSeqGapSizesChromBreak == []):
+        log.error(
+            "annotate_sequencing_gaps needs both SeqGapSizesChromBreak and GeneLengthHypoMin to be set or to be unset."
+        )
+        raise Exception("Incompatable parameters in annotate_sequencing_gaps function")
+    _ = """
         vMaxInit = 7000000;
         if ispc()
             if ~exist([vFile '_GAPOutput'], 'file') || vOverwriteSeqGapInfo
@@ -655,9 +665,19 @@ def annotate_sequencing_gaps(
         end
         fclose(vFIO);
         vSeqGaps = vSeqGaps(1:(vL-1),:);
-
-        %find the intergenic region of the gap, if the gap is present within a
-        %gene model, get rid of the gap.
+    """
+    gap_output_file = vFile.with_suffix(vFile.suffix + "_GAPOutput")
+    if vOverwriteSeqGapInfo or not gap_output_file.exists():
+        get_sequencing_gaps(vFile, 1, vOverwriteSeqGapInfo, vUnmaskedDNA)
+    sequencing_gaps = pl.read_csv(
+        gap_output_file,
+        separator=" ",
+        has_header=False,
+        new_columns=["scaffold", "amino acid", "start index", "length"],
+    )
+    # find the intergenic region of the gap, if the gap is present within a
+    # gene model, get rid of the gap.
+    _ = """
         vSeqGaps = [vSeqGaps, cell(size(vSeqGaps,1),3)];
         vSeqGaps_3 = str2num(char(vSeqGaps(:,3)));
         vSeqGaps_4 = str2num(char(vSeqGaps(:,4)));
@@ -707,25 +727,32 @@ def annotate_sequencing_gaps(
     %     vSeqGaps_3 = vSeqGaps_3(~vKillSeqGaps,:);
     %     vSeqGaps_4 = vSeqGaps_4(~vKillSeqGaps,:);
     end"""
-    return pl.DataFrame()  # FIXME: return value
+    # FIXME: only gaps which are in intergenic regions
+    # & indicate which intergenic region
+    return sequencing_gaps
 
 
 def get_sequencing_gaps(
-    vFile: Path, vParallelize: int, vOverwriteSeqGapInfo: bool, vUnmaskedDNA: bool
+    vFile: Path,
+    vParallelize: int,
+    vOverwriteSeqGapInfo: bool = False,
+    vUnmaskedDNA: bool = False,
 ) -> None:
     """
     ---------------------------------------------------------------------------
-      Function that screens a DNA fasta file for masked streches of DNA
+      Function that screens a DNA FASTA file for masked streches of DNA
       (masked by N).
 
+      Creates a _GAPOutput file from the FASTA file, then creates a
+      _GAPOutput_count.txt file by running analyze_plant_cluster_gap_file()
     ---------------------------------------------------------------------------
     Args:
-        vFile: Fasta file of the masked genome nucleotide sequences.
+        vFile: FASTA file of the masked genome nucleotide sequences.
         vParallelize: Defines if multiple cpus should be used for computation of parts
                of algorithm. Active if larger than 1.
-        vOverwriteSeqGapInfo: If set to 1, the code enforces masked nucleotide
+        vOverwriteSeqGapInfo: If set to True, the code enforces masked nucleotide
                               analysis for finding sequencing gaps (default is
-                              0, no enforcement).
+                              False, no enforcement).
         vUnmaskedDNA: Option to ignore the error if you use unmasked DNA files.
     Returns:
         None (File is generated with the path of the first input argument,
@@ -733,253 +760,16 @@ def get_sequencing_gaps(
     Raises:
         IOError: if file cannot be generated.
     """
-
-    _ = """
-        % MATLAB code
-        if ispc()
-            if vOverwriteSeqGapInfo == 1 || ~exist([vFile '_GAPOutput'], 'file')
-                fprintf('Finding sequencing gaps is only set up for linux. Please precompute the the sequencing gaps (masked stretches of DNA) (e.g. on linux server).\n');
-                fprintf(
-                    'Please use the follwing commands on Linux (use which and programname to find your paths):\n');
-                vAWK_install_path = 'awk_install_path';
-                fprintf('%s -f enter_new_line_characters_in_fasta_file.awk ''%s''>''%s_temp1''\n',
-                        vAWK_install_path, vFile, vFile);
-                fprintf('tr -d ''\r'' < ''%s_temp1''>''%s_temp2''\n',
-                        vFile, vFile);
-                fprintf('tr -d ''\n'' < ''%s_temp2''>''%s_temp3''\n',
-                        vFile, vFile);
-                fprintf('%s -f get_new_line_in.awk ''%s_temp3''>''%s_temp4''\n',
-                        vAWK_install_path, vFile, vFile);
-                fprintf('%s -f get_positions_of_gap.awk ''%s_temp4''>''%s_GAPOutput''\n',
-                        vAWK_install_path, vFile, vFile);
-                fprintf('Once you have done this, please store the resulting %s_GAPOutput file in the accoring folder of the DNA fasta file and rerun Plantcluster finder.\n', vFile);
-                error(
-                    'Run aborted because PC is used in combination with sequencing gap finding\n');
-            end
-    """
-    # run the following
-    #  - `enter_new_line_characters_in_fasta_file.awk`
-    #  - remove \r and \n characters
-    #  - `get_new_line_in.awk`
-    #  - `get_positions_of_gap.awk` > %s_GAPOutput
-
-    _ = """
-        else
-            if vVerbose >= 1
-                fprintf('Check awk installation.\n');
-            end
-            [~, vAWK_install_path] = system('which awk');
-            if strncmp(vAWK_install_path,'/usr/bin/which: no awk',22)
-                error('No awk installed. Abort.\n');
-            else
-                vAWK_install_path = regexprep(vAWK_install_path,'\n','');
-            end
-
-            % Linearize the fasta files of the genomes
-            if vVerbose >= 1
-                fprintf('Get information gaps in genomes.\n');
-            end
-            if vPara <= 1
-                f_run_awk_skripts(vFile, vAWK_install_path,
-                                  vVerbose, vOverwriteSeqGapInfo);
-            else
-                %Split Files into scaffolds
-                vFile_ID = 1;
-                vFIO = fopen(vFile);
-                vFIO_temp = fopen([vFile '_' num2str(vFile_ID)],'w');
-                vLine = fgetl(vFIO);
-                if strncmp(vLine,'>',1)
-                    fprintf(vFIO_temp,[vLine '\n']);
-                else
-        error('First line in DNA Fasta file is not a header\n');
-                end
-                vLine = fgetl(vFIO);
-                while ischar(vLine)
-                    if strncmp(vLine,'>',1)
-                        fclose(vFIO_temp);
-                        vFile_ID = vFile_ID + 1;
-                        vFIO_temp = fopen([vFile '_' num2str(vFile_ID)],'w');
-                        fprintf(vFIO_temp,[vLine '\n']);
-                    else
-                        fprintf(vFIO_temp,[vLine '\n']);
-                    end
-                    vLine = fgetl(vFIO);
-                end
-                fclose(vFIO_temp);
-                fclose(vFIO);
-
-                %open matlabpool
-                vPool = parpool('local',vPara-1);
-
-                %Run the commands individually with parfor
-                parfor vi = 1:size(vFile_ID)
-                    f_run_awk_skripts([vFile '_' num2str(vi)], vAWK_install_path, vVerbose, vOverwriteSeqGapInfo);
-                end
-
-                %close matlabpool
-                delete(vPool);
-
-                %Build result files together
-                vFIO = fopen([vFile '_GAPOutput_count.txt'],'w');
-                for vi = 1:size(vFile_ID)
-                    vFIO_temp = fopen([vFile '_' num2str(vi) '_GAPOutput_count.txt']);
-                    vLine = fgetl(vFIO_temp);
-                    while ischar(vLine)
-                        fprintf(vFIO, [vLine '\n']);
-                        vLine = fgetl(vFIO_temp);
-                    end
-                    fclose(vFIO_temp);
-                end
-                fclose(vFIO);
-            end
-        end
-
-        %Produce the Gap analysis file
-        [~,vOutput] = system(['ls' ' ' '''' vFile '_GAPOutput_count.txt''']);
-        if vOverwriteSeqGapInfo == 1 || strncmp(vOutput,'ls: cannot access', 17)
-            f_analyze_PlantClusterGapFile([vFile '_GAPOutput'], vUnmaskedDNA, vVerbose);
-        else
-            if vVerbose >= 1
-                fprintf('File %s exists, not overwritten.\n', [
-                        '''' vFile '_GAPOutput_count.txt''']);
-            end
-        end
-    end"""
-
-
-def run_awk_skripts(
-    vFile: Path, vAWK_install_path: Path, vOverwriteSeqGapInfo: bool
-) -> None:
-    """
-    ---------------------------------------------------------------------------
-
-      Function that uses awk to process the masked DNA fasta file to search for
-      sequencing gaps.
-
-    ---------------------------------------------------------------------------
-    Args:
-        vFile: Full path to a dna Fasta file. Note, the folder the DNA fasta
-               file needs to be writable for the temporary and result files
-               generated.
-        vAWK_install_path: Path to the installation of awk.
-        vOverwriteSeqGapInfo: If set, the code enforces masked nucleotide
-                              analysis for finding sequencing gaps.
-    Returns:
-        None (Temporary (_temp1, _temp2, _temp3, _temp4) and Gapouptu
-             (_GAPOutput) files generated.
-    Raises:
-        Exception: If AWK scripts do not run successfully
-        IOError: If *_GAPOutput files cannot be generated
-    """
-
-    _ = """
-        % MATLAB code
-        [~,vOutput] = system(['ls' ' ' '''' vFile '_temp1''']);
-        if vOverwriteSeqGapInfo == 1 || strncmp(vOutput,'ls: cannot access', 17)
-            if vVerbose >= 2
-                fprintf('Next command running:\n');
-                fprintf([vAWK_install_path ' ' '-f enter_new_line_characters_in_fasta_file.awk' ' ' '''' vFile '''>''' vFile '_temp1''']);
-                fprintf('\n');
-            end
-            [vStatus, vOutput] = system([vAWK_install_path ' ' '-f enter_new_line_characters_in_fasta_file.awk' ' ' '''' vFile '''>''' vFile '_temp1''']);
-            if vVerbose >= 2
-                fprintf('Status was %i\n', vStatus);
-                fprintf('Output was:\n');
-                fprintf('%s\n', vOutput);
-            end
-        else
-            if vVerbose >= 1
-                fprintf('File %s exists, not overwritten.\n',
-                        ['''' vFile '_temp1''']);
-            end
-        end
-        [~,vOutput] = system(['ls' ' ' '''' vFile '_temp2''']);
-        if vOverwriteSeqGapInfo == 1 || strncmp(vOutput,'ls: cannot access', 17)
-            if vVerbose >= 2
-                fprintf('Next command running:\n');
-                fprintf(['tr -d ''\r'' <' ' ' '''' vFile '_temp1''>''' vFile '_temp2''']);
-                fprintf('\n');
-            end
-            [vStatus, vOutput] = system(['tr -d ''\r'' <' ' ' '''' vFile '_temp1''>''' vFile '_temp2''']);
-            if vVerbose >= 2
-                fprintf('Status was %i\n', vStatus);
-                fprintf('Output was:\n');
-                fprintf('%s\n', vOutput);
-            end
-        else
-            if vVerbose >= 1
-                fprintf('File %s exists, not overwritten.\n',
-                        ['''' vFile '_temp2''']);
-            end
-        end
-        [~,vOutput] = system(['ls' ' ' '''' vFile '_temp3''']);
-        if vOverwriteSeqGapInfo == 1 || strncmp(vOutput,'ls: cannot access', 17)
-            if vVerbose >= 2
-                fprintf('Next command running:\n');
-                fprintf(['tr -d ''\n'' <' ' ' '''' vFile '_temp2''>''' vFile '_temp3''']);
-                fprintf('\n');
-            end
-            [vStatus, vOutput] = system(['tr -d ''\n'' <' ' ' '''' vFile '_temp2''>''' vFile '_temp3''']);
-            if vVerbose >= 2
-                fprintf('Status was %i\n', vStatus);
-                fprintf('Output was:\n');
-                fprintf('%s\n', vOutput);
-            end
-        else
-            if vVerbose >= 1
-                fprintf('File %s exists, not overwritten.\n',
-                        ['''' vFile '_temp3''']);
-            end
-        end
-
-        [~,vOutput] = system(['ls' ' ' '''' vFile '_temp4''']);
-        if vOverwriteSeqGapInfo == 1 || strncmp(vOutput,'ls: cannot access', 17)
-            if vVerbose >= 2
-                fprintf('Next command running:\n');
-                fprintf([vAWK_install_path ' ' '-f get_new_line_in.awk' ' ' '''' vFile '_temp3''>''' vFile '_temp4''']);
-                fprintf('\n');
-            end
-            [vStatus, vOutput] = system([vAWK_install_path ' ' '-f get_new_line_in.awk' ' ' '''' vFile '_temp3''>''' vFile '_temp4''']);
-            if vVerbose >= 2
-                fprintf('Status was %i\n', vStatus);
-                fprintf('Output was:\n');
-                fprintf('%s\n', vOutput);
-            end
-        else
-            if vVerbose >= 1
-                fprintf('File %s exists, not overwritten.\n',
-                        ['''' vFile '_temp4''']);
-            end
-        end
-
-        % Search for sequencing gaps (searches for continuous stretches of
-        % ATCGatcg* and Nn s, and lists them in a new file
-        [~,vOutput] = system(['ls' ' ' '''' vFile '_GAPOutput''']);
-        if vOverwriteSeqGapInfo == 1 || strncmp(vOutput,'ls: cannot access', 17)
-            if vVerbose >= 2
-                fprintf('Next command running:\n');
-                fprintf([vAWK_install_path ' ' '-f get_positions_of_gap.awk' ' ' '''' vFile '_temp4''>''' vFile '_GAPOutput''']);
-                fprintf('\n');
-            end
-            [vStatus, vOutput] = system([vAWK_install_path ' ' '-f get_positions_of_gap.awk' ' ' '''' vFile '_temp4''>''' vFile '_GAPOutput''']);
-            if vVerbose >= 2
-                fprintf('Status was %i\n', vStatus);
-                fprintf('Output was:\n');
-                fprintf('%s\n', vOutput);
-            end
-        else
-            if vVerbose >= 1
-                fprintf('File %s exists, not overwritten.\n',
-                        ['''' vFile '_GAPOutput''']);
-            end
-        end
-        [status,msg,~] = fileattrib([vFile '_GAPOutput'],'+w +x','a');
-        if status~= 1
-            fprintf('Could not change file attribute of %s\n',
-                    ['''' vFile '_GAPOutput''']);
-            error('Message was %s', msg);
-        end
-    end"""
+    if vOverwriteSeqGapInfo:
+        if vFile.exists():
+            log.error("Cannot overwrite existing _GAPOutput with tag set")
+            raise Exception("Overwrite Protection Enforcement of Existing Gap File")
+    get_positions_of_gap(
+        vFile, vFile.with_suffix(vFile.suffix + "_GAPOutput"), parallelize=vParallelize
+    )
+    analyze_plant_cluster_gap_file(
+        vFile.with_suffix(vFile.suffix + "_GAPOutput"), vUnmaskedDNA
+    )
 
 
 def get_metabolic_domains(
@@ -1008,39 +798,26 @@ def get_metabolic_domains(
         AnnotatedMetabolicDomains object with all items stored in Metabolic domain file aw well as
             mappings for metabolic domains of interest described in `MD_to_annotate`.
     """
-    rxn_meta_dom = pl.read_csv(vGenesMetabolicDomains_File)
+    # TODO: Why does this file have \r EOL char?
+    rxn_meta_dom = (
+        pl.read_csv(vGenesMetabolicDomains_File, separator="\t", eol_char="\r")
+        .unpivot(
+            [f"Class{n+1}" for n in range(6)],
+            index=["Reaction ID", "Pathway"],
+            value_name="Metabolic Domain",
+        )
+        .filter(pl.col("Metabolic Domain") != "NA")
+        .select(pl.col("Reaction ID"), pl.col("Pathway"), pl.col("Metabolic Domain"))
+    )
 
-    # TODO: If I can combine the columns into one first, this wouldn't need a set
-    rxn_meta_dom_cols = rxn_meta_dom.columns
-    unique_md_set = set(rxn_meta_dom[rxn_meta_dom_cols[2]].unique())
-    for i in range(3, len(rxn_meta_dom_cols)):
-        unique_md_set = unique_md_set.union(rxn_meta_dom[rxn_meta_dom_cols[i]].unique())
-    unique_md = tuple(unique_md_set)
-    del unique_md_set
-
-    for md in unique_md:
-        if md != vMD_to_annotate:
-            log.warning("Discarding metabolic domain information of", md)
-    """
-
-        vR_MD = false(size(vRxnMetaDom.(char(vRxnMetaDom_Att(1,1))),1),size(vMD_to_annotate,1));
-        for vi = 1:size(vMD_to_annotate,1)
-            for vj = 3:size(vRxnMetaDom_Att,2)
-                vR_MD(strcmp(vRxnMetaDom.(char(vRxnMetaDom_Att(1,vj)))(:,1),vMD_to_annotate(vi,1)),vi) = 1;
-            end
-        end
-    end
-    """
-    # FIXME: verify this logic is correct
-    rxn_2_md = dict()
-    for vmd_value in vMD_to_annotate:
-        for j in rxn_meta_dom_cols:
-            rxn_2_md[j] = vmd_value
-    return AnnotatedMetabolicDomains(RxnMetaDom=rxn_meta_dom, Rxn2MetaDom=rxn_2_md)
+    return AnnotatedMetabolicDomains(
+        RxnMetaDom=rxn_meta_dom, Rxn2MetaDom=rxn_meta_dom.rows_by_key(key="Reaction ID")
+    )
 
 
 def read_MCL_clustering_file(
     vFile: Path,
+    vProtein_sequence_FastaFile: Path,
     conversion: Conversion,
     vRemoveNonProtLocations: bool,
 ) -> MclClusterData:
@@ -1055,6 +832,7 @@ def read_MCL_clustering_file(
 
     Args:
         vFile: MCL-clustering output file (I20).
+        vProtein_sequence_FastaFile: The FASTA file of the protein sequences.
         conversion: Lists of gene, and protein IDs with mapping from conversion files.
         vRemoveNonProteinLocations: True if protein-IDs should be stored
             in return value.
@@ -1066,82 +844,29 @@ def read_MCL_clustering_file(
     """
     if vRemoveNonProtLocations:
         _protein_init = 300_000
-        # TODO: the rest of the function
-    _ = """
-        % MATLAB code
-        if vRemoveNonProtLocations == 1
-            vProtinit = 300000;
-            vProtein_IDs = cell(vProtinit,1);
-            vFIO = fopen(regexprep(vProtein_sequence_FastaFile,
-                         regexptranslate('escape', '.MCLTAB.dump.I20'),''));
-            vLine = fgetl(vFIO);
-            vPID = 1;
-            while ischar(vLine)
-                if strncmp(vLine,'>',1)
-                    vTempLine = regexp(vLine, ' ', 'split');
-                    if vPID <= vProtinit
-                        vProtein_IDs(vPID,1) = cellstr(regexprep(vTempLine, '^>', ''));
-                    else
-                        vProtein_IDs = [vProtein_IDs; cellstr(regexprep(vTempLine, '^>', ''))];
-                    end
-                    vPID = vPID + 1;
-                end
-                vLine = fgetl(vFIO);
-            end
-            fclose(vFIO);
-            vProtein_IDs = vProtein_IDs(1:(vPID-1),:);
-        else
-            vProtein_IDs = cell(0,1);
-        end
-    """
-    # then
-    _ = """
-        vInitMax = 100000;
-        vFile_Data = cell(vInitMax,1);
-        vFIO = fopen(vFile);
-        vLine = fgetl(vFIO);
-        vL = 1;
-        if ischar(vLine)
-            vFile_Data(vL,1) = cellstr(vLine);
-        end
-        vLine = fgetl(vFIO);
-        vL = 2;
-        while ischar(vLine)
-            if vVerbose >= 2
-                fprintf('MCL_Line %i\n', vL);
-            end
-            if vL <= vInitMax
-                vFile_Data(vL,1) = cellstr(vLine);
-            else
-                vFile_Data = [vFile_Data; cellstr(vLine)];
-            end
-            vLine = fgetl(vFIO);
-            vL = vL + 1;
-        end
-        fclose(vFIO);
-        vFile_Data = vFile_Data(1:vL-1,1);
+    protein_ids = []
+    with open(vProtein_sequence_FastaFile, "r") as fasta_file:
+        for line in fasta_file:
+            if line.startswith(">"):
+                protein_ids.append(line[1:].strip())
 
-        vG_MCL = false(size(vMapG_MapP,1),vL-1);
-        nvMapP = size(vMapP,1);
-        for vi = 1:nvMapP
-            if vVerbose >= 2
-                fprintf('MCL: process protein %i of %i\n', vi, nvMapP);
-            end
-            vIDs = ~cellfun('isempty',regexp(
-                vFile_Data, regexptranslate('escape', vMapP(vi,1)), 'once'));
-            vG_MCL(vMapG_MapP(:,vi)==1,vIDs) = 1;
-        end
+    mcl_cluster_data = []
+    clusters_by_p: Dict[str, List[int]] = dict()
+    with open(vFile, "r") as f:
+        for i, line in enumerate(f):
+            log.debug(f"MCL_Line {i}")
+            # if i <= init_max:
+            prots_in_cluster = line.strip().split()
+            mcl_cluster_data.append(prots_in_cluster)
+            for prot in prots_in_cluster:
+                clusters_by_p[prot] = clusters_by_p.get(prot, []) + [i]
 
-        for vi = 1:size(vMapG,1)
-            if sum(vG_MCL(vi,:)) == 0
-                fprintf(
-                    'Warning: %s seems not to be part of the MCL clustering.\n',char(vMapG(vi,1)));
-            end
-        end
-    end"""
-    return MclClusterData(
-        Gene2MCLClusters=dict(), Protein_IDs=[]
-    )  # FIXME: return value
+    clusters_by_g = {
+        conversion.MapP_MapG[p][0]: clust for p, clust in clusters_by_p.items()
+    }
+    proteins_list = list(clusters_by_p.keys())
+
+    return MclClusterData(Gene2MCLClusters=clusters_by_g, Protein_IDs=proteins_list)
 
 
 def get_MCL_clustering(
@@ -1155,8 +880,12 @@ def get_MCL_clustering(
     ---------------------------------------------------------------------------
 
       Function that uses a protein fasta file of a genome annotation to create
-      a blastdb, and then does an all against all blast and uses the result to
+      a blastdb, and then does an *all against all* blast and uses the result to
       do a MCL clustering. This is used for local duplication information.
+
+      MCL algorithm is for **Markov Cluster Algorithm,** which is an unsupervised
+      clustering algorithm for graphs. For details, the project is hosted at
+      https://micans.org/mcl/
 
     ---------------------------------------------------------------------------
 
@@ -1179,54 +908,24 @@ def get_MCL_clustering(
         as well as a list of protein-IDs stored in the fasta file.
     """
 
-    _ = """
-        % MATLAB code
-        if ~exist([vProtein_sequence_FastaFile '.MCLTAB.dump.I20'],'file') || vOverwriteMCLClustering == 1
-            if ispc()
-                fprintf(
-                    'MCL clustering is only set up for linux. Please precompute the MCL clustering file (e.g. on linux server).\n');
-                fprintf(
-                    'Please use the follwing commands on Linux (use which and programname to find your paths):\n');
-                vMakeblastdb_install_path = 'makeblastdb_install_path';
-                vBlastp_install_path = 'blastp_install_path';
-                vMcxload_install_path = 'mcxload_install_path';
-                vMcl_install_path = 'mcl_install_path';
-                vMcxdump_install_path = 'mcxdump_install_path';
-                fprintf('%s -in %s -dbtype prot -out %s.blastDB -hash_index\n',
-                        vMakeblastdb_install_path,vProtein_sequence_FastaFile,vProtein_sequence_FastaFile);
-                fprintf('%s -query %s -db %s.blastDB -evalue 1 -out %s.blastOUT -outfmt "6 qseqid sseqid evalue bitscore length pident qstart qend sstart send"\n',
-                        vBlastp_install_path, vProtein_sequence_FastaFile, vProtein_sequence_FastaFile, vProtein_sequence_FastaFile);
-                fprintf('cut -f 1,2,3 %s.blastOUT > %s.MCLIN\n',
-                        vProtein_sequence_FastaFile, vProtein_sequence_FastaFile);
-                fprintf('%s -abc %s.MCLIN --stream-mirror --stream-neg-log10 -stream-tf ''ceil(200)'' -o %s.MCLMATRIX -write-tab %s.MCLTAB\n',
-                        vMcxload_install_path, vProtein_sequence_FastaFile, vProtein_sequence_FastaFile, vProtein_sequence_FastaFile);
-                fprintf('%s %s.MCLMATRIX -I 2\n',vMcl_install_path,
-                        vProtein_sequence_FastaFile);
-                fprintf('%s -icl %s.MCLMATRIX.I20 -tabr %s.MCLTAB -o %s.MCLTAB.dump.I20\n', vMcxdump_install_path,
-                        vProtein_sequence_FastaFile, vProtein_sequence_FastaFile, vProtein_sequence_FastaFile);
-                fprintf(
-                    'Please use a Protein fasta file that contains only protein Identifiers as headers.\n')
-                fprintf('Once you have done this, please give the %s.MCLTAB.dump.I20 as Filename for the proteinfasta file and use option ''MCLClusterFile'' 1 to start PlantClusterFinder.\n',vProtein_sequence_FastaFile);
-                error(
-                    'Run aborted because PC is used in combination with MCL clustering');
-            end
-    """
     apps = ["makeblastdb", "blastp", "cut", "mcxload", "mcl", "mcxdump"]
-    missing_apps: list[str] = []
-    app_path: dict[str, Path] = dict()
+    missing_apps: List[str] = []
+    app_path: Dict[str, Path] = dict()
     for app in apps:
-        # TODO: Get exit code?
-        output: str = os.execvp("which", [app])
-        if output.code > 0:
+        output: subprocess.CompletedProcess = subprocess.run(
+            ["which", app], capture_output=True
+        )
+        if output.returncode > 0:
             missing_apps.append(app)
         else:
-            app_path[app] = Path(output.text)
+            app_path[app] = Path(str(output.stdout, "utf-8").strip())
     if len(missing_apps) > 0:
+        missing_apps_msg = ", ".join(missing_apps)
         raise Exception(
-            f"The following applications are not in $PATH: {', '.join(missing_apps)}"
+            f"The following applications are not in $PATH: {missing_apps_msg}"
         )
 
-    command_for: dict[str, list[str]] = dict()
+    command_for: Dict[str, List[str]] = dict()
     command_for["makeblastdb"] = [
         "-in",
         str(vProtein_sequence_FastaFile),
@@ -1246,7 +945,7 @@ def get_MCL_clustering(
         "-out",
         f"{vProtein_sequence_FastaFile}.blastOUT",
         "-outfmt",
-        "6 qseqid sseqid evalue bitscore length pident qstart qend sstart send",
+        "'6 qseqid sseqid evalue bitscore length pident qstart qend sstart send'",
     ]
     if vParallelize > 1:
         command_for["blastp"].extend(["-num_threads", str(vParallelize)])
@@ -1263,7 +962,7 @@ def get_MCL_clustering(
         "--stream-mirror",
         "--stream-neg-log10",
         "-stream-tf",
-        "ceil(200)",
+        "'ceil(200)'",
         "-o",
         f"{vProtein_sequence_FastaFile}.MCLMATRIX",
         "-write-tab",
@@ -1273,6 +972,8 @@ def get_MCL_clustering(
         f"{vProtein_sequence_FastaFile}.MCLMATRIX",
         "-I",
         "2",
+        "-o",
+        f"{vProtein_sequence_FastaFile}.MCLMATRIX.I20",
     ]
     overwrite_dump_workaround = "" if vOverwriteMCLClustering else f"{os.getpid()}."
     command_for["mcxdump"] = [
@@ -1285,13 +986,18 @@ def get_MCL_clustering(
     ]
 
     for app in apps:
-        print(f"{app_path[app]} {" ".join(command_for[app])}")
-        os.execvp(app_path[app], command_for[app])
+        log.info(f"{app_path[app]} {' '.join(command_for[app])}")
+        subprocess.run(
+            str(app_path[app]) + " " + " ".join(command_for[app]),
+            shell=True,
+            check=True,
+        )
 
     return read_MCL_clustering_file(
         Path(
             f"{vProtein_sequence_FastaFile}.{overwrite_dump_workaround}MCLTAB.dump.I20"
         ),
+        vProtein_sequence_FastaFile,
         conversion,
         vRemoveNonProtLocations,
     )
@@ -1355,11 +1061,12 @@ def map_pgdb_reactions_to_genes(
     _reactions_attributes = kwargs.get(
         "ReactionsAttributes", ("UNIQUE-ID", "ENZYMATIC-REACTION", "EC-NUMBER")
     )
-    G2P = kwargs.get("G2P", ("UNIQUE-ID", "PRODUCT"))
+    G2P = kwargs.get("G2P", ("PRODUCT", "UNIQUE-ID"))
     P2P = kwargs.get("P2P", ("UNIQUE-ID", "COMPONENTS"))
     # ("CATALYZES", "COMPONENTS"))
-    P2E = kwargs.get("P2E", ("ENZYME", "CATALYZES"))
+    P2E = kwargs.get("P2E", ("CATALYZES", "UNIQUE-ID"))
     E2R = kwargs.get("E2R", ("REACTION", "UNIQUE-ID"))
+    # R2E = kwargs.get("R2E", ("UNIQUE-ID", "REACTION"))
     # this was in the original code, but it's not used
     # R2Pa = ("UNIQUE-ID", "ENZYMATIC-REACTION")
 
@@ -1387,7 +1094,11 @@ def map_pgdb_reactions_to_genes(
 
     # Read in all attributes and store them
     log.info("Reading in genes.dat")
-    genes_all = read_in_pgdb_flat(vPGDB_FlatFileFolder / "genes.dat", genes_attributes)
+    genes_all = read_in_pgdb_flat(
+        vPGDB_FlatFileFolder / "genes.dat",
+        genes_attributes,
+        unique_keys=genes_attributes,
+    )
     log.info("Reading in proteins.dat")
     proteins_all = read_in_pgdb_flat(
         vPGDB_FlatFileFolder / "proteins.dat", proteins_attributes
@@ -1403,11 +1114,20 @@ def map_pgdb_reactions_to_genes(
 
     # Match flat files to each other
     log.info("Matching genes to proteins")
-    G2_P = match_pgdb_flat(genes_all, proteins_all, G2P)
+    G2_P = match_pgdb_flat(
+        genes_all, proteins_all, G2P, primary_id="GENE-ID", secondary_id="PROTIEN-ID"
+    )
     log.info("Matching proteins to protein-complexes")
-    P_P = match_pgdb_flat(proteins_all, proteins_all, P2P)
+    P_P = match_pgdb_flat(
+        proteins_all,
+        proteins_all,
+        P2P,
+        primary_id="PROTIEN-ID",
+        secondary_id="COMPONENTS",
+    )
 
-    # I'm not quite sure what this is for
+    # collect all proteins associated with a primary protein ID
+    _ = """
     for i in range(len(P_P)):
         P_P[i, i] = 1
     sum_old = -1
@@ -1419,32 +1139,51 @@ def map_pgdb_reactions_to_genes(
             P_P[i, ids1] = 1
             P_P[ids1, i] = 1
         sum_new = sum(P_P)
+    """
 
     log.info("Match proteins and protein complexes to enzymereactions")
-    P_E = match_pgdb_flat(proteins_all, enzrxns_all, P2E)
+    P_E = match_pgdb_flat(
+        proteins_all,
+        enzrxns_all,
+        P2E,
+        primary_id="PROTIEN-ID",
+        secondary_id="ENZYME-ID",
+    )
     log.info("Matching enzymereactions to reactions")
-    E_R2 = match_pgdb_flat(enzrxns_all, reactions_all, E2R)
+    E2_R = match_pgdb_flat(
+        enzrxns_all,
+        reactions_all,
+        E2R,
+        # R2_E = match_pgdb_flat(
+        #    reactions_all,
+        # enzrxns_all,
+        #        R2E,
+        primary_id="ENZYME-ID",
+        secondary_id="REACTION-ID",
+    )
 
     # Match Genes to reactions directly.
     log.info("Match genes to to reactions")
     # initialize matrix the size of [G2_P, E_R2]
-    # FIXME: change logic to use pl.DataFrame
-    gene2rxn = np.zeros((len(G2_P), len(E_R2)))
-    for gene_all_id in range(len(G2_P)):
-        P_ID = G2_P[gene_all_id, :] == 1
-        P2_ID = [sum(P_P[P_ID, :] > 0)]
-        E_ID = [sum(P_E[P2_ID, :] > 0)]
-        R_ID = [sum(E_R2[E_ID, :] > 0)]
-        gene2rxn[gene_all_id, R_ID] = 1
+    # gene2rxn = (
+    gene_prot = G2_P.join(P_P, on="PROTIEN-ID", validate="1:1")
+    gene_prot_enz = gene_prot.join(P_E, on="PROTIEN-ID")
+    gene_prot_enz_reaction = gene_prot_enz.join(E2_R, on="ENZYME-ID")
+    G2_R = gene_prot_enz_reaction.select(pl.col("GENE-ID"), pl.col("REACTION-ID"))
+    gene2rxn = G2_R.rows_by_key("GENE-ID")
 
     return GenesToReactions(
-        GenesAll=genes_all, ReactionsAll=reactions_all, Gene2Rxn=dict()
+        GenesAll=genes_all, ReactionsAll=reactions_all, Gene2Rxn=gene2rxn
     )
 
 
 def match_pgdb_flat(
-    flat1: pl.DataFrame, flat2: pl.DataFrame, matchings: tuple[str, str]
-) -> dict:
+    flat1: pl.DataFrame,
+    flat2: pl.DataFrame,
+    join_on: tuple[str, str],
+    primary_id: str = "UNIQUE-ID",
+    secondary_id: str = "UNIQUE-ID_right",
+) -> pl.DataFrame:
     """
     ---------------------------------------------------------------------------
 
@@ -1455,68 +1194,51 @@ def match_pgdb_flat(
     Args:
         Flat1: DataFrame of a read out pgdb Flat file.
         Flat2: DataFrame of a read out pgdb Flat file.
-        Matchings: Definition of which attributes in structure 1 should be
+        join_on: Definition of which attributes in structure 1 should be
                     matched to which attributes of structure 2
 
     Returns:
         F1_F2: A mapping between items of the first pgdb file to the second
                 one.
     """
-    if matchings[1] not in flat1.columns:
-        log.error(f"Matching column {
-                  matchings[1]} not in input data {flat1.columns}")
+    if join_on[0] not in flat1.columns:
+        log.error(
+            f"Matching column {join_on[0]} not in input data"
+            + f" {flat1.columns}, note the other table's columns are {flat2.columns}"
+        )
         raise Exception("Column-matching Mismatch")
-    if matchings[0] not in flat2.columns:
-        log.error(f"Matching column {
-                  matchings[0]} not in input data {flat2.columns}")
+    if join_on[1] not in flat2.columns:
+        log.error(
+            f"Matching column {join_on[1]} not in input data"
+            + f" {flat2.columns}, note the other table's columns are {flat1.columns}"
+        )
         raise Exception("Column-matching Mismatch")
-    if flat1[matchings[1]].dtype == pl.Null or flat2[matchings[0]].dtype == pl.Null:
-        log.warning(f"Cannot map {matchings[0]} to {
-                    matchings[1]}: dtype is Null")
+    if flat1[join_on[0]].dtype == pl.Null:
+        log.error(f"Primary table join ID {[join_on[0]]} is null dtype, cannot join")
         log.info(f"Columns of flats are are {flat1.columns}, {flat2.columns}")
-        return {}
-    flat2 = (
-        flat2.explode(matchings[0]) if flat2[matchings[0]].dtype == pl.List else flat2
-    )
-    flat1 = (
-        flat1.explode(matchings[1]) if flat1[matchings[1]].dtype == pl.List else flat1
-    )
+        raise Exception("Column-matching Mismatch")
+    if flat2[join_on[1]].dtype == pl.Null:
+        log.warning(
+            f"Cannot map {join_on[0]} to {join_on[1]}"
+            + ": dtype is Null, returning Null for second column"
+        )
+        log.info(f"Columns of flats are are {flat1.columns}, {flat2.columns}")
+        return flat1.select(
+            pl.col(join_on[0]).alias(primary_id), pl.lit(None).alias(secondary_id)
+        )
+    flat2 = flat2.explode(join_on[1]) if flat2[join_on[1]].dtype == pl.List else flat2
+    flat1 = flat1.explode(join_on[0]) if flat1[join_on[0]].dtype == pl.List else flat1
+    # NOTE: Validation on join can prevent data issues, consider adding
     joined_dbs = flat1.join(
         flat2,
-        left_on=matchings[1],
-        right_on=matchings[0],
+        left_on=join_on[0],
+        right_on=join_on[1],
         suffix="_right",
-        validate="1:m",
     )
-    flat2_adjusted_columns = flat2.columns
-    for col in flat2_adjusted_columns:
-        if col in flat1.columns:
-            col += "_right"
-    flat1_id_col = flat1.columns[0]
     log.debug("SUCCESSFUL JOIN", joined_dbs)
-    return {
-        x: y for x, y in joined_dbs[[flat1_id_col] + flat2_adjusted_columns].iter_rows()
-    }
-    """
-        % MATLAB code
-        vF1_F2 = false(size(vFlat1.(char(vFlatAttri1(1,1))),1),...
-                      size(vFlat2.(char(vFlatAttri2(1,1))),1));
-        for vMatchings_ID = 1:size(vMatchings,1)
-            for vvFlat1_ID = 1:size(vFlat1.(char(vFlatAttri1(1,vMatchings(vMatchings_ID,1)))),1)
-                if vVerbose >= 2
-                    fprintf('Match PGDB FlatFiles ID %i of %i\n',vvFlat1_ID,size(vFlat1.(char(vFlatAttri1(1,1))),1));
-                end
-
-                vFlat2_temp = false(size(vFlat2.(char(vFlatAttri2(1,vMatchings(vMatchings_ID,2)))),1),1);
-                for vFlat1_Dim = 1:size(vFlat1.(char(vFlatAttri1(1,vMatchings(vMatchings_ID,1)))),2)
-                    for vFlat2_Dim = 1:size(vFlat2.(char(vFlatAttri2(1,vMatchings(vMatchings_ID,2)))),2)
-                        vFlat2_temp = vFlat2_temp | strcmp(vFlat2.(char(vFlatAttri2(1,vMatchings(vMatchings_ID,2))))(:,vFlat2_Dim),vFlat1.(char(vFlatAttri1(1,vMatchings(vMatchings_ID,1))))(vvFlat1_ID,vFlat1_Dim));
-                    end
-                end
-                vF1_F2(vvFlat1_ID,vFlat2_temp) = 1;
-            end
-        end
-    end"""
+    return joined_dbs.select(
+        pl.col("UNIQUE-ID").alias(primary_id), pl.col(join_on[0]).alias(secondary_id)
+    )
 
 
 def read_in_conversion_file(
@@ -1542,20 +1264,18 @@ def read_in_conversion_file(
     Raises
     """
     conversion_data = pl.read_csv(
-        vGeneTranscriptProtein_mapping_File, separator="\t", dtypes=[pl.String] * 3
+        vGeneTranscriptProtein_mapping_File,
+        separator="\t",
+        schema_overrides={
+            x: pl.String for x in ["Gene Name", "Transcript Name", "Protein Name"]
+        },
     )
     column_names = conversion_data.columns
     conversion_len = len(conversion_data)
     log.debug(
         "Read in conversion data, %d rows, columns are %s", conversion_len, column_names
     )
-    conversion = Conversion(
-        MapG=set(conversion_data[column_names[0]].unique()),
-        MapT=set(conversion_data[column_names[1]].unique()),
-        MapP=set(conversion_data[column_names[2]].unique()),
-        MapG_MapT={x[0]: x[1] for x in conversion_data.iter_rows()},
-        MapG_MapP={x[0]: x[2] for x in conversion_data.iter_rows()},
-    )
+    conversion = Conversion(df=conversion_data)
     # Validate conversion before output
     # TODO: are unclean protein ID files an unrecoverable error?
     if len(conversion.MapG_MapT) < len(conversion.MapG):
@@ -1589,7 +1309,6 @@ def match_PGDBs_to_MDs(
     Gene2Rxn: GenesToReactions,
     annotated_metabolic_domains: AnnotatedMetabolicDomains,
 ) -> dict:
-    #    Gene2Rxn: pl.DataFrame, vR_MD: pl.DataFrame, reactions_all: pl.DataFrame, vRxnMetaDom: pl.DataFrame,) -> dict:
     """
     ---------------------------------------------------------------------------
 
@@ -1607,36 +1326,24 @@ def match_PGDBs_to_MDs(
 
     Returns:
         vRpgdb_Rmd: A mapping between reactions stored in the pgdb and the
-                    reactions given in the metabolic domain file
+                    reactions given in the metabolic domain file. Used by write_gene_output.
     """
 
-    _ = """
-        % MATLAB code
-
-        vRpgdb_Rmd = false(size(Gene2Rxn,2),size(vR_MD,1));
-        for vi = 1:size(vReactions_all.(char(vReactions_all_Att(1,1))),1)
-            vRpgdb_Rmd(vi,
-                strcmp(vRxnMetaDom.(char(vRxnMetaDom_Att(1,1)))
-                       ,vReactions_all.(char(vReactions_all_Att(1,1)))(vi,1))
-                    ) = 1;
-        end
-    end"""
-    rpgdb_rmd = dict()
-    # FIXME: rxn_meta_dom is now a DataFrame, should be used as such
-    for reaction in Gene2Rxn.ReactionsAll.iter_rows(named=True):
-        # key = strcmp(RxnMetaDom[0], reaction[0])  # what does strcmp do?
-        # I'm not certain if this is quite what I'm looking for
-        # I think I want a dict of UNIQUE-ID:reaction["Reaction"] in annotated_metabolic_domains.RxnMetaDom["Reaction"]
-        rpgdb_rmd[reaction["UNIQUE-ID"]] = (
-            annotated_metabolic_domains.RxnMetaDom["Reaction"] == reaction["Reaction"]
+    return (
+        Gene2Rxn.ReactionsAll.join(
+            annotated_metabolic_domains.RxnMetaDom,
+            left_on="UNIQUE-ID",
+            right_on="Reaction ID",
         )
-    return rpgdb_rmd
+        .select(pl.col("UNIQUE-ID").alias("REACTION-ID"), pl.col("Metabolic Domain"))
+        .rows_by_key(key="REACTION-ID")
+    )
 
 
 def map_PGDBs_to_conversion_file(
     Conversion: Conversion,
     vGenes_all: pl.DataFrame,
-    vGenesDat_GeneInfo: list[str],
+    vGenesDat_GeneInfo: List[str],
     vPGDBIdsToMap: str,
 ) -> dict:
     """
@@ -1662,65 +1369,50 @@ def map_PGDBs_to_conversion_file(
         A dictionary mapping between Genes in the conversion file and genes
                      stored in the pgdb genes.dat file.
     """
+    if vPGDBIdsToMap not in "GTP":
+        log.error("Invalid PGDBIdsToMap mapping value, valid values are G, T, and P")
+        raise Exception("Invalid Mapping Value")
 
-    _ = """
-        % MATLAB code
-        vPGDBIdsToMap_bin = false(3,1);
-        if ~isempty(regexp(vPGDBIdsToMap,'G','once'))
-            vPGDBIdsToMap_bin(1,1) = 1;
-        end
-        if ~isempty(regexp(vPGDBIdsToMap,'T','once'))
-            vPGDBIdsToMap_bin(2,1) = 1;
-        end
-        if ~isempty(regexp(vPGDBIdsToMap,'P','once'))
-            vPGDBIdsToMap_bin(3,1) = 1;
-        end
-    """
-    _ = """
-        vMapG_Gpgdb = false(size(vMapG,1),size(vGenes_all.(char(vGenesDat_GeneInfo(1,1))),1));
-        if vPGDBIdsToMap_bin(1,1) == 1
-            for vi = 1:size(vMapG,1)
-                for vj = 1:size(vGenesDat_GeneInfo,2)
-                    if vVerbose >= 2
-                        fprintf('Conversion gene-ID %i, pgdb-ID %i\n', vi, vj);
-                    end
-                    for vk = 1:size(vGenes_all.(char(vGenesDat_GeneInfo(1,vj))),2)
-                        vMapG_Gpgdb(vi,strcmpi(vGenes_all.(char(vGenesDat_GeneInfo(1,vj)))(:,vk),vMapG(vi,1))) = 1;
-                    end
-                end
-            end
-        end
-    """
-    _ = """
-        if vPGDBIdsToMap_bin(2,1) == 1
-            for vi = 1:size(vMapT,1)
-                for vj = 1:size(vGenesDat_GeneInfo,2)
-                    if vVerbose >= 2
-                        fprintf(
-                            'Conversion transcript-ID %i, pgdb-ID %i\n', vi, vj);
-                    end
-                    for vk = 1:size(vGenes_all.(char(vGenesDat_GeneInfo(1,vj))),2)
-                        vMapG_Gpgdb(vMapG_MapT(:,vi),strcmpi(vGenes_all.(char(vGenesDat_GeneInfo(1,vj)))(:,vk),vMapT(vi,1))) = 1;
-                    end
-                end
-            end
-        end
-    """
-    _ = """
-        if vPGDBIdsToMap_bin(3,1) == 1
-            for vi = 1:size(vMapP,1)
-                for vj = 1:size(vGenesDat_GeneInfo,2)
-                    if vVerbose >= 2
-                        fprintf('Conversion protein-ID %i, pgdb-ID %i\n', vi, vj);
-                    end
-                    for vk = 1:size(vGenes_all.(char(vGenesDat_GeneInfo(1,vj))),2)
-                        vMapG_Gpgdb(vMapG_MapP(:,vi),strcmpi(vGenes_all.(char(vGenesDat_GeneInfo(1,vj)))(:,vk),vMapP(vi,1))) = 1;
-                    end
-                end
-            end
-        end
-    end"""
-    return dict()  # FIXME: return value
+    gene_map = dict()
+    if "G" in vPGDBIdsToMap:
+        gene_map = (
+            Conversion.df.join(
+                vGenes_all, left_on="Gene Name", right_on=vGenesDat_GeneInfo[0]
+            )
+            .select(pl.col("Gene Name"), pl.col("UNIQUE-ID"))
+            .rows_by_key(key="UNIQUE-ID")
+        )
+
+    transcript_map = dict()
+    if "T" in vPGDBIdsToMap:
+        transcript_map = (
+            Conversion.df.join(
+                vGenes_all, left_on="Transcript Name", right_on=vGenesDat_GeneInfo[0]
+            )
+            .select(pl.col("Transcript Name"), pl.col("UNIQUE-ID"))
+            .rows_by_key(key="UNIQUE-ID")
+        )
+
+    protein_map = dict()
+    if "P" in vPGDBIdsToMap:
+        protein_map = (
+            Conversion.df.join(
+                vGenes_all, left_on="Protein Name", right_on=vGenesDat_GeneInfo[0]
+            )
+            .select(pl.col("Protein Name"), pl.col("UNIQUE-ID"))
+            .rows_by_key(key="UNIQUE-ID")
+        )
+
+    ret_keys = (
+        set(gene_map.keys()).union(protein_map.keys()).union(transcript_map.keys())
+    )
+    # TODO: is there a way to just pass dataframes to result?
+    return {
+        x: list(gene_map.get(x, []))
+        + list(transcript_map.get(x, []))
+        + list(protein_map.get(x, []))
+        for x in ret_keys
+    }
 
 
 def remove_protein_transcript_info_from_genepositionfile(
@@ -1750,61 +1442,29 @@ def remove_protein_transcript_info_from_genepositionfile(
         **vGeneLocation**: DataFrame about the gene location information,
                        generated in PlantClusterFinder function.
     """
-    vGeneLocation["Map_to_T"] = vGeneLocation["gene name"].apply(
-        lambda x: sum([1 for y in conversion.MapT if y == x])
-    )
-    vGeneLocation["Map_to_P"] = vGeneLocation["gene name"].apply(
-        lambda x: sum([1 for y in conversion.MapT if y == x])
-    )
-    vGeneLocation["Map_to_G"] = vGeneLocation["gene name"].apply(
-        lambda x: sum([1 for y in conversion.MapT if y == x])
-    )
-    if any(vGeneLocation["Map_to_G"] > 1):
+    vGeneLocation = vGeneLocation.join(conversion.df, on="Gene Name")
+    if (
+        # This statement returns True if duplicate keys exist in "Gene Name","Protein Name",or "Transcript Name"
+        vGeneLocation.select(
+            pl.col(["Gene Name", "Protein Name", "Transcript Name"])
+            .is_unique()
+            .not_()
+            .any()
+        )
+        .transpose()
+        .to_series(0)
+        .any()
+    ):
         raise Exception(
             "Gene / Transcript / Protein location file (Gene position file) matches several entries to more than one gene.\nPlease clean up entries for %s in your input files.\n",
             vGeneLocation["Map_to_G"][0],
         )
-
-    # FIXME: I'm not certain this logic is correct
-    vGeneLocation["Map_to_G"] = vGeneLocation["Map_to_G"].apply(
-        lambda x: 1 if sum(x) == 1 else sum([1 for y in conversion.MapG if y == x])
-    )
-    if any(vGeneLocation["Map_to_G"] > 1):
-        raise Exception(
-            "Gene / Transcript / Protein location file (Gene position file) has an entry %s that is not covered by your gene ID conversion file.\nPlease add the entry.\n",
-            vGeneLocation["Map_to_G"][0],
-        )
     return vGeneLocation
-
-    _ = """
-        % MATLAB code
-        vNi = size(vGeneLocation.(char(vGeneLocation_Att(1,1))),1);
-        for vi = 1:vNi
-            if vVerbose >= 2
-                fprintf('Processing transcript %i of %i\n', vi, vNi);
-            end
-            vCurrID = vGeneLocation.(char(vGeneLocation_Att(1,1)))(vi,1);
-            vCurrID_T = strcmpi(conversion.MapT,vCurrID);
-            vCurrID_P = strcmpi(conversion.MapP,vCurrID);
-            vCurrID_G = sum(conversion.MapG_MapT(:,vCurrID_T,1),2)>0 & sum(conversion.MapG_MapP(:,vCurrID_P,1),2)>0;
-
-            if sum(vCurrID_G) > 1
-                error('Gene / Transcript / Protein location file (Gene position file) matches several entries to more than one gene.\nPlease clean up entries for %s in your input files.\n', char(vCurrID));
-            elseif sum(vCurrID_G) == 1
-                vGeneLocation.(char(vGeneLocation_Att(1,1)))(vi,1) = conversion.MapG(vCurrID_G,1);
-            else
-                vCurrID_G = strcmpi(conversion.MapG,vCurrID);
-                if sum(vCurrID_G) == 0
-                    error('Gene / Transcript / Protein location file (Gene position file) has an entry %s that is not covered by your gene ID conversion file.\nPlease add the entry.\n', char(vCurrID));
-                end
-            end
-        end
-    end"""
 
 
 def consolidate_gene_info(
     vGeneLocation: pl.DataFrame,
-) -> tuple[list[str], pl.DataFrame]:
+) -> tuple[List[str], pl.DataFrame]:
     """
     ---------------------------------------------------------------------------
 
@@ -1825,55 +1485,24 @@ def consolidate_gene_info(
 
     Returns:
         Tuple containing the following values
+        - **vUniqueChrom**: A list with unique entries of all chromosome and scaffold
+                      names.
         - **vGeneLocation**: DataFrame about the gene location information.
                        - gene name
                        - gene start (bp)
                        - gene end (bp)
                        - chromosome
                        - strand
-        - **vUniqueChrom**: A list with unique entries of all chromosome and scaffold
-                      names.
     """
 
-    _ = """
-        % MATLAB code
-        vUniqueChrom = unique(vGeneLocation.(char(vGeneLocation_Att(1,4))));
-        vNi = size(vUniqueChrom,1);
-        for vi = 1:vNi
-            if vVerbose >= 2
-                fprintf('Consolidate gene information from %i of %i\n', vi, vNi);
-            end
-            vTemp_IDs1 = strcmp(vGeneLocation.(char(vGeneLocation_Att(1,4))),vUniqueChrom(vi,1));
-            vTemp_IDs1_find = find(vTemp_IDs1);
-            [~,vTemp_IDs2] = sort(vGeneLocation.(char(vGeneLocation_Att(1,1)))(vTemp_IDs1,1));
-            for vj = 1:size(vGeneLocation_Att,2)
-                vTempGeneLocation.(char(vGeneLocation_Att(1,vj))) = vGeneLocation.(char(vGeneLocation_Att(1,vj)))(vTemp_IDs1_find(vTemp_IDs2),:);
-            end
-            vj = 2;
-            while vj <= size(vTempGeneLocation.(char(vGeneLocation_Att(1,1))),1)
-                if strcmp(vTempGeneLocation.(char(vGeneLocation_Att(1,1)))(vj,1),vTempGeneLocation.(char(vGeneLocation_Att(1,1)))(vj-1,1))
-                    vTempGeneLocation.(char(vGeneLocation_Att(1,2)))(vj-1,1) = cellstr(num2str(min([str2num(char(vTempGeneLocation.(char(vGeneLocation_Att(1,2)))(vj-1,1))),str2num(char(vTempGeneLocation.(char(vGeneLocation_Att(1,2)))(vj,1)))])));
-                    vTempGeneLocation.(char(vGeneLocation_Att(1,3)))(vj-1,1) = cellstr(num2str(max([str2num(char(vTempGeneLocation.(char(vGeneLocation_Att(1,3)))(vj-1,1))),str2num(char(vTempGeneLocation.(char(vGeneLocation_Att(1,3)))(vj,1)))])));
-                    for vk = 1:size(vGeneLocation_Att,2)
-                        vTempGeneLocation.(char(vGeneLocation_Att(1,vk))) = vTempGeneLocation.(char(vGeneLocation_Att(1,vk)))([1:(vj-1),(vj+1):end],:);
-                    end
-                    vj = vj - 1;
-                end
-                vj = vj + 1;
-            end
-            if ~exist('vGeneLocation2', 'var')
-                vGeneLocation2 = vTempGeneLocation;
-            else
-                for vk = 1:size(vGeneLocation_Att,2)
-                    vGeneLocation2.(char(vGeneLocation_Att(1,vk))) = [vGeneLocation2.(char(vGeneLocation_Att(1,vk)));vTempGeneLocation.(char(vGeneLocation_Att(1,vk)))];
-                end
-            end
-        end
-    end"""
-    return ([], pl.DataFrame())
+    # TODO: This may be better served by a transformation on GeneLocation
+    return (
+        vGeneLocation.select(pl.col("Chromosome Name").unique()).to_series(0).to_list(),
+        vGeneLocation,
+    )
 
 
-def sort_genes(vGeneLocation: pl.DataFrame, vUniqueChrom: list[str]) -> pl.DataFrame:
+def sort_genes(GeneLocation: pl.DataFrame, vUniqueChrom: List[str]) -> pl.DataFrame:
     """
     ---------------------------------------------------------------------------
 
@@ -1894,31 +1523,18 @@ def sort_genes(vGeneLocation: pl.DataFrame, vUniqueChrom: list[str]) -> pl.DataF
                         generated in PlantClusterFinder function.
     """
 
-    _ = """
-        % MATLAB code
-        vGene_start_bp = str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,2)))(:,1)));
-        vGene_end_bp = str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,3)))(:,1)));
-        vGene_strand = strcmp(vGeneLocation2.(char(vGeneLocation_Att(1,5))),'1');
-        vNi = size(vUniqueChrom,1);
-        for vi = 1:vNi
-            if vVerbose >= 2
-                fprintf('Sorting chromosome or scaffold %i of %i\n', vi, vNi);
-            end
-            vTemp_IDs1 = strcmp(vGeneLocation2.(char(vGeneLocation_Att(1,4))),vUniqueChrom(vi,1));
-            vTemp_IDs1_find = find(vTemp_IDs1);
-            vStart = vGene_start_bp;
-            vStart(vGene_strand==0,1) = vGene_end_bp(vGene_strand==0,1);
-            [~,vTemp_IDs2] = sort(vStart(vTemp_IDs1));
-            for vk = 1:size(vGeneLocation_Att,2)
-                vGeneLocation2.(char(vGeneLocation_Att(1,vk)))(vTemp_IDs1,:) = vGeneLocation2.(char(vGeneLocation_Att(1,vk)))(vTemp_IDs1_find(vTemp_IDs2),:);
-            end
-        end
-    end"""
-    return pl.DataFrame()  # FIXME: return value
+    return GeneLocation.sort(
+        by=[
+            pl.col("Chromosome Name"),
+            pl.when(pl.col("Strand").str.contains("-", literal=True).not_())
+            .then(pl.col("Gene Start (bp)"))
+            .otherwise(pl.col("Gene End (bp)")),
+        ]
+    )
 
 
 def find_intergenic_regions(
-    vGeneLocation: pl.DataFrame, vUniqueChrom: list[str]
+    vGeneLocation: pl.DataFrame, vUniqueChrom: List[str]
 ) -> pl.DataFrame:
     """
     ---------------------------------------------------------------------------
@@ -2005,28 +1621,17 @@ def map_genelocation_to_conversion_file(
                 in the conversion file.
     """
 
-    _ = """
-    % MATLAB Code
-    %     vbiomg_g = false(size(vgenelocation2.(char(vgenelocation_att(1,1))),1),size(vmapg,1));
-        vbiomg_g = logical(spalloc(size(vgenelocation2.(char(vgenelocation_att(1,1))),1),size(vmapg,1),size(vgenelocation2.(char(vgenelocation_att(1,1))),1)*2));
-        vni = size(vgenelocation2.(char(vgenelocation_att(1,1))),1);
-        for vi = 1:size(vgenelocation2.(char(vgenelocation_att(1,1))),1)
-            if vverbose >= 2
-                fprintf(
-                    'map gene location to id conversion file %i of %i\n', vi, vni);
-            end
-            vbiomg_g(vi,:) = strcmp(vmapg,vgenelocation2.(char(vgenelocation_att(1,1)))(vi,1));
-        end
-    end"""
-    return dict()  # FIXME: Return value
+    return vGeneLocation.select(pl.col(["Gene Name", "Transcript Name"])).rows_by_key(
+        key="Gene Name"
+    )
 
 
-def annotate_enyme_info_to_gene_location(
+def annotate_enzyme_info_to_gene_location(
     vGeneLocation: pl.DataFrame,
-    vBiomG_G: dict,
-    vMapG_Gpgdb: dict,
+    vBiomG_G: Dict[Any, Any],
+    vMapG_Gpgdb: Dict[Any, Any],
     Gene2Rxn: GenesToReactions,
-) -> dict[str, bool]:
+) -> Dict[str, bool]:
     """
     ---------------------------------------------------------------------------
 
@@ -2065,19 +1670,25 @@ def annotate_enyme_info_to_gene_location(
             end
         end
     end"""
+    N = len(vGeneLocation)
+    for i in vGeneLocation:
+        log.debug(f"Annotate enzymes for gene {i} out of {N}")
+        # g_g_id = vBiomG_G[i]
+        # mapg_gpgdb = mapg_gpgdb[g_g_id]
+        # gene2rxn[mapg_gpgdb]
     return dict()  # FIXME: return value
 
 
 def perform_clustering(
     vGeneLocation: pl.DataFrame,
-    vBiomG_E: dict,
+    vBiomG_E: Dict[Any, Any],
     vEnzMinForClusters: int,
     vKbRangeLD: int,
     vGeneRangeLD: int,
     mcl_cluster_data: MclClusterData,
-    vBiomG_G: dict,
+    vBiomG_G: Dict[Any, Any],
     genes_to_reactions: GenesToReactions,
-    vMapG_Gpgdb: dict,
+    vMapG_Gpgdb: Dict[Any, Any],
     vCriterion: int,
     vMinStepSize: int = 5,
     vMaxStepSize: int = 20,
@@ -2348,8 +1959,8 @@ def compute_background(
     vClusters: Clusters,
     vClusterBackgroundWrite,
     vGeneLocation: pl.DataFrame,
-    vBiomG_E: list[int],
-    vC_IDs: list[str],
+    vBiomG_E: List[int],
+    vC_IDs: List[str],
 ) -> tuple[pl.DataFrame, int]:
     """
     ---------------------------------------------------------------------------
@@ -2427,7 +2038,7 @@ def compute_background(
     return (pl.DataFrame(), 0)  # FIXME: return values
 
 
-def perform_cutoff(clusters: Clusters, vTopPercentClusters: int) -> list[float]:
+def perform_cutoff(clusters: Clusters, vTopPercentClusters: int) -> List[float]:
     """
     ---------------------------------------------------------------------------
 
@@ -2475,16 +2086,16 @@ def write_gene_output(
     vGeneOutputFile: Path,
     vGeneLocation2: pl.DataFrame,
     clusters: Clusters,
-    vTopPercentClusters: list[float],
-    vMD_to_annotate: list[str],
+    vTopPercentClusters: List[float],
+    vMD_to_annotate: List[str],
     Gene2Rxn: GenesToReactions,
-    vMapG_Gpgdb: dict,
-    vBiomG_G: dict,
-    vBiomG_E: dict,
+    vMapG_Gpgdb: Dict[Any, Any],
+    vBiomG_G: Dict[Any, Any],
+    vBiomG_E: Dict[Any, Any],
     local_duplications: pl.DataFrame,
-    vClusters_Top: list[float],
+    vClusters_Top: List[float],
     annotated_metabolic_domains: AnnotatedMetabolicDomains,
-    vRpgdb_Rmd: dict,
+    vRpgdb_Rmd: Dict[Any, Any],
     reaction_labels: ReactionLabels,
     vOutputType: str,
 ) -> None:
@@ -2744,7 +2355,7 @@ def write_cluster_output(
     vClusterOutputFile: Path,
     vGeneLocation: pl.DataFrame,
     clusters: Clusters,
-    vClusters_Top: list[float],
+    vClusters_Top: List[float],
     vOutputType: str,
 ) -> None:
     if vOutputType not in ["old", "simple", "verbose"]:
@@ -2822,7 +2433,6 @@ def write_cluster_output(
 def extract_results_with_header(
     vFile: Path, vUnmaskedDNA: bool, vSplitter: str = "\t"
 ) -> pl.DataFrame:
-    # NOTE: I'm pretty sure the csv module already handles this
     """
     ---------------------------------------------------------------------------
 
@@ -2854,65 +2464,10 @@ def extract_results_with_header(
     """
     return pl.read_csv(vFile, separator=vSplitter)
 
-    """
-        % MATLAB code
-        vSplitter = '\t';
-        if nargin > 1
-            for vi = 1:2:size(varargin,2)
-                if strcmp(varargin{vi},'vSplitter')
-                    vSplitter = varargin{vi+1};
-                end
-            end
-        end
-        vFIO = fopen(vFile);
-        vLine = fgetl(vFIO);
-        vSplit = regexp(vLine,vSplitter,'split');
-        vHeader = vSplit;
-        for vi = 1:size(vHeader,2)
-            vHeader(1,vi) = cellstr(strtrim(char(vHeader(1,vi))));
-            vHeader(1,vi) = regexprep(vHeader(1,vi),' ','_');
-    """
 
-    #            vHeader(1,vi) = regexprep(vHeader(1,vi),'\)','_');
-    #            vHeader(1,vi) = regexprep(vHeader(1,vi),'\(','_');
-    #            vHeader(1,vi) = regexprep(vHeader(1,vi),'\(','_');
-    #            vHeader(1,vi) = regexprep(vHeader(1,vi),'#','_');
-    #            vHeader(1,vi) = regexprep(vHeader(1,vi),'\/','_');
-    #            vHeader(1,vi) = regexprep(vHeader(1,vi),'\-','_');
-    #            vHeader(1,vi) = regexprep(vHeader(1,vi),'\.','_');
-    _ = """
-            if sum(strcmp(vHeader(1,1:vi-1),vHeader(1,vi)))>0
-                vj = 1;
-                while sum(strcmp(vHeader(1,1:vi-1),[char(vHeader(1,vi)) '_' num2str(vj)]))>0
-                    vj = vj + 1;
-                end
-                vHeader(1,vi) = cellstr([char(vHeader(1,vi)) '_' num2str(vj)]);
-            end
-            if strcmp(vHeader(1,vi),'')
-                vHeader(1,vi) = cellstr(['Attribute_' num2str(vi)]);
-            end
-            vOutput.(char(vHeader(1,vi))) = cell(1,1);
-        end
-
-        vLine = fgetl(vFIO);
-        vW = 0;
-        while ischar(vLine)
-            vSplit = regexp(vLine,vSplitter,'split');
-            for vi = 1:size(vSplit,2)
-                if exist('vSpacer','var')
-                    vOutput.(char(vHeader(1,vi)))(vW + 1,1) = regexprep(regexprep(vSplit(1,vi),['^' vSpacer],''),[vSpacer '$' ],'');
-                else
-                    vOutput.(char(vHeader(1,vi)))(vW + 1,1) = vSplit(1,vi);
-                end
-            end
-            vLine = fgetl(vFIO);
-            vW = vW + 1;
-        end
-        fclose(vFIO);
-    end"""
-
-
-def analyze_plant_cluster_gap_file(vFileIn: Path, vUnmaskedDNA: bool) -> None:
+def analyze_plant_cluster_gap_file(
+    vFileIn: Path, vUnmaskedDNA: bool, file_output: bool = True
+) -> Optional[Tuple[str, Dict[Any, Iterable[Any]]]]:
     """
     ---------------------------------------------------------------------------
 
@@ -2923,88 +2478,41 @@ def analyze_plant_cluster_gap_file(vFileIn: Path, vUnmaskedDNA: bool) -> None:
 
     Args:
         vFileIn: Full path to the _GAPOutput file that whould be analyzed
-                 (produced within PlantClusterFinder.
+                 (produced within PlantClusterFinder)
         vUnmaskedDNA: Option to ignore the error if you use unmasked DNA files.
+        file_output: Whether output is directed to file or to
 
     Returns:
-        **None** (File with list of sequencing gaps numbers is generated with
-        ending _count)
+        **Optional[str]** (File with list of sequencing gaps numbers is generated with
+        ending _count.txt if file_output is set to True)
     """
     if not vFileIn.is_file():
         raise Exception(f"vFileIn {vFileIn} is not a file or does not exist")
-    _gap_output = pl.read_csv(vFileIn)
-    _f_out = vFileIn.with_stem(vFileIn.stem + "_count.txt")
-    """
-        % MATLAB code
-        vInit = 7000000;
-        [vFIN,vFINERR] = fopen(vFileIn);
-        if vFIN == -1
-            error('Tried to open %s file, error: %s\n', vFileIn, vFINERR);
-        end
-        vLine = fgetl(vFIN);
-        if ~ischar(vLine)
-            error('%s is empty.\n',vFileIn);
-        end
-        vCounter = zeros(vInit,2);
-        vCounter_write = 0;
-        vL = 1;
-        while ischar(vLine)
-            if vVerbose >= 2
-                fprintf('Analyze Sequencing gap file line %i\n', vL)
-            end
-            vSplit = regexp(vLine,' ','split');
-            if strcmp(vSplit(1,2),'N')
-                if vCounter_write+1 > vInit
-                    vCounter = [vCounter;zeros(10000,2)];
-                    vInit = vInit + 10000;
-                end
-                if sum(vCounter(:,1) == str2num(char(vSplit(1,4)))) == 0
-                    vCounter(vCounter_write+1,:) = [str2num(char(vSplit(1,4))),1];
-                    vCounter_write = vCounter_write + 1;
-                else
-                    vPlace = vCounter(:,1) == str2num(char(vSplit(1,4)));
-                    vCounter(vPlace,2) = vCounter(vPlace,2) + 1;
-                end
-            end
-            vLine = fgetl(vFIN);
-            vL = vL + 1;
-        end
-        fclose(vFIN);
-        vCounter = vCounter(1:vCounter_write,:);
-
-        if ~exist('vCounter','var') && vUnmaskedDNA == 0
-            error('DNA fasta File does not have masked DNA.\nIf you want to ignore this error, use Option ''UnmaskedDNA 1''\n');
-        elseif ~exist('vCounter','var')
-            warning('DNA fasta File does not have masked DNA.\n You used Option ''UnmaskedDNA 1'' with the intention to use Unmasked DNA file.\n');
-        end
-
-        [vFOUT,vFOUTERR] = fopen([vFileIn '_count.txt'],'w');
-        if vFOUT == -1
-            error('Tried to generate %s_count.txt file, error: %s\n',
-                  vFileIn, vFOUTERR);
-        end
-        fprintf(vFOUT, 'Gapsize in bp\tNumber of Gaps\n');
-        if exist('vCounter','var')
-            [~, vSortIds] = sort(vCounter(:,2),'descend');
-            vCounter = vCounter(vSortIds,:);
-            vi = 1;
-            while vi <= size(vCounter,1)
-                vIDs = vCounter(:,2) == vCounter(vi,2);
-                vCounter2 = vCounter(vIDs,:);
-                [~, vSortIds2] = sort(vCounter2(:,1));
-                vCounter2 = vCounter2(vSortIds2,:);
-                vCounter(vIDs,:) = vCounter2;
-                vi = vi + sum(vIDs);
-            end
-            for vi = 1:size(vCounter,1)
-                fprintf(vFOUT, '%i\t%i\n',vCounter(vi,1),vCounter(vi,2));
-            end
-        end
-        fclose(vFOUT);
-    end"""
+    _gap_output = (
+        pl.read_csv(
+            vFileIn,
+            separator=" ",
+            has_header=False,
+            new_columns=["scaffold", "amino acid", "start index", "length"],
+        )
+        .filter(pl.col("amino acid") == "N")
+        .group_by("length")
+        .len()
+        .rows_by_key(key="length")
+    )
+    _f_out = vFileIn.with_suffix(vFileIn.suffix + "_count.txt")
+    if not file_output:
+        return (str(_f_out), _gap_output)
+    with open(_f_out, "w") as f:
+        f.write("Gapsize in bp\tNumber of Gaps\n")
+        for k, v in sorted(_gap_output.items(), key=lambda x: -list(x)[1][0]):
+            f.write(f"{k}\t{list(v)[0]}\n")
+    return None
 
 
-def read_in_pgdb_flat(pgdb_filename: Path, attrib: tuple[str]) -> pl.DataFrame:
+def read_in_pgdb_flat(
+    pgdb_filename: Path, attrib: tuple[str], unique_keys: tuple[str] = ("UNIQUE-ID",)
+) -> pl.DataFrame:
     """
     ---------------------------------------------------------------------------
 
@@ -3017,6 +2525,8 @@ def read_in_pgdb_flat(pgdb_filename: Path, attrib: tuple[str]) -> pl.DataFrame:
         pgdb_filename: PGDB Flat file that should be read in.
         attrib: Attributes of the PGDB Flat file that should be saved (all
                  others are discarded.
+    Optional Args:
+        **unique_keys**: tuple of columns that are unique, i.e. should not be stored as a list
 
     Returns:
         **DataFrame** structure with the contents of each attribute as a column
@@ -3025,7 +2535,7 @@ def read_in_pgdb_flat(pgdb_filename: Path, attrib: tuple[str]) -> pl.DataFrame:
     # By encapsulating the parsing logic in a generator,
     #  it opens up the door to potentially deferring reading
     #  or simplifying asynchronous reading
-    def _row_gen(fh, attrib):
+    def _row_gen(fh, attrib, unique_keys):
         """
         Generate a row from the pgdb flat file
         """
@@ -3041,24 +2551,27 @@ def read_in_pgdb_flat(pgdb_filename: Path, attrib: tuple[str]) -> pl.DataFrame:
                 key, *value = line.split(" - ")
                 value = (" - ".join(value)).strip()
                 if key in y:
-                    if key != "UNIQUE-ID" and y[key] is None:
-                        y[key] = [value]
-                    elif isinstance(y[key], list):
-                        y[key].append(value)
+                    if y[key] is None:
+                        if key in unique_keys:
+                            y[key] = value
+                        else:
+                            y[key] = [value]
+                    elif not isinstance(y[key], list):
+                        y[key] = [y[key], value]
                     else:
-                        y[key] = value
+                        y[key].append(value)
 
-    with pgdb_filename.open() as f:
-        pgdb_data = pl.DataFrame(list(_row_gen(f, attrib)))
+    with open(pgdb_filename, "r") as f:
+        pgdb_data = pl.DataFrame(list(_row_gen(f, attrib, unique_keys)))
 
     return pgdb_data
 
 
 def remove_non_protein_fasta_gene_locations(
-    vGeneLocation: pl.DataFrame,
+    GeneLocation: pl.DataFrame,
     conversion: Conversion,
-    vBiomG_G: dict,
-    vProtein_IDs: Optional[list[str]],
+    vBiomG_G: Dict[Any, Any],
+    vProtein_IDs: Optional[List[str]],
 ) -> tuple[pl.DataFrame, dict]:
     """
     ---------------------------------------------------------------------------
@@ -3070,10 +2583,9 @@ def remove_non_protein_fasta_gene_locations(
     ---------------------------------------------------------------------------
 
     Args:
-        GeneLocation2: DataFrame about the gene location information,
+        GeneLocation: DataFrame about the gene location information,
                         generated in PlantClusterFinder function.
-        MapP: Unique list of protein IDs stored in the conversion file.
-        MapG_MapP: Mapping between vMapG and vMapP
+        conversion: Conversion object between genes, transcripts, and proteins
         BiomG_G: Mapping between the Gene location file and the gene-IDs in the
                   conversion file.
         Protein_IDs: A cell array of all protein-IDs that are stored in the
@@ -3099,4 +2611,10 @@ def remove_non_protein_fasta_gene_locations(
         end
         vBiomG_G = vBiomG_G(vGeneLoc_in_Prot_F,:);
     end"""
-    return (pl.DataFrame(), dict())  # FIXME: return value
+    if vProtein_IDs is None:
+        return (GeneLocation, vBiomG_G)
+    gene_names = [vBiomG_G[id] for id in vProtein_IDs]
+    return (
+        GeneLocation.filter(pl.col("Gene Name") in gene_names),
+        vBiomG_G,
+    )
