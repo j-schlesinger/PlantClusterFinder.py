@@ -22,8 +22,8 @@ jobs:
       if: steps.setup-rye.outputs.cache-hit != 'true'
       run: |
         rye sync --no-lock
-    - uses: awalsh128/cache-apt-pkgs-action@latest
     - name: Install Blast and MCT
+      uses: awalsh128/cache-apt-pkgs-action@latest
       with:
         packages: blast mcl
         version: 1.0
