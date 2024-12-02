@@ -832,6 +832,7 @@ def read_MCL_clustering_file(
 
     Args:
         vFile: MCL-clustering output file (I20).
+        vProtein_sequence_FastaFile: The FASTA file of the protein sequences.
         conversion: Lists of gene, and protein IDs with mapping from conversion files.
         vRemoveNonProteinLocations: True if protein-IDs should be stored
             in return value.
@@ -879,8 +880,12 @@ def get_MCL_clustering(
     ---------------------------------------------------------------------------
 
       Function that uses a protein fasta file of a genome annotation to create
-      a blastdb, and then does an all against all blast and uses the result to
+      a blastdb, and then does an *all against all* blast and uses the result to
       do a MCL clustering. This is used for local duplication information.
+
+      MCL algorithm is for **Markov Cluster Algorithm,** which is an unsupervised
+      clustering algorithm for graphs. For details, the project is hosted at
+      https://micans.org/mcl/
 
     ---------------------------------------------------------------------------
 
@@ -1175,7 +1180,7 @@ def map_pgdb_reactions_to_genes(
 def match_pgdb_flat(
     flat1: pl.DataFrame,
     flat2: pl.DataFrame,
-    matchings: tuple[str, str],
+    join_on: tuple[str, str],
     primary_id: str = "UNIQUE-ID",
     secondary_id: str = "UNIQUE-ID_right",
 ) -> pl.DataFrame:
@@ -1189,56 +1194,51 @@ def match_pgdb_flat(
     Args:
         Flat1: DataFrame of a read out pgdb Flat file.
         Flat2: DataFrame of a read out pgdb Flat file.
-        Matchings: Definition of which attributes in structure 1 should be
+        join_on: Definition of which attributes in structure 1 should be
                     matched to which attributes of structure 2
 
     Returns:
         F1_F2: A mapping between items of the first pgdb file to the second
                 one.
     """
-    if matchings[0] not in flat1.columns:
+    if join_on[0] not in flat1.columns:
         log.error(
-            f"Matching column {matchings[0]} not in input data"
+            f"Matching column {join_on[0]} not in input data"
             + f" {flat1.columns}, note the other table's columns are {flat2.columns}"
         )
         raise Exception("Column-matching Mismatch")
-    if matchings[1] not in flat2.columns:
+    if join_on[1] not in flat2.columns:
         log.error(
-            f"Matching column {matchings[1]} not in input data"
+            f"Matching column {join_on[1]} not in input data"
             + f" {flat2.columns}, note the other table's columns are {flat1.columns}"
         )
         raise Exception("Column-matching Mismatch")
-    if flat1[matchings[0]].dtype == pl.Null:
-        log.error(f"Primary table join ID {[matchings[0]]} is null dtype, cannot join")
+    if flat1[join_on[0]].dtype == pl.Null:
+        log.error(f"Primary table join ID {[join_on[0]]} is null dtype, cannot join")
         log.info(f"Columns of flats are are {flat1.columns}, {flat2.columns}")
         raise Exception("Column-matching Mismatch")
-    if flat2[matchings[1]].dtype == pl.Null:
+    if flat2[join_on[1]].dtype == pl.Null:
         log.warning(
-            f"Cannot map {matchings[0]} to {matchings[1]}"
+            f"Cannot map {join_on[0]} to {join_on[1]}"
             + ": dtype is Null, returning Null for second column"
         )
         log.info(f"Columns of flats are are {flat1.columns}, {flat2.columns}")
         return flat1.select(
-            pl.col(matchings[0]).alias(primary_id), pl.lit(None).alias(secondary_id)
+            pl.col(join_on[0]).alias(primary_id), pl.lit(None).alias(secondary_id)
         )
-    flat2 = (
-        flat2.explode(matchings[1]) if flat2[matchings[1]].dtype == pl.List else flat2
-    )
-    flat1 = (
-        flat1.explode(matchings[0]) if flat1[matchings[0]].dtype == pl.List else flat1
-    )
+    flat2 = flat2.explode(join_on[1]) if flat2[join_on[1]].dtype == pl.List else flat2
+    flat1 = flat1.explode(join_on[0]) if flat1[join_on[0]].dtype == pl.List else flat1
+    # NOTE: Validation on join can prevent data issues, consider adding
     joined_dbs = flat1.join(
         flat2,
-        left_on=matchings[0],
-        right_on=matchings[1],
+        left_on=join_on[0],
+        right_on=join_on[1],
         suffix="_right",
-        # validate="1:m",
     )
     log.debug("SUCCESSFUL JOIN", joined_dbs)
-    ret = joined_dbs.select(
-        pl.col("UNIQUE-ID").alias(primary_id), pl.col(matchings[0]).alias(secondary_id)
+    return joined_dbs.select(
+        pl.col("UNIQUE-ID").alias(primary_id), pl.col(join_on[0]).alias(secondary_id)
     )
-    return ret
 
 
 def read_in_conversion_file(
@@ -1444,6 +1444,7 @@ def remove_protein_transcript_info_from_genepositionfile(
     """
     vGeneLocation = vGeneLocation.join(conversion.df, on="Gene Name")
     if (
+        # This statement returns True if duplicate keys exist in "Gene Name","Protein Name",or "Transcript Name"
         vGeneLocation.select(
             pl.col(["Gene Name", "Protein Name", "Transcript Name"])
             .is_unique()
@@ -2524,6 +2525,8 @@ def read_in_pgdb_flat(
         pgdb_filename: PGDB Flat file that should be read in.
         attrib: Attributes of the PGDB Flat file that should be saved (all
                  others are discarded.
+    Optional Args:
+        **unique_keys**: tuple of columns that are unique, i.e. should not be stored as a list
 
     Returns:
         **DataFrame** structure with the contents of each attribute as a column
