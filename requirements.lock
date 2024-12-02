@@ -14,7 +14,7 @@ annotated-types==0.6.0
 numpy==1.26.3
     # via pyarrow
     # via scipy
-polars==0.20.13
+polars==1.14.0
     # via plantclusterfinder-py
 pyarrow==17.0.0
     # via plantclusterfinder-py

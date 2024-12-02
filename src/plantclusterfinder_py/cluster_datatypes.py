@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Optional
 
 import polars as pl
 from pydantic import BaseModel
@@ -66,6 +66,7 @@ class MclClusterData(BaseModel):
 
 
 class GenesToReactions(BaseModel):
+    model_config = {"arbitrary_types_allowed": True}
     GenesAll: pl.DataFrame
     """DataFrame containing all the information
         (Attributes)that was searched for (described in
@@ -80,21 +81,67 @@ class GenesToReactions(BaseModel):
     Gene2Rxn: dict
     """Mapping between the genes in GenesAll and reactions in ReactionsAll"""
 
-    class Config:
-        arbitrary_types_allowed = True
-
 
 class Conversion(BaseModel):
-    MapG: set[str]
-    """Unique list of gene IDs stored in coversion file"""
-    MapT: set[str]
-    """Unique list of transcript IDs stored in coversion file"""
-    MapP: set[str]
-    """Unique list of protein IDs stored in conversion file"""
-    MapG_MapT: dict
-    """Mapping between MapG and MapT"""
-    MapG_MapP: dict
-    """Mapping between MapG and MapP"""
+    model_config = {"arbitrary_types_allowed": True}
+    df: pl.DataFrame
+    _cache: dict[Any, Any] = dict()
+
+    @property
+    def MapG(self) -> set[str]:
+        if "MapG" in self._cache:
+            return self._cache["MapG"]
+        """Unique list of gene IDs stored in coversion file"""
+        self._cache["MapG"] = set(self.df.get_column("Gene Name").unique())
+        return self._cache["MapG"]
+
+    @property
+    def MapT(self) -> set[str]:
+        if "MapT" in self._cache:
+            return self._cache["MapT"]
+        """Unique list of transcript IDs stored in coversion file"""
+        self._cache["MapT"] = set(self.df.get_column("Transcript Name").unique())
+        return self._cache["MapT"]
+
+    @property
+    def MapP(self) -> set[str]:
+        if "MapP" in self._cache:
+            return self._cache["MapP"]
+        """Unique list of protein IDs stored in conversion file"""
+        self._cache["MapP"] = set(self.df.get_column("Protein Name").unique())
+        return self._cache["MapP"]
+
+    @property
+    def MapG_MapT(self) -> dict:
+        if "MapG_MapT" in self._cache:
+            return self._cache["MapG_MapT"]
+        """Mapping between MapG and MapT"""
+        self._cache["MapG_MapT"] = self.df.select(
+            pl.col("Gene Name"), pl.col("Transcript Name")
+        ).rows_by_key(key="Gene Name")
+        return self._cache["MapG_MapT"]
+
+    @property
+    def MapG_MapP(self) -> dict:
+        if "MapG_MapP" in self._cache:
+            return self._cache["MapG_MapP"]
+        """Mapping between MapG and MapP"""
+        # TODO: Validate this is 1:1
+        self._cache["MapG_MapP"] = self.df.select(
+            pl.col("Gene Name"), pl.col("Protein Name")
+        ).rows_by_key(key="Gene Name")
+        return self._cache["MapG_MapP"]
+
+    @property
+    def MapP_MapG(self) -> dict:
+        if "MapP_MapG" in self._cache:
+            return self._cache["MapP_MapG"]
+        """Mapping between MapG and MapP"""
+        # TODO: Validate this is 1:1
+        self._cache["MapP_MapG"] = self.df.select(
+            pl.col("Gene Name"), pl.col("Protein Name")
+        ).rows_by_key(key="Protein Name")
+        return self._cache["MapP_MapG"]
 
 
 class Clusters(BaseModel):
