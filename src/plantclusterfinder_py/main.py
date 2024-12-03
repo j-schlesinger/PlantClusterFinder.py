@@ -9,18 +9,13 @@ from typing import Any
 from scipy.io import loadmat, savemat  # type: ignore
 
 from plantclusterfinder_py.cluster import (
-    annotate_enzyme_info_to_gene_location,
     annotate_sequencing_gaps,
     compute_local_duplication,
-    consolidate_gene_info,
-    extract_results_with_header,
-    find_intergenic_regions,
     get_MCL_clustering,
     get_metabolic_domains,
     introduce_hard_breaks,
     introduce_hypo_genes,
     label_reactions_with_sig_and_tail,
-    map_genelocation_to_conversion_file,
     map_pgdb_reactions_to_genes,
     map_PGDBs_to_conversion_file,
     match_PGDBs_to_MDs,
@@ -28,12 +23,10 @@ from plantclusterfinder_py.cluster import (
     perform_cutoff,
     read_in_conversion_file,
     read_MCL_clustering_file,
-    remove_non_protein_fasta_gene_locations,
-    remove_protein_transcript_info_from_genepositionfile,
-    sort_genes,
     write_cluster_output,
     write_gene_output,
 )
+from plantclusterfinder_py.genelocation import GeneLoc
 
 
 def save(filename: str, *args, caller_locals: dict = {}):
@@ -854,29 +847,22 @@ def main() -> None:
     # % Read in Gene Position File
     if vPartFinished < 7:
         log.info("Read in gene position file")
-        vGeneLocation1 = extract_results_with_header(vGeneLocation_File, vUnmaskedDNA)
+        gene_location = GeneLoc(file_path=vGeneLocation_File, unmasked=vUnmaskedDNA)
         log.debug("Gene Location File Attributes:")
-        for i, attribute in enumerate(vGeneLocation1.columns):
+        for i, attribute in enumerate(gene_location.columns):
             log.debug("Attribute %i: %s", i, attribute)
             # Remove protein or transcript information
             log.debug("Remove transcript information")
 
-        vGeneLocation2 = remove_protein_transcript_info_from_genepositionfile(
-            vGeneLocation1,
+        gene_location.remove_protein_transcript_info(
             conversion,
         )
-        del vGeneLocation1
         # Consolidate gene information (one entry per gene)
         log.debug("Consolidate gene information")
-        (vUniqueChrom, vGeneLocation3) = consolidate_gene_info(vGeneLocation2)
-        del vGeneLocation2
+        vUniqueChrom = gene_location.consolidate_gene_info()
         # Sort genes according to their physical positon on the chromosomes
         log.debug("Sort genes on the chromosomes")
-        vGeneLocation4 = sort_genes(
-            vGeneLocation3,
-            vUniqueChrom,
-        )
-        del vGeneLocation3
+        gene_location.sort_genes()
         vPartFinished = 7
         if vTempsaves == 1:
             vPartFinished = _tempsaves(locals())["vPartFinished"]
@@ -885,14 +871,13 @@ def main() -> None:
     # % Map Biomartfile to Gene Map
     if vPartFinished < 8:
         log.info("Map gene location to conversion gene-IDs")
-        vBiomG_G = map_genelocation_to_conversion_file(vGeneLocation, conversion.MapG)
+        vBiomG_G = gene_location.map_to_conversion_file(conversion.MapG)
 
         # If chosen, remove gene position information about genes that are
         # not present in the protein fasta file.
         if vRemoveNonProtLocations == 1:
             log.debug("Remove non-protein coding genes in gene locations.")
-            (vGeneLocation, vBiomG_G) = remove_non_protein_fasta_gene_locations(
-                vGeneLocation,
+            vBiomG_G = gene_location.remove_non_protein_fasta_gene_locations(
                 conversion,
                 vBiomG_G,
                 vG_MCL.Protein_IDs,
@@ -904,7 +889,7 @@ def main() -> None:
         # % Get places on genome that do not have genes encoded:
     if vPartFinished < 9:
         log.info("Find intergenic regions")
-        vInterChrom = find_intergenic_regions(vGeneLocation, vUniqueChrom)
+        vInterChrom = gene_location.find_intergenic_regions()
         vPartFinished = 9
         if vTempsaves == 1:
             vPartFinished = _tempsaves(locals())["vPartFinished"]
@@ -1041,9 +1026,7 @@ def main() -> None:
     # % Annotate Biomartfile with Enzymes (use Gene-protein mapping)
     if vPartFinished < 14:
         log.info("Annotate gene location file with enzyme information")
-        vBiomG_E = annotate_enzyme_info_to_gene_location(
-            vGeneLocation,
-            vBiomG_G,
+        vBiomG_E = vGeneLocation.annotate_enzyme_info(
             vMapG_Gpgdb,
             vG2R,
         )

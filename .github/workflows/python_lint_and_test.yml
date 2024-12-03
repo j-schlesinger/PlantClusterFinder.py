@@ -25,7 +25,7 @@ jobs:
     - name: Install Blast and MCT
       uses: awalsh128/cache-apt-pkgs-action@latest
       with:
-        packages: blast mcl
+        packages: ncbi-blast+ mcl
         version: 1.0
     - name: Performing linting with ruff and tests using pytest
       run: |
