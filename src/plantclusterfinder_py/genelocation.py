@@ -20,17 +20,30 @@ class GeneLoc(BaseModel):
 
     --------------------------------------------------------------------------------
 
-     Attributes:
+    Attributes:
         file_path (str): The file path to the genomic data CSV file.
         unmasked: Option to ignore the error if you use unmasked DNA files.
         _data (pl.DataFrame): The Polars DataFrame that stores the genomic data.
+        _converted: Indicates if the Conversion file columns have been added.
+        _sorted: Indicates if genes have been sorted by chromosome location.
+        _annotated: Indicates if reactions have been annotated.
+    Properties:
+        data: Function to access _data attribute.
+        columns: data.columns property
+        BiomG_G: dictionary that associates gene name and protein name
 
     Methods:
-        __len__: Returns the number of rows (genes) in the DataFrame.
         sort_genes: Sorts genes by chromosome and position (start or end) depending on strand orientation.
         map_to: Maps gene names to a specified gene set (Gene, Protein, or Transcript) and adds a new column
                 with the mapping counts.
+        remove_protein_transcript_info: Adds Conversion file columns to GeneLocation data.
+        consolidate_gene_info: Returns a summary of gene information.
+        map_to_conversion_file: Returns a mapping between conversion file and genelocation data.
+        remove_non_protein_fasta_gene_locations: Remove gene locations not found in the protein FASTA file.
+        find_intergenic_regions: Finds the region between genes and returns a DataFrame representing that.
+        annotate_enzyme_info: Annotates if a gene has a reaction in the PGDB data.
         __repr__: Returns a string representation of the DataFrame for quick inspection.
+        __len__: Returns the number of rows (genes) in the DataFrame.
 
     Raises:
         ValueError: If an invalid mapping type is provided or if the selected gene set is empty.
@@ -44,7 +57,7 @@ class GeneLoc(BaseModel):
     _annotated: bool = False
     _data: pl.DataFrame
 
-    def __init__(self, **input):
+    def __init__(self, **input) -> None:
         """
         Load data from the specified file path into the Polars DataFrame.
             Function that reads in TSV files with headers. The headers are used as
@@ -61,24 +74,39 @@ class GeneLoc(BaseModel):
                - gene name
                - gene start (bp)
                - gene end (bp)
-               - chromosome
+               - chromosome name
                - strand
         """
         super().__init__(**input)
+        log.debug(f"Reading TSV f{input["file_path"]} to get gene location data.")
         self._data = pl.read_csv(
-            input["file_path"], separator="\t", schema_overrides={"Strand": str}
-        )  # You can change this to read other formats
+            input["file_path"],
+            separator="\t",
+            schema_overrides={"Strand": pl.datatypes.String},
+        )
+        if self._data.columns != [
+            "Gene Name",
+            "Gene Start (bp)",
+            "Gene End (bp)",
+            "Chromosome Name",
+            "Strand",
+        ]:
+            raise Exception("Gene Location File does not match expected format.")
+
+        log.debug(f"Read {self._data.height} genes from Gene Location file")
 
     def __len__(self):
         """Return the length of the DataFrame."""
-        return len(self._data)  # or self.data.height using polars
+        return self._data.height
 
     @property
-    def data(self):
+    def data(self) -> pl.DataFrame:
+        """Get access to the underlying DataFrame object."""
         return self._data
 
     @property
     def columns(self):
+        """Get access to columns of DataFrame without needing to pul it directly"""
         return self._data.columns
 
     def sort_genes(self) -> None:
@@ -87,11 +115,10 @@ class GeneLoc(BaseModel):
         if self._sorted:
             log.debug("GeneLoc is already sorted, returning early")
             return
-        # Access columns by index using .to_list() method to convert to a list
         self._data = self.data.sort(
             by=[
                 pl.col("Chromosome Name"),
-                # Column could be 1/-1 or +/-, this handles both
+                # Column could be "1"/"-1" or "+"/"-", this handles both
                 pl.when(pl.col("Strand").str.contains("-", literal=True))
                 .then(pl.col("Gene End (bp)"))
                 .otherwise(pl.col("Gene Start (bp)")),
@@ -110,6 +137,7 @@ class GeneLoc(BaseModel):
         """
 
         if not self._converted:
+            log.warning("Adding Conversion to Gene Location")
             self.remove_protein_transcript_info(conversion)
 
         # Create a new column with the count of each gene
@@ -119,9 +147,11 @@ class GeneLoc(BaseModel):
         )
         match mapping_type:
             case "G":
+                log.debug("Mapping Gene Location to Gene Names")
                 mapping_genes = conversion.MapG
                 mapped_genes = self._data.group_by("Gene Name").len("Map_to_G")
             case "P":
+                log.debug("Mapping Gene Location to Protein Names")
                 mapping_genes = conversion.MapP
                 mapped_genes = (
                     self._data.group_by("Gene Name")
@@ -131,6 +161,7 @@ class GeneLoc(BaseModel):
                     )
                 )
             case "T":
+                log.debug("Mapping Gene Location to Transcript Name")
                 mapping_genes = conversion.MapT
                 mapped_genes = (
                     self._data.group_by("Gene Name")
@@ -141,6 +172,7 @@ class GeneLoc(BaseModel):
                     )
                 )
             case _:
+                log.error(f"Mappting type {mapping_type} is invalid.")
                 raise ValueError(
                     "Invalid mapping type! Choose 'G' for Gene, 'P' for Protein, or 'T' for Transcript."
                 )
@@ -168,6 +200,7 @@ class GeneLoc(BaseModel):
             conversion: Conversion object constructed from conversion file
         """
         if self._converted:
+            log.debug("Gene Location already mapped to Conversion, returning early")
             return
         vGeneLocation = self.data.join(conversion.df, on="Gene Name")
         if (
@@ -235,7 +268,7 @@ class GeneLoc(BaseModel):
 
         if not self._converted:
             raise Exception("Cannot map to gene locations before conversion file added")
-
+        log.debug("Finding the protein names associated with each gene name")
         return self.data.select(pl.col(["Gene Name", "Protein Name"])).rows_by_key(
             key="Gene Name"
         )
@@ -274,17 +307,23 @@ class GeneLoc(BaseModel):
         """
 
         if not self._converted:
+            log.warning("Implicitly requested adding conversion to Gene Location")
             self.remove_protein_transcript_info(conversion)
 
+        original_gene_count = self._data.height
         if vProtein_IDs is None or len(vProtein_IDs) == 0:
+            log.info("No protein IDs provided to remove, returning early.")
             return self.BiomG_G
         protein_ids = pl.DataFrame({"Gene Name": vProtein_IDs})
-        print(protein_ids)
         self._data = self._data.join(protein_ids, on="Gene Name")
+        log.debug(
+            f"Gene Location data filtered from {original_gene_count} to {self._data.height} rows"
+        )
         return self.BiomG_G
 
     @property
     def BiomG_G(self):
+        """Get mapping dictionary between Gene Name and Protein Name"""
         return self._data.select(pl.col(["Gene Name", "Protein Name"])).rows_by_key(
             "Gene Name"
         )
@@ -298,17 +337,21 @@ class GeneLoc(BaseModel):
 
         ---------------------------------------------------------------------------
 
-
         Returns:
             **InterChrom**: A DataFrame defining chromosome, start bp, end bp, gene
                         before and gene after a intergenic region.
         """
 
         if not self._sorted:
+            log.warning("Implicitly Requested Gene Sorting")
             self.sort_genes()
 
         ret: List[Dict[str, Any]] = []
         last_gene = None
+        # Iterate through *sorted* rows and find each region where there is no gene located (intergenic region)
+        # Compare the furthest out gene region in the chromosome to the nearest of the next gene
+        # 1. if they overlap, the next gene becomes the furthest out gene
+        # 2. if they don't overlap, an intergenic region is stored
         # TODO: This is a very slow and expensive way of doing this
         for chromosome, gene_start, gene_end, gene_name, strand in self._data.select(
             pl.col(
@@ -354,11 +397,7 @@ class GeneLoc(BaseModel):
         ---------------------------------------------------------------------------
 
         Args:
-            vGeneLocation: DataFrame about the gene location information,
-                            generated in PlantClusterFinder function.
-            vBiomG_G: Mapping between the Gene location file and the gene-IDs
-                in the conversion file.
-            vMapG_Gpgdb: A mapping between Genes in the conversion file and genes
+            MapG_Gpgdb: A mapping between Genes in the conversion file and genes
                         stored in the pgdb genes.dat file.
             Gene2Rxn: Mapping of all genes in the Genes_all to the Reactions in
                 Reactions_all
@@ -373,14 +412,15 @@ class GeneLoc(BaseModel):
         genes_with_reactions = [
             MapG_Gpgdb[x[0]][0] for x in Gene2Rxn.Gene2Rxn.items() if len(x[1]) > 0
         ]
-        log.debug(
-            f"Mapping {len(genes_with_reactions)} genes with reactions to {
-                len(self._data)} genes"
-        )
         if not self._annotated:
+            log.debug(
+                f"Mapping {len(genes_with_reactions)} genes with reactions to {
+                    len(self._data)} genes"
+            )
             self._data = self._data.with_columns(
                 has_reaction=pl.col("Protein Name").is_in(genes_with_reactions)
             )
+            self._annotated = True
         return {
             k: list(v)[0]
             for k, v in self._data.select(pl.col(["Gene Name", "has_reaction"]))
@@ -392,7 +432,10 @@ class GeneLoc(BaseModel):
 # Example usage
 if __name__ == "__main__":
     gene_loc = GeneLoc(
-        file_path="E:/GitHub/PlantClusterFinder.py/csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt"
+        file_path=Path(
+            "./csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt"
+        ),
+        unmasked=False,
     )
 
     # Get the length of the DataFrame

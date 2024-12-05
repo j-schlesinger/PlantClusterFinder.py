@@ -28,7 +28,16 @@ def genelocation_obj():
     )
 
 
-def test_remove_protein_transcript_info_from_genepositionfile(genelocation_obj):
+@pytest.fixture
+def t_gene_loc():
+    from plantclusterfinder_py.genelocation import GeneLoc
+
+    return GeneLoc(file_path=Path("test/data/gene_location_test.tsv"))
+
+
+def test_remove_protein_transcript_info_from_genepositionfile(
+    genelocation_obj, t_gene_loc
+):
     from plantclusterfinder_py.cluster import read_in_conversion_file
 
     gene_location = genelocation_obj
@@ -39,6 +48,12 @@ def test_remove_protein_transcript_info_from_genepositionfile(genelocation_obj):
     assert 7 == len(gene_location.columns)
     assert 9_629 == len(gene_location)
 
+    test_gene_location = t_gene_loc
+    bad_conversion = read_in_conversion_file("./test/data/bad_conversion.tsv")
+    with pytest.raises(Exception) as exception_info:
+        test_gene_location.remove_protein_transcript_info(bad_conversion)
+        assert "more than one" in str(exception_info.value)
+
 
 def test_consolidate_gene_info(genelocation_obj):
     gene_location = genelocation_obj
@@ -46,11 +61,25 @@ def test_consolidate_gene_info(genelocation_obj):
     assert 45 == len(gene_info)  # TEST INCOMPLETE
 
 
-def test_sort_genes(genelocation_obj):
+def test_sort_genes(genelocation_obj, t_gene_loc):
+    import polars as pl
+
     gene_location = genelocation_obj
     gene_location.sort_genes()
 
-    assert 9629 == len(gene_location)  # TEST INCOMPLETE
+    assert 9629 == len(gene_location)
+
+    test_gene_location = t_gene_loc
+    test_gene_location.sort_genes()
+    sorted_genes = test_gene_location.data.select(pl.col("Gene Name"))
+    expected_gene_order = pl.DataFrame(
+        {"Gene Name": ["GENE1", "GENE2", "GENE3", "GENE4"]}
+    )
+    unexpected_gene_order = pl.DataFrame(
+        {"Gene Name": ["GENE2", "GENE1", "GENE4", "GENE3"]}
+    )
+    assert sorted_genes.equals(expected_gene_order)
+    assert not sorted_genes.equals(unexpected_gene_order)
 
 
 def test_map_genelocation_to_conversion_file(genelocation_obj):
@@ -93,13 +122,27 @@ def test_remove_non_protein_fasta_gene_locations(genelocation_obj):
 
 
 # Part 9
-def test_find_intergenic_regions(genelocation_obj):
+def test_find_intergenic_regions(genelocation_obj, t_gene_loc):
+    import polars as pl
+
     # GeneLocation test
     gene_location = genelocation_obj
     intergenic_regions = gene_location.find_intergenic_regions()
     #    gene_location.data.select_seq(3).unique().to_list()
     # )
     assert 9413 == len(intergenic_regions)  # TEST INCOMPLETE
+
+    intergenic_regions_2 = t_gene_loc.find_intergenic_regions()
+    t_gene_result_expected = pl.DataFrame(
+        {
+            "Chromosome Name": ["A", "A"],
+            "Start": [101, 401],
+            "End": [149, 499],
+            "Gene Before": ["GENE1", "GENE3"],
+            "Gene After": ["GENE2", "GENE4"],
+        }
+    )
+    assert intergenic_regions_2.equals(t_gene_result_expected)
 
 
 # Part 14

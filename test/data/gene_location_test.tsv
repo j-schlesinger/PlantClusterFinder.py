@@ -1,0 +1,5 @@
+Gene Name	Gene Start (bp)	Gene End (bp)	Chromosome Name	Strand
+GENE2	150	200	A	+
+GENE1	0	100	A	+
+GENE4	600	500	A	-
+GENE3	190	400	A	+
