@@ -127,7 +127,11 @@ class GeneLoc(BaseModel):
         self._sorted = True
 
     def map_to(self, conversion: Conversion, mapping_type: str) -> None:
-        """Map gene names to conversion.MapT and add a column 'Map_to_T'.
+        """
+        Map gene names to conversion.MapT and add a column 'Map_to_T'.
+
+        This may be deprecated in a future release.
+
         Args:
             conversion (Conversion): An instance of Conversion containing gene sets (MapG, MapP, MapT).
             mapping_type (str): The type of mapping to use ('G', 'P', or 'T').
@@ -135,6 +139,9 @@ class GeneLoc(BaseModel):
         Raises:
             ValueError: If the selected gene set is empty or if mapping_type is invalid.
         """
+        log.warning(
+            "GeneLoc.map_to() is not stable and may be deprecated in a future release."
+        )
 
         if not self._converted:
             log.warning("Adding Conversion to Gene Location")
