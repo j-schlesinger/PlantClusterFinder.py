@@ -1,6 +1,14 @@
 from pathlib import Path
 
 import polars as pl
+import pytest
+from test_genelocation import genelocation_obj as genelocation_fixture
+
+
+@pytest.fixture
+def genelocation_obj():
+    return genelocation_fixture()
+
 
 # Part 1
 
@@ -222,21 +230,30 @@ def test_get_sequencing_gaps():
     assert 1 == 1  # TEST INCOMPLETE
 
 
-def test_annotate_sequencing_gaps():
-    # from plantclusterfinder_py.cluster import annotate_sequencing_gaps
-    assert 1 == 0  # TEST INCOMPLETE
+def test_annotate_sequencing_gaps(genelocation_obj):
+    from plantclusterfinder_py.cluster import annotate_sequencing_gaps
+
+    sequencing_gaps_file = Path(
+        "./csubellipsoidea/Gapanalysis_expected_results/CsubellipsoideaC_169_227_v2.0.hardmasked.fa"
+    )
+    gene_location = genelocation_obj
+    uniq_chr = list(
+        gene_location.data.select("Chromosome Name").unique().to_dict().values()
+    )[0].to_list()
+    sequencing_gaps = annotate_sequencing_gaps(
+        sequencing_gaps_file, gene_location.find_intergenic_regions(), uniq_chr
+    )
+    assert 1166 == sequencing_gaps.height  # TEST INCOMPLETE
+    assert 6 == len(sequencing_gaps.columns)
 
 
 # part 12
-
-
-def test_introduce_hard_breaks():
-    assert 1 == 0  # TEST INCOMPLETE
+# hard breaks -- gene location test
 
 
 # part 13
-def test_introduce_hypo_genes():
-    assert 1 == 0  # TEST INCOMPLETE
+# def test_introduce_hypo_genes():
+#    assert 1 == 0  # TEST INCOMPLETE
 
 
 # Part 14

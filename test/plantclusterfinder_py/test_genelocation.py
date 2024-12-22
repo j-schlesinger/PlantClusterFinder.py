@@ -1,6 +1,7 @@
 import random
 from pathlib import Path
 
+import polars as pl
 import pytest
 
 
@@ -55,10 +56,13 @@ def test_remove_protein_transcript_info_from_genepositionfile(
         assert "more than one" in str(exception_info.value)
 
 
-def test_consolidate_gene_info(genelocation_obj):
+def test_consolidate_gene_info(genelocation_obj, t_gene_loc):
     gene_location = genelocation_obj
     gene_info = gene_location.consolidate_gene_info()
-    assert 45 == len(gene_info)  # TEST INCOMPLETE
+    assert 45 == len(gene_info)
+    test_gene_location = t_gene_loc
+    test_gene_info = test_gene_location.consolidate_gene_info()
+    assert ["A"] == test_gene_info
 
 
 def test_sort_genes(genelocation_obj, t_gene_loc):
@@ -176,5 +180,26 @@ def test_annotate_enzyme_info(genelocation_obj):
     genes_with_reactions = gene_location.annotate_enzyme_info(
         pgdb_conversions_dict, gene2rxn
     )
-    assert 9629 == len(genes_with_reactions)  # TEST INCOMPLETE
+    assert 9629 == len(genes_with_reactions)
     assert 2053 == len(list(filter(lambda x: x, genes_with_reactions.values())))
+
+
+def test_introduce_hard_breaks(genelocation_obj):
+    from plantclusterfinder_py.cluster import annotate_sequencing_gaps
+
+    sequencing_gaps_file = Path(
+        "./csubellipsoidea/Gapanalysis_expected_results/CsubellipsoideaC_169_227_v2.0.hardmasked.fa"
+    )
+    gene_location = genelocation_obj
+    uniq_chr = list(
+        gene_location.data.select("Chromosome Name").unique().to_dict().values()
+    )[0].to_list()
+    sequencing_gaps = annotate_sequencing_gaps(
+        sequencing_gaps_file, gene_location.find_intergenic_regions(), uniq_chr
+    )
+    gene_location.introduce_hard_breaks(
+        sequencing_gaps, vMaxSeqGapSize=int(4e4), vPercentileForMaxInterGeneDist=80
+    )
+    assert (
+        1 == gene_location.select(pl.col("Chromosome Name").unique()).height
+    )  # TEST INCOMPLETE
