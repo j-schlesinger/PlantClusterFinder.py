@@ -2,19 +2,24 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-from test_genelocation import genelocation_obj as genelocation_fixture
-
-
-@pytest.fixture
-def genelocation_obj():
-    return genelocation_fixture()
-
-
-# Part 1
 
 # globals
 pgdb_dir = Path("./csubellipsoidea/pgdb/csubellipsoideacyc/1.0/data")
 test_input_dir = Path("./Inputs")
+
+
+@pytest.fixture
+def genelocation_obj():
+    from plantclusterfinder_py.genelocation import GeneLoc
+
+    return GeneLoc(
+        file_path=Path(
+            "csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt"
+        )
+    )
+
+
+# Part 1
 
 
 def test_read_in_conversion_file():
@@ -252,8 +257,23 @@ def test_annotate_sequencing_gaps(genelocation_obj):
 
 
 # part 13
-# def test_introduce_hypo_genes():
-#    assert 1 == 0  # TEST INCOMPLETE
+def test_introduce_hypo_genes(genelocation_obj):
+    from plantclusterfinder_py.cluster import introduce_hypo_genes
+
+    gene_location = genelocation_obj.model_copy()
+
+    orig_gene_count = len(gene_location)
+    introduce_hypo_genes(
+        gene_location,
+        gene_location.find_intergenic_regions(),
+        vHypoAmount=1,
+    )
+    non_hypo_count = gene_location.data.filter(
+        pl.col("Gene Name").str.starts_with("Hypo").not_()
+    ).height
+    assert orig_gene_count * 2 - 216 == len(gene_location)  # TEST INCOMPLETE
+    assert orig_gene_count == non_hypo_count
+    assert orig_gene_count != 0
 
 
 # Part 14
@@ -261,8 +281,30 @@ def test_annotate_sequencing_gaps(genelocation_obj):
 
 
 # Part 15
-def test_compute_local_duplication():
-    assert 1 == 0  # TEST INCOMPLETE
+def test_compute_local_duplication(genelocation_obj):
+    from plantclusterfinder_py.cluster import (
+        compute_local_duplication,
+        read_in_conversion_file,
+        read_MCL_clustering_file,
+    )
+
+    conversion = read_in_conversion_file(
+        "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
+    )
+
+    mcl_cluster_data = read_MCL_clustering_file(
+        "./csubellipsoidea/MCL_clustering_expected_results/dump.CsubellipsoideaC_169_227_v2.0.protein.pcf13.mci.I20",
+        "./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa",
+        conversion,
+        False,  # do not remove proteins
+    )
+    gene_location = genelocation_obj
+    gene_location.remove_protein_transcript_info(conversion)
+    local_duplication = compute_local_duplication(
+        gene_location, mcl_cluster_data, {}, 10000, 5
+    )
+    print(local_duplication)
+    assert 848 == local_duplication.filter(pl.col("locally_duplicated")).height
 
 
 # Part 16

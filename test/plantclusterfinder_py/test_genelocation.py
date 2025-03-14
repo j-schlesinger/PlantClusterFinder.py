@@ -200,6 +200,20 @@ def test_introduce_hard_breaks(genelocation_obj):
     gene_location.introduce_hard_breaks(
         sequencing_gaps, vMaxSeqGapSize=int(4e4), vPercentileForMaxInterGeneDist=80
     )
-    assert (
-        1 == gene_location.select(pl.col("Chromosome Name").unique()).height
-    )  # TEST INCOMPLETE
+    assert 45 == gene_location.data.select(pl.col("Chromosome Name").unique()).height
+
+
+def test_insert_genes(genelocation_obj):
+    print(genelocation_obj.data.head(10))
+    test_genes = [
+        (f"TEST{i+1:02}", 50 + 1000 * i, 50 + 1000 * i, "test_scaffold", "-1")
+        for i in range(500)
+    ]
+    gene_location = genelocation_obj.model_copy()
+    orig_gene_count = len(gene_location)
+    test_gene_df = pl.DataFrame(
+        test_genes, schema=gene_location.data.schema, orient="row"
+    )
+    print(test_gene_df.head(10))
+    gene_location.insert_genes(test_gene_df)
+    assert orig_gene_count + 500 == len(gene_location)

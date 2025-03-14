@@ -365,8 +365,12 @@ class GeneLoc(BaseModel):
         ---------------------------------------------------------------------------
 
         Returns:
-            **InterChrom**: A DataFrame defining chromosome, start bp, end bp, gene
-                        before and gene after a intergenic region.
+            **InterChrom**: A DataFrame defining
+                - chromosome,
+                - start bp,
+                - end bp,
+                - gene before and
+                - gene after a intergenic region.
         """
 
         if not self._sorted:
@@ -558,18 +562,16 @@ class GeneLoc(BaseModel):
             vGeneLocation.find_intergenic_regions()
             .join_where(  # using join_where as a cheeky filter
                 vSeqGaps,
-                (
-                    pl.col("hard_gap")
-                    & (
-                        pl.col("Start").is_between(pl.col("start_bp"), pl.col("end_bp"))
-                        | pl.col("End").is_between(pl.col("start_bp"), pl.col("end_bp"))
-                    )
-                )
-                | (
-                    pl.lit(vMaxInterGeneDist != -1) & pl.col("Length")
-                    > vMaxInterGeneDist
+                pl.col("Start").is_between(
+                    pl.col("start index"),
+                    pl.col("end index"),
+                    # | pl.col("End").is_between(
+                    # pl.col("start index"), pl.col("end index")
+                    # )
+                    # | ( pl.lit(vMaxInterGeneDist != -1) & pl.col("Length") > vMaxInterGeneDist)
                 ),
             )
+            .filter(pl.col("hard_gap"))
             .select(
                 pl.col(["Chromosome Name", "Start", "End", "Gene Before", "Gene After"])
             )
@@ -577,25 +579,28 @@ class GeneLoc(BaseModel):
         )
         prev_end = 0
         pseudochromosome = []
-        for h_break in hard_breaks.iter_rows():
-            pseudochromosome.append(
-                {
-                    "break_start": prev_end,
-                    "break_end": h_break[1],
-                    "pchromosome name": f"{h_break[0]}_{h_break[5]-1}",
-                }
+        if len(hard_breaks) > 0:
+            for h_break in hard_breaks.iter_rows():
+                pseudochromosome.append(
+                    {
+                        "break_start": prev_end,
+                        "break_end": h_break[1],
+                        "pchromosome name": f"{h_break[0]}_{h_break[5]-1}",
+                    }
+                )
+                prev_end = h_break[2]
+            pseudochrom_df = pl.DataFrame(pseudochromosome)
+            self._data = self._data.join_where(
+                pseudochrom_df,
+                pl.col("Start Location (bp)") >= pl.col("break_start"),
+                pl.col("End Location (bp)") < pl.col("break_end"),
+            ).with_columns(
+                pl.col("pchromosome name").alias("Chromosome Name"),
+                chromosome_name_old=pl.col("Chromosome Name"),
             )
-            prev_end = h_break[2]
-        pseudochrom_df = pl.DataFrame(pseudochromosome)
-        self._data = self._data.join_where(
-            pseudochrom_df,
-            pl.col("Start Location (bp)")
-            >= pl.col("start") & pl.col("End Location (bp)")
-            < pl.col("end"),
-        ).with_columns(
-            pl.col("pchromosome name").alias("Chromosome Name"),
-            chromosome_name_old=pl.col("Chromosome Name"),
-        )
+
+    def insert_genes(self, other_genes: pl.DataFrame) -> None:
+        _ = self._data.extend(other_genes)  # modifies in place and returns DataFrame
 
 
 # Example usage

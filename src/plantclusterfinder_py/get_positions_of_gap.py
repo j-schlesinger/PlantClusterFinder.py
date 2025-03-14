@@ -55,7 +55,7 @@ def groupbyseq(input_list: list, output_path, amino_acid: str, chromosome: str) 
     This function writes the sequence groups to a file given the inputs
 
     Args:
-        input_list: List if indices of of amino acids from FASTA
+        input_list: List of indices of of amino acids from FASTA
         output_path: Writable output file
         amino_acid: single character representation of amino acid
         chromosome: name of chromosome from FASTA file

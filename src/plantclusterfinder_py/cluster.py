@@ -5,7 +5,6 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-import numpy as np
 import polars as pl
 
 from plantclusterfinder_py.cluster_datatypes import (
@@ -69,7 +68,7 @@ def label_reactions_with_sig_and_tail(
 
 
 def compute_local_duplication(
-    vGeneLocation: pl.DataFrame,
+    gene_location: GeneLoc,
     mcl_cluster_data: MclClusterData,
     vBiomG_G: Dict[Any, Any],
     vKbRangeLD: int,
@@ -84,7 +83,7 @@ def compute_local_duplication(
     ---------------------------------------------------------------------------
 
     Args:
-        vGeneLocation: DataFrame about the gene location information,
+        gene_location: DataFrame about the gene location information,
                         generated in PlantClusterFinder function.
         mcl_cluster_data : Mapping between the genes in the conversion-ID file and the
                 MCL-clustering file.
@@ -92,8 +91,7 @@ def compute_local_duplication(
                   conversion file.
         vKbRangeLD: Genes that are encoded more than this bp apart, are not
                     called local duplicates.
-        vGeneRangeLD: Number of genes that space two genes from each other.
-                      Genes that have more than this many intervening genes
+        vGeneRangeLD: Genes that have more than this many intervening genes
                       between themare not called local duplicates.
 
     Returns:
@@ -104,115 +102,101 @@ def compute_local_duplication(
                being True if the gene was considered to be locally duplicated (a
                gene was within vKbRangeLD bp distance and not spaced more than
                with vGeneRangeLD genes from another gene with the same MCL
-               clustering given by vG_MCL.
-        - ClusterIds: The MCL clusters of the gene (comma separated if more
-                        than 1 peptide is associated to a gene
+               clustering given by mcl_cluster_data).
+        - ClusterIds: The MCL clusters of the gene (list)
     """
 
-    """
-        % MATLAB code
-        vNgenes = size(vGeneLocation2.(char(vGeneLocation_Att(1,1))),1);
-        vG_LD = false(vNgenes,1);
-        vG_LD_ClustIDs = cell(vNgenes,1);
-        vGStartbp = str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,2)))));
-        vGEndbp = str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,3)))));
-    """
-    n_genes = len(vGeneLocation)
-    for row in vGeneLocation.iter_rows(named=True):
-        log.debug(
-            f"Checking local duplication of Gene {row['gene name']} of {len(vGeneLocation)}"
+    # FIXME: This is glacially slow
+
+    # For each gene G
+    # Get genes which appear in the same cluster as key gene
+    # mcl_df
+    mcl_clusts = set([y for x in mcl_cluster_data.Gene2MCLClusters.values() for y in x])
+    mcl_c2g = dict()
+    for cluster in mcl_clusts:
+        acc = []
+        for gene, mcl in mcl_cluster_data.Gene2MCLClusters.items():
+            if cluster in mcl:
+                acc.append(gene)
+        mcl_c2g[cluster] = acc
+    mcl_g2g = dict()
+    for gene, mcl in mcl_cluster_data.Gene2MCLClusters.items():
+        acc = []
+        for cluster in mcl:
+            acc.extend(mcl_c2g[cluster])
+        mcl_g2g[gene] = list(set(acc))
+    mcl_df = pl.from_dicts(
+        [
+            {
+                "Gene Name": k,
+                "mcl_genes": [x for x in v if x != k],
+                "mcl_clusters": mcl_cluster_data.Gene2MCLClusters[k],
+            }
+            for k, v in mcl_g2g.items()
+        ]
+    )
+
+    # For each gene G
+    # find genes G_i from -GeneRangeLD to GeneRangeLD (excluding G_0, which would just be G)
+    # only consider genes within vKbRangeLd of G
+    # nieghbor_genes
+    prev_genes: list[pl.Row] = []  # rows from -GeneRangeLD to GeneRangeLD
+    next_genes: list[pl.Row] = []
+    current_gene = None
+    neighbor_col: Dict[str, list[str]] = dict()
+    for row in gene_location.data.iter_rows():
+        next_genes.append(row)
+        if len(next_genes) > vGeneRangeLD:
+            if current_gene is None:
+                current_gene = next_genes.pop(-1)
+            else:
+                prev_genes.append(current_gene)
+                current_gene = next_genes.pop(-1)
+        if len(prev_genes) > vGeneRangeLD:
+            prev_genes.pop(-1)
+        if current_gene is None:
+            continue
+        prev_genes_filtered: filter[pl.Row] = filter(
+            lambda x: (x[2] - current_gene[1]) < vKbRangeLD,
+            prev_genes,  # prev_genes[2] is gene end
         )
-        if list(row.keys())[0].startswith("Hypothetical_Gene_"):
-            _start_g = (
-                row["gene start"] - vGeneRangeLD - 1
-                if row["gene start"] < (vGeneRangeLD - 1)
-                else 1
-            )
-            _end_g = (
-                row["gene end"] + vGeneRangeLD + 1
-                if (row["gene end"] + vGeneRangeLD + 1) < n_genes
-                else n_genes
-            )
-        """
-        for vi = 1:vNgenes
-            if vVerbose >= 2
-                fprintf(
-                    'Checking Local duplication of Gene %i of %i\n', vi, vNgenes);
-            end
-            if ~strncmp(vGeneLocation2.(char(vGeneLocation_Att(1,1)))(vi,1),'Hypothetical_Gene_',18)
-                vStartG = vi - vGeneRangeLD - 1;
-                vEndG = vi + vGeneRangeLD + 1;
-                if vStartG < 1
-                    vStartG = 1;
-                end
-                if vEndG > vNgenes
-                    vEndG = vNgenes;
-                end
-        """
-        _ids = np.array((n_genes, 1))
+        next_genes_filtered: filter[pl.Row] = filter(
+            lambda x: current_gene[2] - x[1] < vKbRangeLD,
+            next_genes,  # next_genes[1] is gene start
+        )
+        neighbor_col[current_gene[0]] = list(prev_genes_filtered) + list(
+            next_genes_filtered
+        )
+    neighbor_df = pl.from_dicts(
+        [
+            {"Gene Name": k, "neighbor_genes": [x[0] for x in v if x != k]}
+            for k, v in neighbor_col.items()
+        ]
+    )
 
-    """
-                vIDs = false(vNgenes,1);
-                vIDs(vStartG:vEndG,1) = 1;
-                vIDs(vi,1) = 0;
-                vIDs = vIDs & strcmp(vGeneLocation2.(char(vGeneLocation_Att(1,4))),vGeneLocation2.(char(vGeneLocation_Att(1,4)))(vi,1));
-
-                vStartbp = vGEndbp(vi,1)-vKbRangeLD;
-                vEndbp = vGStartbp(vi,1)+vKbRangeLD;
-                vIDs = vIDs & vGStartbp >= vStartbp & vGEndbp <= vEndbp;
-                vIDs_find = find(vIDs);
-
-                vMCL = sum(vG_MCL(sum(vBiomG_G(vi,:),1)>0,:),1)>0;
-                vMCL_find = find(vMCL);
-                clear vTempMCLString_array
-                if size(vMCL_find,2)~=0
-                    vTempMCLString_array = cellstr(['MCL_' num2str(vMCL_find(1,1))]);
-                end
-                for vj = 2:size(vMCL_find,2)
-                    vTempMCLString_array = [vTempMCLString_array; cellstr(['MCL_' num2str(vMCL_find(1,1))])];
-                end
-                if exist('vTempMCLString_array','var')
-                    vTempMCLString_array = unique(vTempMCLString_array);
-                end
-                vTempMCLString = '';
-                if exist('vTempMCLString_array','var')
-                    if size(vTempMCLString_array,1)~=0
-                        vTempMCLString = char(vTempMCLString_array);
-                    end
-                    for vj = 2:size(vTempMCLString_array,1)
-                        vTempMCLString = [vTempMCLString ', ' char(vTempMCLString_array)];
-                    end
-                end
-                vG_LD_ClustIDs(vi,1) = cellstr(vTempMCLString);
-                vN_MCL = size(vMCL,2);
-
-                vStop = 0;
-                vj = 1;
-                while vj <= size(vIDs_find,1) && vStop == 0
-                    if sum(vMCL)==0
-                        fprintf('Warning: %s has no entry in MCL clustering file.\n',char(vGeneLocation2.(char(vGeneLocation_Att(1,1)))(vi,1)))
-                        vG_LD(vi,1) = -1;
-                    elseif sum(vMCL == (sum(vG_MCL(sum(vBiomG_G(vIDs_find(vj,1),:),1)>0,:),1)>0)) == vN_MCL
-                        vG_LD(vi,1) = 1;
-                        vStop = 1;
-                    end
-                    vj = vj + 1;
-                end
-            end
-        end
-    end
-    """
-    return pl.DataFrame()  # FIXME: needs return value
+    # Using the above datasets
+    # see if mcl_df genes are in neighbor_genes
+    # and mark G as locally duplicated if
+    #  any G_i has the same MCL cluster as G
+    locally_duplicated = neighbor_df.join(mcl_df, on="Gene Name")
+    a = locally_duplicated.with_columns(
+        locally_duplicated=pl.col("neighbor_genes")
+        .list.set_intersection("mcl_genes")
+        .list.len()
+        > 0,
+    )  # .select(pl.col(["Gene Name", "mcl_clusters", "locally_duplicated"]))
+    # return a.with_columns(
+    #    is_locally_duplicated=pl.col( ["mcl_clusters", "Gene End (bp)", "Gene Start (bp)"])
+    return gene_location.data.join(a, on="Gene Name", how="left")
 
 
 def introduce_hypo_genes(
     gene_location: GeneLoc,
     sequencing_gaps: pl.DataFrame,
     # hard_breaks: HardBreaks,
-    vBiomG_G: Dict[Any, Any],
     vHypoAmount: int = 0,
     vGeneLengthHypoMin: int = -1,
-) -> None:
+) -> GeneLoc:
     """
     ---
 
@@ -241,17 +225,19 @@ def introduce_hypo_genes(
             inter-chromosomal matrix, and the HypoAmount populated.
     """
     # get the 5th and 7th columns of SeqGaps
-    sequencing_gaps = sequencing_gaps
     if sequencing_gaps is None:
         raise Exception(
             "Sequencing Gaps must be populated to insert hypothetical genes"
         )
-    gap_positions = sequencing_gaps.select(
-        pl.col(["seq_gaps_start", "seq_gaps_length"])
-    ).with_columns(
-        hypo_to_place=vHypoAmount
-        if pl.col("seq_gaps_length") >= vGeneLengthHypoMin
-        else 0
+    gap_positions = (
+        sequencing_gaps.select(pl.col(["Chromosome Name", "Start", "End"]))
+        .with_columns(seq_gaps_length=pl.col("End") - pl.col("Start"))
+        .with_columns(
+            hypo_to_place=pl.lit(vHypoAmount)
+            if vGeneLengthHypoMin < 0
+            or (pl.col("seq_gaps_length") >= pl.lit(vGeneLengthHypoMin))
+            else pl.lit(0)
+        )
     )
     vBreakAfter = []
     for pos in gap_positions.iter_rows():
@@ -287,6 +273,8 @@ def introduce_hypo_genes(
                 error('Not other option (>1) programmed.');
             end
         """
+    # MATLAB code sorted the breaks to remove overlapping regions
+    # our method doesn't allow for overlapping gaps
 
     _ = """
             %Sort the Breaks:
@@ -316,6 +304,8 @@ def introduce_hypo_genes(
 
             [~, vBreakAfter_sort_ID] = sort(vBreakAfter);
     """
+    # MATLAB version performs memory management
+    # our version doesn't need to do this because it's handled by Python
 
     _ = """
             %Increase the size of the gene locations.
@@ -328,8 +318,47 @@ def introduce_hypo_genes(
             %locations.
             vBiomG_G_3 = logical(spalloc(
                 size(vBiomG_G,1) + sum(vHypoToPlace),size(vBiomG_G,2),size(vBiomG_G,2)*2));
+    """
+    # WARNING: This is a slow way to process dataframe
+    ngaps = sequencing_gaps.height
+    hypothetical_genes = []
+    for i, row in enumerate(gap_positions.iter_rows()):
+        log.debug("Populate hypothetical genes %i of %i", i, ngaps)
+        # no hypothetical genes to populate
+        hypo_to_place = row[-1]
+        if hypo_to_place == 0:
+            continue
+        # start_2 = vBreakAfter(i) #?
+        # start_3 = end_3 - (end_2 - start_2)
+        place_last_gene_end = row[1]  # gap start position
+        space_between_genes = row[3]  # gap length
+        for hypo_i in range(hypo_to_place):
+            place_to_insert = place_last_gene_end + int(
+                space_between_genes / (hypo_to_place + 1) * hypo_i
+            )
+            new_row = (
+                f"Hypothetical_Gene_{hypo_to_place+hypo_i}",
+                place_to_insert,
+                place_to_insert,
+                row[0],  # chromosome/scaffold
+                "-1",  # FIXME: Strand - originally strand of start gene, but no clear reason why
+            )
+            hypothetical_genes.append(new_row)
+    hypo_gene_df = pl.DataFrame(
+        hypothetical_genes,
+        schema=(
+            ("Gene Name", pl.String),
+            ("Gene Start (bp)", pl.Int64),
+            ("Gene End (bp)", pl.Int64),
+            ("Chromosome Name", pl.String),
+            ("Strand", pl.String),
+        ),
+        orient="row",
+    )
 
-            %Populate the new gene location variable with the hypothetical genes.
+    gene_location.insert_genes(hypo_gene_df)
+    return gene_location
+    _ = """
             vEnd_GeneLocation2 = size(vGeneLocation2.(char(vGeneLocation_Att(1,1))),1);
             vEnd_GeneLocation3 = size(vGeneLocation3.(char(vGeneLocation_Att(1,1))),1);
             for vi = size(vSeqGaps,1):-1:1
@@ -351,17 +380,17 @@ def introduce_hypo_genes(
                             vGeneLocation3.(char(vGeneLocation_Att(1,vk)))(vStart_GeneLocation3:vEnd_GeneLocation3,:) = ...
                             vGeneLocation2.(char(vGeneLocation_Att(1,vk)))(vStart_GeneLocation2:vEnd_GeneLocation2,:);
                             if vk == 1
-                                vGeneLocation3.(char(vGeneLocation_Att(1,vk)))(vStart_GeneLocation3-vl,1) = cellstr(['Hypothetical_Gene_' num2str(sum(vHypoToPlace(1:vBreakAfter_sort_ID(vi,1)-1,1))+vl)]);
+                                vGeneLocation3.(char(vGeneLocation_Att(1,  1 )))(vStart_GeneLocation3-vl,1) = cellstr(['Hypothetical_Gene_' num2str(sum(vHypoToPlace(1:vBreakAfter_sort_ID(vi,1)-1,1))+vl)]);
                             elseif vk == 2
-                                vGeneLocation3.(char(vGeneLocation_Att(1,vk)))(vStart_GeneLocation3-vl,1) = cellstr(num2str(vPlaceToInsert));
+                                vGeneLocation3.(char(vGeneLocation_Att(1,  2 )))(vStart_GeneLocation3-vl,1) = cellstr(num2str(vPlaceToInsert));
                             elseif vk == 3
-                                vGeneLocation3.(char(vGeneLocation_Att(1,vk)))(vStart_GeneLocation3-vl,1) = cellstr(num2str(vPlaceToInsert));
+                                vGeneLocation3.(char(vGeneLocation_Att(1,  3 )))(vStart_GeneLocation3-vl,1) = cellstr(num2str(vPlaceToInsert));
                             elseif vk == 4
-                                vGeneLocation3.(char(vGeneLocation_Att(1,vk)))(vStart_GeneLocation3-vl,1) = vGeneLocation2.(char(vGeneLocation_Att(1,vk)))(vBreakAfter(vBreakAfter_sort_ID(vi,1),1),1);
+                                vGeneLocation3.(char(vGeneLocation_Att(1,  4 )))(vStart_GeneLocation3-vl,1) = vGeneLocation2.(char(vGeneLocation_Att(1,  4 )))(vBreakAfter(vBreakAfter_sort_ID(vi,1),1),1);
                             elseif vk == 5
-                                vGeneLocation3.(char(vGeneLocation_Att(1,vk)))(vStart_GeneLocation3-vl,1) = vGeneLocation2.(char(vGeneLocation_Att(1,vk)))(vBreakAfter(vBreakAfter_sort_ID(vi,1),1),1);
+                                vGeneLocation3.(char(vGeneLocation_Att(1,  5 )))(vStart_GeneLocation3-vl,1) = vGeneLocation2.(char(vGeneLocation_Att(1,  5 )))(vBreakAfter(vBreakAfter_sort_ID(vi,1),1),1);
                             elseif vk == 6
-                                vGeneLocation3.(char(vGeneLocation_Att(1,vk)))(vStart_GeneLocation3-vl,1) = vGeneLocation2.(char(vGeneLocation_Att(1,vk)))(vBreakAfter(vBreakAfter_sort_ID(vi,1),1),1);
+                                vGeneLocation3.(char(vGeneLocation_Att(1,  6 )))(vStart_GeneLocation3-vl,1) = vGeneLocation2.(char(vGeneLocation_Att(1,  6 )))(vBreakAfter(vBreakAfter_sort_ID(vi,1),1),1);
                             end
                         end
                     end
@@ -369,7 +398,8 @@ def introduce_hypo_genes(
                         fprintf('Inserting Hypothetical genes: Copy old %i to %i to new %i to %i\n',
                                 vStart_GeneLocation2, vEnd_GeneLocation2, vStart_GeneLocation3, vEnd_GeneLocation3);
                     end
-                    vBiomG_G_3(vStart_GeneLocation3:vEnd_GeneLocation3,:) = vBiomG_G(vStart_GeneLocation2:vEnd_GeneLocation2,:);
+                    vBiomG_G_3(vStart_GeneLocation3:vEnd_GeneLocation3,:) = \
+                        vBiomG_G(vStart_GeneLocation2:vEnd_GeneLocation2,:);
                     vIDs_to_change = vInterChrom(:,5)>vBreakAfter(vBreakAfter_sort_ID(vi,1),1);
                     vInterChrom(vIDs_to_change,5) = vInterChrom(vIDs_to_change,5) + vHypoToPlace(vBreakAfter_sort_ID(vi,1),1);
                     vIDs_to_change = vInterChrom(:,4)>vBreakAfter(vBreakAfter_sort_ID(vi,1),1);
@@ -468,7 +498,9 @@ def annotate_sequencing_gaps(
             has_header=False,
             new_columns=["scaffold", "amino acid", "start index", "length"],
         )
-        .with_columns(end_index=pl.col("start index") + pl.col("length") - pl.lit(1))
+        .with_columns(
+            (pl.col("start index") + pl.col("length") - pl.lit(1)).alias("end index")
+        )
         .filter(
             pl.col("amino acid") == pl.lit("N")
         )  # Do not process all non N sequences.
@@ -494,11 +526,11 @@ def annotate_sequencing_gaps(
             pl.col("End")
             >= pl.col("start index"),  # intergenic region ends after gap start
             pl.col("Start")
-            <= pl.col("end_index"),  # intergenic region starts before gap end
+            <= pl.col("end index"),  # intergenic region starts before gap end
             pl.col("End")
-            >= pl.col("end_index"),  # intergenic region ends after gap end
+            >= pl.col("end index"),  # intergenic region ends after gap end
         )
-        .group_by(["scaffold", "start index", "end_index"])
+        .group_by(["scaffold", "start index", "end index"])
         .agg(
             seq_gaps_start=pl.col("Start").min(),
             seq_gaps_end=pl.col("End").max(),
@@ -1229,7 +1261,7 @@ def map_PGDBs_to_conversion_file(
 
 
 def perform_clustering(
-    vGeneLocation: pl.DataFrame,
+    vGeneLocation: GeneLoc,
     vBiomG_E: Dict[Any, Any],
     vEnzMinForClusters: int,
     vKbRangeLD: int,
@@ -1255,12 +1287,12 @@ def perform_clustering(
     ---------------------------------------------------------------------------
 
     Args:
+        vGeneLocation: DataFrame about the gene location information,
+                        generated in PlantClusterFinder function.
         vMinStepSize: Minimal intervening gene size that should be computed
                       (default is 5).
         vMaxStepSize: Maximal intervening gene size that should be computed
                       (default is 20).
-        vGeneLocation: DataFrame about the gene location information,
-                        generated in PlantClusterFinder function.
         vBiomG_E: A dictionary describing which gene has at least one reaction
                   annotated in the pgdb (1, if no reaction 0)
         vEnzMinForClusters: Defines the minimum number of enyzmes that need to
@@ -1270,7 +1302,7 @@ def perform_clustering(
         vGeneRangeLD: Number of genes that space two genes from each other.
                       Genes that have more than this many intervening genes
                       between themare not called local duplicates.
-        vG_MCL: Mapping between the genes in the conversion-ID file and the
+        mcl_cluster_data: Mapping between the genes in the conversion-ID file and the
                 MCL-clustering file.
         vBiomG_G: Mapping between the Gene location file and the gene-IDs in the
                   conversion file.
@@ -1312,6 +1344,18 @@ def perform_clustering(
         vClusterBackgroundWrite = 1;
         vStepSize = 0;
         vBiom_Hypo = strncmp(vGeneLocation2.(char(vGeneLocation_Att(1,1))),'Hypo',4);
+    """
+
+    # continue_search = True
+    # cluster_write = True
+    # cluster_background_write = True
+    # step_size = 0
+
+    # clusters = ( pl.DataFrame())  #  Stepsize, start, end, number of enzymes, number of hypos
+    # clusters_background = ( pl.DataFrame())  # Size, number of enzymes, count, number of total
+    # note: hypothetical gene names start with "Hypo"
+
+    """
         while vStepSize <= vMinStepSize || vContinueSearch == 1
             % Get all clusters
             vi = 1;
@@ -1323,6 +1367,27 @@ def perform_clustering(
                 vStart = vi - 1 + find(vBiomG_E(vi:end,1),1,'first');
                 vEnd = vStart;
                 vAbolishCluster = 0;
+                """
+    for x in range(1):
+        abolish_cluster = False
+        start = x + vBiomG_E[0]
+        if start == 0:
+            abolish_cluster = True
+        else:
+            # search for neighbor_genes
+            neighbor_genes: List[Any] = []
+            pass
+
+        if not abolish_cluster and len(neighbor_genes) < vEnzMinForClusters:
+            abolish_cluster = True
+
+        def ld_is_not_a_problem(
+            gene_location: GeneLoc, neighbor_genes: List[int]
+        ) -> bool:
+            pass
+            return False
+
+        """
                 if size(vStart,1) == 0
                     vAbolishCluster = 1;
                     vStart = size(vBiomG_E,1) + 1;
@@ -1352,12 +1417,14 @@ def perform_clustering(
                         vAbolishCluster = 1;
                     end
                 end
-
+        """
+        if not abolish_cluster and ld_is_not_a_problem(vGeneLocation, neighbor_genes):
+            pass
+        """
                 if vAbolishCluster == 0
                     vLDisNOTaProblem = 0;
                     % Get rid of clusters that only contain LD
                     vEIDs = vStart+find(vBiomG_E(vStart:vEnd))-1;
-    %                 vEIDs_find = find(vEIDs);
                     % Test if they are encoded within kb range
                     vStart_kb = min([str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,2)))(vEIDs,1))); ...
                         str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,3)))(vEIDs,1)))]);
@@ -1516,7 +1583,7 @@ def compute_background(
 
       Function that lookes at all clusters that were found by the function
       f_perform_clustering(), and computes the background information for the
-      windowsizes of these clusters (e.g. a cluster has 4 enzymes and two non
+      window sizes of these clusters (e.g. a cluster has 4 enzymes and two non
       enzymes, then its size is 6. The function goes with a window size 6
       through the genome and checks how many windows exist with 0, 1, 2, ...,
       5, 6 enzymes. It then calculates the probability to see a cluster with

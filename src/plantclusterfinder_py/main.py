@@ -999,7 +999,8 @@ def main() -> None:
                 hard_breaks2 = introduce_hypo_genes(
                     # hard_breaks1,
                     #  vGeneLengthHypoMin,
-                    vBiomG_G,
+                    vGeneLocation,
+                    vGeneLocation.find_intergenic_regions(),
                     vInsertHypos,
                     vHypoAmount,
                 )
