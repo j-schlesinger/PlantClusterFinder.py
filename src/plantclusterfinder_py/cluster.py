@@ -202,7 +202,6 @@ def introduce_hypo_genes(
 
       Function that introduces Hypothetical genes if a sequencing gap reached a
       critical size vGeneLengthHypoMin.
-
     ---
     Args:
         hard_breaks: Object with the gene location, chromosome regions, sequence gaps,
@@ -243,82 +242,6 @@ def introduce_hypo_genes(
     for pos in gap_positions.iter_rows():
         vBreakAfter.append(gene_location.find_intergenic_regions())
 
-    _ = """
-
-        if vInsertHypos > 0
-            %Check where and how many Hypothetical genes should be placed.
-            if vInsertHypos == 1
-                vSeqGaps_5 = str2num(char(vSeqGaps(:,5)));
-                vSeqGaps_7 = str2num(char(vSeqGaps(:,7)));
-                vHypoToPlace = zeros(size(vSeqGaps_5,1),1);
-                vBreakAfter = zeros(size(vSeqGaps_5,1),1);
-                if exist('vHypoAmount','var')
-                    vNi = size(vSeqGaps,1);
-                    for vi = vNi:-1:1
-                        if vVerbose >= 2
-                            fprintf('Estimate number of gaps: %i of %i\n',
-                                    vNi - vi + 1, vNi);
-                        end
-                        vBreakAfter(vi,1) = vInterChrom(vSeqGaps_5(vi,1),4);
-
-                        if vSeqGaps_7(vi,1) >= vGeneLengthHypoMin
-                            vHypoToPlace(vi,1) = vHypoAmount;
-                        end
-                    end
-                else
-                    error(
-                        'vHypoAmount not defined, needs to be defined for InsertHypos = 1.');
-                end
-            else
-                error('Not other option (>1) programmed.');
-            end
-        """
-    # MATLAB code sorted the breaks to remove overlapping regions
-    # our method doesn't allow for overlapping gaps
-
-    _ = """
-            %Sort the Breaks:
-            [~, vBreakAfter_sort_ID] = sort(vBreakAfter);
-
-            %Remove several sequencing gaps within one intergenic region.
-            vBreakafterkill = false(size(vSeqGaps,1),1);
-            vOld_Breakafter_sort_ID = vBreakAfter_sort_ID(1,1);
-            for vi = 2:size(vSeqGaps,1)
-                if vBreakAfter(vBreakAfter_sort_ID(vi,1),1) == vBreakAfter(vOld_Breakafter_sort_ID,1)
-                    vBreakafterkill(vBreakAfter_sort_ID(vi,1),1) = 1;
-                    %It is possible that a sequencing gap does not meet the
-                    %minimal Hypo length, but the next one does. We populate 2
-                    %genes in total once one of them meets the criterion.
-                    if vHypoToPlace(vOld_Breakafter_sort_ID,1) < vHypoToPlace(vBreakAfter_sort_ID(vi,1),1)
-                        vHypoToPlace(vOld_Breakafter_sort_ID,1) = vHypoToPlace(vBreakAfter_sort_ID(vi,1),1);
-                    end
-                else
-                    vOld_Breakafter_sort_ID = vBreakAfter_sort_ID(vi,1);
-                end
-            end
-            vSeqGaps = vSeqGaps(~vBreakafterkill,:);
-    %         vSeqGaps_5 = vSeqGaps_5(~vBreakafterkill,:);
-    %         vSeqGaps_7 = vSeqGaps_7(~vBreakafterkill,:);
-            vBreakAfter = vBreakAfter(~vBreakafterkill,:);
-            vHypoToPlace = vHypoToPlace(~vBreakafterkill,:);
-
-            [~, vBreakAfter_sort_ID] = sort(vBreakAfter);
-    """
-    # MATLAB version performs memory management
-    # our version doesn't need to do this because it's handled by Python
-
-    _ = """
-            %Increase the size of the gene locations.
-            for vk = 1:size(vGeneLocation_Att,2)
-                vGeneLocation3.(char(vGeneLocation_Att(1,vk))) = cell(size(vGeneLocation2.(char(vGeneLocation_Att(1,vk))),1) + sum(vHypoToPlace), ...
-                    size(vGeneLocation2.(char(vGeneLocation_Att(1,vk))),2));
-            end
-
-            %Increase the size of all variables that are connected to the gene
-            %locations.
-            vBiomG_G_3 = logical(spalloc(
-                size(vBiomG_G,1) + sum(vHypoToPlace),size(vBiomG_G,2),size(vBiomG_G,2)*2));
-    """
     # WARNING: This is a slow way to process dataframe
     ngaps = sequencing_gaps.height
     hypothetical_genes = []
@@ -358,69 +281,6 @@ def introduce_hypo_genes(
 
     gene_location.insert_genes(hypo_gene_df)
     return gene_location
-    _ = """
-            vEnd_GeneLocation2 = size(vGeneLocation2.(char(vGeneLocation_Att(1,1))),1);
-            vEnd_GeneLocation3 = size(vGeneLocation3.(char(vGeneLocation_Att(1,1))),1);
-            for vi = size(vSeqGaps,1):-1:1
-                if vVerbose >= 2
-                    fprintf('Populate hypothetical genes: %i of %i\n',
-                            vNi - vi + 1, vNi);
-                end
-                if vHypoToPlace(vBreakAfter_sort_ID(vi,1),1) ~= 0
-                    vStart_GeneLocation2 = vBreakAfter(
-                        vBreakAfter_sort_ID(vi,1),1) + 1;
-                    vStart_GeneLocation3 = vEnd_GeneLocation3 - \
-                        (vEnd_GeneLocation2 - vStart_GeneLocation2);
-                    for vl = 1:vHypoToPlace(vBreakAfter_sort_ID(vi,1),1)
-                        vPlaceLastGeneEnd = str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,3)))(vStart_GeneLocation2-1,1)));
-                        vPlaceBetweenGenes = str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,2)))(vStart_GeneLocation2,1))) - vPlaceLastGeneEnd - 1;
-                        vPlaceToInsert = vPlaceLastGeneEnd + \
-                            floor(vPlaceBetweenGenes/(vHypoToPlace(vBreakAfter_sort_ID(vi,1),1)+1)*vl);
-                        for vk = 1:size(vGeneLocation_Att,2)
-                            vGeneLocation3.(char(vGeneLocation_Att(1,vk)))(vStart_GeneLocation3:vEnd_GeneLocation3,:) = ...
-                            vGeneLocation2.(char(vGeneLocation_Att(1,vk)))(vStart_GeneLocation2:vEnd_GeneLocation2,:);
-                            if vk == 1
-                                vGeneLocation3.(char(vGeneLocation_Att(1,  1 )))(vStart_GeneLocation3-vl,1) = cellstr(['Hypothetical_Gene_' num2str(sum(vHypoToPlace(1:vBreakAfter_sort_ID(vi,1)-1,1))+vl)]);
-                            elseif vk == 2
-                                vGeneLocation3.(char(vGeneLocation_Att(1,  2 )))(vStart_GeneLocation3-vl,1) = cellstr(num2str(vPlaceToInsert));
-                            elseif vk == 3
-                                vGeneLocation3.(char(vGeneLocation_Att(1,  3 )))(vStart_GeneLocation3-vl,1) = cellstr(num2str(vPlaceToInsert));
-                            elseif vk == 4
-                                vGeneLocation3.(char(vGeneLocation_Att(1,  4 )))(vStart_GeneLocation3-vl,1) = vGeneLocation2.(char(vGeneLocation_Att(1,  4 )))(vBreakAfter(vBreakAfter_sort_ID(vi,1),1),1);
-                            elseif vk == 5
-                                vGeneLocation3.(char(vGeneLocation_Att(1,  5 )))(vStart_GeneLocation3-vl,1) = vGeneLocation2.(char(vGeneLocation_Att(1,  5 )))(vBreakAfter(vBreakAfter_sort_ID(vi,1),1),1);
-                            elseif vk == 6
-                                vGeneLocation3.(char(vGeneLocation_Att(1,  6 )))(vStart_GeneLocation3-vl,1) = vGeneLocation2.(char(vGeneLocation_Att(1,  6 )))(vBreakAfter(vBreakAfter_sort_ID(vi,1),1),1);
-                            end
-                        end
-                    end
-                    if vVerbose >= 2
-                        fprintf('Inserting Hypothetical genes: Copy old %i to %i to new %i to %i\n',
-                                vStart_GeneLocation2, vEnd_GeneLocation2, vStart_GeneLocation3, vEnd_GeneLocation3);
-                    end
-                    vBiomG_G_3(vStart_GeneLocation3:vEnd_GeneLocation3,:) = \
-                        vBiomG_G(vStart_GeneLocation2:vEnd_GeneLocation2,:);
-                    vIDs_to_change = vInterChrom(:,5)>vBreakAfter(vBreakAfter_sort_ID(vi,1),1);
-                    vInterChrom(vIDs_to_change,5) = vInterChrom(vIDs_to_change,5) + vHypoToPlace(vBreakAfter_sort_ID(vi,1),1);
-                    vIDs_to_change = vInterChrom(:,4)>vBreakAfter(vBreakAfter_sort_ID(vi,1),1);
-                    vInterChrom(vIDs_to_change,4) = vInterChrom(vIDs_to_change,4) + vHypoToPlace(vBreakAfter_sort_ID(vi,1),1);
-                    vEnd_GeneLocation2 = vStart_GeneLocation2-1;
-                    vEnd_GeneLocation3 = vStart_GeneLocation3- \
-                        (1+vHypoToPlace(vBreakAfter_sort_ID(vi,1),1));
-                end
-            end
-            vStart_GeneLocation3 = 1;
-            vStart_GeneLocation2 = 1;
-            vBiomG_G_3(vStart_GeneLocation3:vEnd_GeneLocation3,:) = vBiomG_G(vStart_GeneLocation2:vEnd_GeneLocation2,:);
-            for vk = 1:size(vGeneLocation_Att,2)
-                vGeneLocation3.(char(vGeneLocation_Att(1,vk)))(1:vEnd_GeneLocation3,:) = ...
-                vGeneLocation2.(char(vGeneLocation_Att(1,vk)))(1:vEnd_GeneLocation2,:);
-            end
-            vGeneLocation2 = vGeneLocation3;
-            vBiomG_G = vBiomG_G_3;
-        end
-    end"""
-    return  # FIXME: return value
 
 
 def annotate_sequencing_gaps(
