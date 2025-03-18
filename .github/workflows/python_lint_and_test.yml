@@ -29,8 +29,11 @@ jobs:
         version: 1.0
     - name: Performing linting with ruff and tests using pytest
       run: |
+        rye --version
         rye lint
+        rye run mypy --version
         rye run mypy src test
+        rye run isort --version
         rye run isort --check src test
         rye fmt --check
         rye run pytest
