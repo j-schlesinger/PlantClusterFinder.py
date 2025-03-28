@@ -34,6 +34,6 @@ jobs:
         rye run mypy --version
         rye run mypy src test
         rye run isort --version
-        rye run isort --check src test
+        rye run isort --check src test || rye run isort --check src test -v
         rye fmt --check
         rye run pytest

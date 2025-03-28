@@ -143,7 +143,8 @@ def compute_local_duplication(
     prev_genes: list[pl.Row] = []  # rows from -GeneRangeLD to GeneRangeLD
     next_genes: list[pl.Row] = []
     current_gene = None
-    neighbor_col: Dict[str, list[str]] = dict()
+    # Collection of genes that surround the key gene
+    neighbor_genes: Dict[str, list[str]] = dict()
     for row in gene_location.data.iter_rows():
         next_genes.append(row)
         if len(next_genes) > vGeneRangeLD:
@@ -164,13 +165,13 @@ def compute_local_duplication(
             lambda x: current_gene[2] - x[1] < vKbRangeLD,
             next_genes,  # next_genes[1] is gene start
         )
-        neighbor_col[current_gene[0]] = list(prev_genes_filtered) + list(
+        neighbor_genes[current_gene[0]] = list(prev_genes_filtered) + list(
             next_genes_filtered
         )
     neighbor_df = pl.from_dicts(
         [
             {"Gene Name": k, "neighbor_genes": [x[0] for x in v if x != k]}
-            for k, v in neighbor_col.items()
+            for k, v in neighbor_genes.items()
         ]
     )
 
@@ -178,16 +179,15 @@ def compute_local_duplication(
     # see if mcl_df genes are in neighbor_genes
     # and mark G as locally duplicated if
     #  any G_i has the same MCL cluster as G
-    locally_duplicated = neighbor_df.join(mcl_df, on="Gene Name")
-    a = locally_duplicated.with_columns(
+    locally_duplicated = neighbor_df.join(mcl_df, on="Gene Name").with_columns(
         locally_duplicated=pl.col("neighbor_genes")
         .list.set_intersection("mcl_genes")
         .list.len()
         > 0,
-    )  # .select(pl.col(["Gene Name", "mcl_clusters", "locally_duplicated"]))
-    # return a.with_columns(
-    #    is_locally_duplicated=pl.col( ["mcl_clusters", "Gene End (bp)", "Gene Start (bp)"])
-    return gene_location.data.join(a, on="Gene Name", how="left")
+    )
+    return gene_location.data.join(
+        locally_duplicated, on="Gene Name", how="left"
+    ).with_columns(pl.col("locally_duplicated").fill_null(False))
 
 
 def introduce_hypo_genes(
@@ -202,6 +202,7 @@ def introduce_hypo_genes(
 
       Function that introduces Hypothetical genes if a sequencing gap reached a
       critical size vGeneLengthHypoMin.
+
     ---
     Args:
         hard_breaks: Object with the gene location, chromosome regions, sequence gaps,
@@ -251,8 +252,6 @@ def introduce_hypo_genes(
         hypo_to_place = row[-1]
         if hypo_to_place == 0:
             continue
-        # start_2 = vBreakAfter(i) #?
-        # start_3 = end_3 - (end_2 - start_2)
         place_last_gene_end = row[1]  # gap start position
         space_between_genes = row[3]  # gap length
         for hypo_i in range(hypo_to_place):
@@ -378,16 +377,17 @@ def annotate_sequencing_gaps(
         pl.col("scaffold").is_in(vUniqueChrom)
     )  # Do not process sequences that do not lie on a chromosome we want
     sequencing_gaps = (
+        # All predicates of join_where() must be true for join to happen
         sequencing_gaps.join_where(
             vInterGeneLocation,
             pl.col("Chromosome Name") == pl.col("scaffold"),
-            pl.col("Start")
+            pl.col("Start")  # intergenic region start
             <= pl.col("start index"),  # intergenic region starts before gap start
-            pl.col("End")
+            pl.col("End")  # intergenic region end
             >= pl.col("start index"),  # intergenic region ends after gap start
-            pl.col("Start")
+            pl.col("Start")  # intergenic region start
             <= pl.col("end index"),  # intergenic region starts before gap end
-            pl.col("End")
+            pl.col("End")  # intergenic region end
             >= pl.col("end index"),  # intergenic region ends after gap end
         )
         .group_by(["scaffold", "start index", "end index"])
@@ -1206,13 +1206,17 @@ def perform_clustering(
         vBiom_Hypo = strncmp(vGeneLocation2.(char(vGeneLocation_Att(1,1))),'Hypo',4);
     """
 
-    # continue_search = True
-    # cluster_write = True
-    # cluster_background_write = True
-    # step_size = 0
+    continue_search = True
+    cluster_write = True
+    cluster_background_write = True
+    step_size = 0
 
-    # clusters = ( pl.DataFrame())  #  Stepsize, start, end, number of enzymes, number of hypos
-    # clusters_background = ( pl.DataFrame())  # Size, number of enzymes, count, number of total
+    clusters = (
+        pl.DataFrame()
+    )  #  Stepsize, start, end, number of enzymes, number of hypos
+    clusters_background = (
+        pl.DataFrame()
+    )  # Size, number of enzymes, count, number of total
     # note: hypothetical gene names start with "Hypo"
 
     """
