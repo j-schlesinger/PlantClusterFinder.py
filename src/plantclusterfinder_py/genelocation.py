@@ -18,6 +18,26 @@ class GeneLoc(BaseModel):
     class provides functionality for loading genomic data, sorting genes, and mapping
     gene names to specific gene sets such as Genes, Proteins, or Transcripts.
 
+    The default columns are:
+    - gene name
+    - gene start (bp)
+    - gene end (bp)
+    - chromosome name
+    - strand
+    Additionally, the following columns are added as part of clustering
+    - gene ID
+    - protein ID
+    - transcript ID
+    - reaction ID(s)
+
+    The class will also hold a list of intergenic regions and hard breaks with the
+    columns:
+    - chromosome name
+    - region start (bp)
+    - region end (bp)
+    - gene ID preceding
+    - gene ID following
+
     --------------------------------------------------------------------------------
 
     Attributes:

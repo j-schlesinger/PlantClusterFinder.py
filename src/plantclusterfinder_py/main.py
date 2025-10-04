@@ -51,7 +51,7 @@ def save(filename: str, *args, caller_locals: dict = {}):
                 for x, y in caller_locals.items()
                 if re.search(parsed_args.regexp, x)
             },
-            ling_field_names=True,
+            long_field_names=True,
         )
     else:
         raise Exception("Does not support non-regexp save functions")
@@ -484,11 +484,11 @@ def main() -> None:
     parser.add_argument(
         "-para",
         type=int,
-        default=1,
+        default=0,
         help="""
         How many cpus can be used by the algorithm
          (used for MCL clustering and Sequencing gap search).
-         The default is 1.""",
+         The default is 0 (auto-scale).""",
     )
     parser.add_argument(
         "--UnmaskedDNA",
@@ -698,14 +698,17 @@ def main() -> None:
         try:
             with open(filename, "r") as f:
                 pass
-        except FileNotFoundError as _:
+        except FileNotFoundError:
             error_message.append(f"File {filename} is a file that could not be found.")
         except PermissionError:
             error_message.append(
-                f"You do not have permission to read the {err}" + " file at {filename}"
+                f"You do not have permission to read the {
+                    err}"
+                + " file at {filename}"
             )
         except OSError as e:
-            error_message.append(f"Cannot read {err} {filename} because of {e}.")
+            error_message.append(f"Cannot read {err} {
+                                 filename} because of {e}.")
     test_writable_file = {
         vGeneOutputFile: "Gene Output file (-gout)",
         vClusterOutputFile: "Cluster Output file (-cout)",
@@ -988,7 +991,7 @@ def main() -> None:
     # % Populate Hypothetical genes
     if vPartFinished < 13:
         log.info(
-            "Introduce Hypothetical genes for gap" "s longer than %i bp",
+            "Introduce Hypothetical genes for gaps longer than %i bp",
             vGeneLengthHypoMin,
         )
         if vInsertHypos:
@@ -1045,14 +1048,10 @@ def main() -> None:
         # ( vClusters, vClusterBackground, vFinalStepsize, vStepSize_Max,)
         clusters = perform_clustering(
             vGeneLocation,
-            vBiomG_E,
+            vG_MCL,
             vEnzMinForClusters,
             vKbRangeLD,
             vGeneRangeLD,
-            vG_MCL,
-            vBiomG_G,
-            vG2R,
-            vMapG_Gpgdb,
             vCriterion,
             vMinStepSize,
             vMaxStepSize,
@@ -1069,7 +1068,7 @@ def main() -> None:
         if vTempsaves == 1:
             vPartFinished = _tempsaves(locals())["vPartFinished"]
 
-    # % Produce Gene Outputfile
+    # % Produce Gene Output file
     if vPartFinished < 18:
         log.info("Produce GeneOutputFile")
         write_gene_output(

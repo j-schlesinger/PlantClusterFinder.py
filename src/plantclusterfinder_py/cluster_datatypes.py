@@ -142,21 +142,23 @@ class Conversion(BaseModel):
 
 class Clusters(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
-    # cluster information, stepsize, chromosome ID, gene start, gene end, number of enzymes
+    # cluster information, stepsize, chromosome ID, gene start, gene end, number of enzymes, number of non-enzymes, and number of hypothetical genes
     ClusterMeta: pl.DataFrame
     """DataFrame with clustter information
         - stepsize
         - chromosome ID
         - gene start
         - gene end
-        - number of enzymes"""
+        - number of enzymes
+        - number of non-enzymes
+        - number of hypothetical genes"""
     ClusterBackground: pl.DataFrame  # Density information about the genome
     """Density information about the genome
         - window size
         - number of enzymes
         - occurence of windowsize in genome
         - frequency of seeing a windowsize of this size with at least as many enzymes in the genome"""
-    FinalStepsize: int
+    FinalStepSize: int
     """step size chosen by criterion"""
     MaxStepSize: int
     """maximal step size computed"""

@@ -2,8 +2,9 @@ import csv
 import logging
 import os
 import subprocess
+from collections import namedtuple
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import IO, Any, Dict, Iterable, Iterator, List, Optional, Tuple
 
 import polars as pl
 
@@ -130,7 +131,7 @@ def compute_local_duplication(
             {
                 "Gene Name": k,
                 "mcl_genes": [x for x in v if x != k],
-                "mcl_clusters": mcl_cluster_data.Gene2MCLClusters[k],
+                "mcl_clusters": mcl_cluster_data.Gene2MCLClusters.get(k, []),
             }
             for k, v in mcl_g2g.items()
         ]
@@ -233,10 +234,14 @@ def introduce_hypo_genes(
         sequencing_gaps.select(pl.col(["Chromosome Name", "Start", "End"]))
         .with_columns(seq_gaps_length=pl.col("End") - pl.col("Start"))
         .with_columns(
-            hypo_to_place=pl.lit(vHypoAmount)
-            if vGeneLengthHypoMin < 0
-            or (pl.col("seq_gaps_length") >= pl.lit(vGeneLengthHypoMin))
-            else pl.lit(0)
+            hypo_to_place=(
+                pl.lit(vHypoAmount)
+                if (
+                    vGeneLengthHypoMin < 0
+                    or (pl.col("seq_gaps_length") >= pl.lit(vGeneLengthHypoMin))
+                )
+                else pl.lit(0)
+            )
         )
     )
     vBreakAfter = []
@@ -259,7 +264,7 @@ def introduce_hypo_genes(
                 space_between_genes / (hypo_to_place + 1) * hypo_i
             )
             new_row = (
-                f"Hypothetical_Gene_{hypo_to_place+hypo_i}",
+                f"Hypothetical_Gene_{hypo_to_place + hypo_i}",
                 place_to_insert,
                 place_to_insert,
                 row[0],  # chromosome/scaffold
@@ -370,7 +375,9 @@ def annotate_sequencing_gaps(
         .iter_rows()
     ):
         log.warning(
-            f"DNA Fasta file '{vFile}' contains chromosomes or scaffolds not covered with the "
+            f"DNA Fasta file '{
+                vFile
+            }' contains chromosomes or scaffolds not covered with the "
             + f"gene position file: {bad_chromosome}"
         )
     sequencing_gaps = sequencing_gaps.filter(
@@ -382,7 +389,8 @@ def annotate_sequencing_gaps(
             vInterGeneLocation,
             pl.col("Chromosome Name") == pl.col("scaffold"),
             pl.col("Start")  # intergenic region start
-            <= pl.col("start index"),  # intergenic region starts before gap start
+            # intergenic region starts before gap start
+            <= pl.col("start index"),
             pl.col("End")  # intergenic region end
             >= pl.col("start index"),  # intergenic region ends after gap start
             pl.col("Start")  # intergenic region start
@@ -503,7 +511,7 @@ def get_metabolic_domains(
     rxn_meta_dom = (
         pl.read_csv(vGenesMetabolicDomains_File, separator="\t", eol_char="\r")
         .unpivot(
-            [f"Class{n+1}" for n in range(6)],
+            [f"Class{n + 1}" for n in range(6)],
             index=["Reaction ID", "Pathway"],
             value_name="Metabolic Domain",
         )
@@ -575,7 +583,7 @@ def get_MCL_clustering(
     conversion: Conversion,
     vOverwriteMCLClustering: bool,
     vRemoveNonProtLocations: bool,
-    vParallelize: int = 1,
+    vParallelize: int = 0,
 ) -> MclClusterData:
     """
     ---------------------------------------------------------------------------
@@ -608,6 +616,9 @@ def get_MCL_clustering(
         genes in the conversion-ID file and the MCL-clustering file,
         as well as a list of protein-IDs stored in the fasta file.
     """
+    int_cpu_count: int = os.cpu_count() or 1
+    if vParallelize == 0:
+        vParallelize = max(1, int_cpu_count - 1)
 
     apps = ["makeblastdb", "blastp", "cut", "mcxload", "mcl", "mcxdump"]
     missing_apps: List[str] = []
@@ -675,14 +686,20 @@ def get_MCL_clustering(
         "-o",
         f"{vProtein_sequence_FastaFile}.MCLMATRIX.I20",
     ]
-    overwrite_dump_workaround = "" if vOverwriteMCLClustering else f"{os.getpid()}."
+    overwrite_dump_workaround = (
+        ""
+        if vOverwriteMCLClustering
+        else f"{
+        os.getpid()}."
+    )
     command_for["mcxdump"] = [
         "-icl",
         f"{vProtein_sequence_FastaFile}.MCLMATRIX.I20",
         "-tabr",
         f"{vProtein_sequence_FastaFile}.MCLTAB",
         "-o",
-        f"{vProtein_sequence_FastaFile}.{overwrite_dump_workaround}MCLTAB.dump.I20",
+        f"{vProtein_sequence_FastaFile}.{
+            overwrite_dump_workaround}MCLTAB.dump.I20",
     ]
 
     for app in apps:
@@ -700,7 +717,8 @@ def get_MCL_clustering(
 
     return read_MCL_clustering_file(
         Path(
-            f"{vProtein_sequence_FastaFile}.{overwrite_dump_workaround}MCLTAB.dump.I20"
+            f"{vProtein_sequence_FastaFile}.{
+                overwrite_dump_workaround}MCLTAB.dump.I20"
         ),
         vProtein_sequence_FastaFile,
         conversion,
@@ -919,7 +937,8 @@ def match_pgdb_flat(
         )
         raise Exception("Column-matching Mismatch")
     if flat1[join_on[0]].dtype == pl.Null:
-        log.error(f"Primary table join ID {[join_on[0]]} is null dtype, cannot join")
+        log.error(f"Primary table join ID {
+                  [join_on[0]]} is null dtype, cannot join")
         log.info(f"Columns of flats are are {flat1.columns}, {flat2.columns}")
         raise Exception("Column-matching Mismatch")
     if flat2[join_on[1]].dtype == pl.Null:
@@ -1122,15 +1141,15 @@ def map_PGDBs_to_conversion_file(
 
 def perform_clustering(
     vGeneLocation: GeneLoc,
-    vBiomG_E: Dict[Any, Any],
+    mcl_cluster_data: MclClusterData,  # covered by genelocation
+    # vBiomG_E: Dict[Any, Any],# covered by geneLocation
     vEnzMinForClusters: int,
     vKbRangeLD: int,
     vGeneRangeLD: int,
-    mcl_cluster_data: MclClusterData,
-    vBiomG_G: Dict[Any, Any],
-    genes_to_reactions: GenesToReactions,
-    vMapG_Gpgdb: Dict[Any, Any],
-    vCriterion: int,
+    # vBiomG_G: Dict[Any, Any], #covered by genelocation
+    # genes_to_reactions: GenesToReactions, # covered by genelocation
+    # vMapG_Gpgdb: Dict[Any, Any], #c covered by genelocation
+    vCriterion: int,  # TODO: this should be an enum
     vMinStepSize: int = 5,
     vMaxStepSize: int = 20,
 ) -> Clusters:
@@ -1142,7 +1161,7 @@ def perform_clustering(
       genes. It continuous to increase the vStepsize until clusters contain
       more non-enzymes than enzymes. Clusters containing only one group of
       locally duplicated genes are turned down. Clusters with only one reaction
-      aswell. Clusters need at least vEnzMinForClusters enzymes.
+      are turned down as well. Clusters need at least vEnzMinForClusters enzymes.
 
     ---------------------------------------------------------------------------
 
@@ -1154,8 +1173,8 @@ def perform_clustering(
         vMaxStepSize: Maximal intervening gene size that should be computed
                       (default is 20).
         vBiomG_E: A dictionary describing which gene has at least one reaction
-                  annotated in the pgdb (1, if no reaction 0)
-        vEnzMinForClusters: Defines the minimum number of enyzmes that need to
+                  annotated in the pgdb (1, if no reaction 0) (removed?)
+       vEnzMinForClusters: Defines the minimum number of enyzmes that need to
                             be present in a cluster.
         vKbRangeLD: Genes that are encoded more than this bp apart, are not
                     called local duplicates.
@@ -1174,7 +1193,7 @@ def perform_clustering(
                     1: as published in Schlapfer et al 2017
                        sum(enzymes in clusters) - sum(non-enzymes in clusters)
                        > 0.
-                    2: stepsize 3 (because most organisms take this one
+                    2: stepsize 3 (because most organisms take this one)
                     3: sum(enzymes in clusters) - sum(non-enzymes in clusters,
                        without hypo genes) -2*sum(hypogenes)
                     4: sum(clusters in stepsize n) > sum(clusters in stepsize
@@ -1195,253 +1214,295 @@ def perform_clustering(
         - **StepSize_Max**: Maximal stepsize that was computed.
     """
 
-    _ = """
-        % MATLAB code
-        vContinueSearch = 1;
-        vClusters = zeros(vMinStepSize*size(vGeneLocation2.(char(vGeneLocation_Att(1,1))),1),5); % Stepsize, start, end, number of enzymes, number of hypos;
-        vClusterBackground = zeros(vMinStepSize*size(vGeneLocation2.(char(vGeneLocation_Att(1,1))),1),5); % Size, number of enzymes, count, number of total;
-        vClusterWrite = 1;
-        vClusterBackgroundWrite = 1;
-        vStepSize = 0;
-        vBiom_Hypo = strncmp(vGeneLocation2.(char(vGeneLocation_Att(1,1))),'Hypo',4);
-    """
-
-    continue_search = True
-    cluster_write = True
-    cluster_background_write = True
-    step_size = 0
-
-    clusters = (
-        pl.DataFrame()
-    )  #  Stepsize, start, end, number of enzymes, number of hypos
+    continue_search = True  # flag if search should continue
+    clusters = []  # array of cluster identifiers
+    cluster_tuple = namedtuple(
+        "cluster_tuple",
+        [
+            "step_size",
+            "start",
+            "end",
+            "enzyme_count",
+            "non_enzyme_gene_count",
+            "hypothetical_gene_count",
+        ],
+        # pl.DataFrame()
+    )  # Stepsize, start, end, number of enzymes, number of non-enzyme genes, number of hypos
     clusters_background = (
         pl.DataFrame()
     )  # Size, number of enzymes, count, number of total
-    # note: hypothetical gene names start with "Hypo"
+    step_size = 0  # step size for search
+    # note: hypothetical gene names start with "Hypo", this was originally tracked in a variable
 
-    """
-        while vStepSize <= vMinStepSize || vContinueSearch == 1
-            % Get all clusters
-            vi = 1;
-            while vi <= size(vBiomG_E,1)
-                if vVerbose >= 2
-                    fprintf('Potential Gene start %i of %i\n',
-                            vi, size(vBiomG_E,1));
-                end
-                vStart = vi - 1 + find(vBiomG_E(vi:end,1),1,'first');
-                vEnd = vStart;
-                vAbolishCluster = 0;
-                """
-    for x in range(1):
-        abolish_cluster = False
-        start = x + vBiomG_E[0]
-        if start == 0:
-            abolish_cluster = True
-        else:
-            # search for neighbor_genes
-            neighbor_genes: List[Any] = []
-            pass
+    # used in place of biomG_E
+    is_enzyme_criteria = pl.col("has_reaction")
 
-        if not abolish_cluster and len(neighbor_genes) < vEnzMinForClusters:
-            abolish_cluster = True
+    # get rid of clusters that only contain Local Duplicates
 
-        def ld_is_not_a_problem(
-            gene_location: GeneLoc, neighbor_genes: List[int]
-        ) -> bool:
-            pass
+    def ld_is_not_a_problem(geneLocation: GeneLoc, start: int, end: int) -> bool:
+        """
+        Test if genes between start and end index are all local duplicates.
+        Local duplicates must be within a provided range (vKbRangeLD) and
+        number of genes (GeneRangeLD).
+        """
+        if end is None:
             return False
+        cluster_genes = geneLocation.data.with_row_index().filter(
+            (pl.col("index") > start) & (pl.col("index") <= end)
+        )  # [start:end]
+        if cluster_genes.height == 0:
+            return False
+        # LD is not a problem if genes are over vKBRangeLD apart
+        bp_range = cluster_genes.select(
+            pl.col("Gene Start (bp)").max().alias("last_gene_start"),
+            pl.col("Gene End (bp)").min().alias("first_gene_end"),
+        )
+        if bp_range["last_gene_start"][0] - bp_range["first_gene_end"][0] > vKbRangeLD:
+            return True
+        # LD is not a problem if "they are encoded within gene range"
+        # line 3387 from matlab - count of non-hypothetical genes
+        if (
+            cluster_genes.filter(
+                pl.col("Gene Name").str.starts_with("Hpythoteical_gene_").not_()
+            ).height
+            >= vGeneRangeLD + 2
+        ):
+            return True
+        # LD is not a problem if there are two local duplication groups
+        # note: this test is only triggered for clusters of less than vKbRangeLD and vGeneRangeLD size
+        # TODO: Validate this column, logic
 
-        """
-                if size(vStart,1) == 0
-                    vAbolishCluster = 1;
-                    vStart = size(vBiomG_E,1) + 1;
-                    vEnd = vStart;
-                else
-                    vChrom_start = vGeneLocation2.(char(vGeneLocation_Att(1,4)))(vStart,1);
-                    vBiomG_Chrom = strcmp(vGeneLocation2.(char(vGeneLocation_Att(1,4)))(:,1),vChrom_start);
+        mcl_mapper = pl.DataFrame(
+            {
+                "Gene Name": list(mcl_cluster_data.Gene2MCLClusters.keys()),
+                "mcl_clusters": list(mcl_cluster_data.Gene2MCLClusters.values()),
+            }
+        )
+        cluster_genes = cluster_genes.join(mcl_mapper, on="Gene Name", how="left")
+        unique_mcl_clusters: int = (
+            cluster_genes.group_by("mcl_clusters").n_unique().height
+        )
+        if unique_mcl_clusters > 1:
+            return True
+        return False
 
-                    vStopSearchEnd = 0;
-                    while vStopSearchEnd == 0
-                        vEnds = vEnd+1;
-                        vEnde = vEnd+1+vStepSize;
-                        if vEnde > size(vBiomG_E,1)
-                            vEnde = size(vBiomG_E,1);
-                        end
-                        if size(find(vBiomG_E(vEnds:vEnde,1) & vBiomG_Chrom(vEnds:vEnde,1),1,'last'),1)>0
-                            vEnd = vEnds - 1 + find(vBiomG_E(vEnds:vEnde,1) & vBiomG_Chrom(vEnds:vEnde,1),1,'last');
-                        else
-                            vStopSearchEnd = 1;
-                        end
-                    end
-                end
+    while step_size <= vMinStepSize or continue_search:  # for each valid step size
+        for i in range(len(vGeneLocation)):  # for each gene
+            log.debug("Potential Gene Start %i of %i", i, len(vGeneLocation))
+            # index of next enzyme in vGeneLocation.data[i:]
+            start: int = (
+                vGeneLocation.data.with_row_index()
+                .filter((pl.col("index") >= i) & (pl.col("has_reaction")))
+                .select(pl.first("index"))["index"][0]
+            )
+            end: int = start
+            abolish_cluster = False  # flag if the cluster should be followed
+            if start is None:
+                break  # no more enzymes
+            # chromosome at start
+            chrom_start = vGeneLocation.data["Chromosome Name"][start]
+            # all genes in chrom_start chromosome
+            chromosome_criteria = pl.col("Chromosome Name") == chrom_start
 
-                %Cluster needs at least 3 enzymes
-                if vAbolishCluster == 0
-                    if sum(vBiomG_E(vStart:vEnd)) < vEnzMinForClusters
-                        vAbolishCluster = 1;
-                    end
-                end
-        """
-        if not abolish_cluster and ld_is_not_a_problem(vGeneLocation, neighbor_genes):
-            pass
-        """
-                if vAbolishCluster == 0
-                    vLDisNOTaProblem = 0;
-                    % Get rid of clusters that only contain LD
-                    vEIDs = vStart+find(vBiomG_E(vStart:vEnd))-1;
-                    % Test if they are encoded within kb range
-                    vStart_kb = min([str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,2)))(vEIDs,1))); ...
-                        str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,3)))(vEIDs,1)))]);
-                    vEnd_kb = max([str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,2)))(vEIDs,1))); ...
-                        str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,3)))(vEIDs,1)))]);
-                    if vEnd_kb-vStart_kb+1 > vKbRangeLD
-                        vLDisNOTaProblem = 1;
-                    end
-                    % Test if they are encoded witin gene range
-                    if vLDisNOTaProblem == 0
-                        if sum(~strncmp(vGeneLocation2.(char(vGeneLocation_Att(1,3)))(vStart:vEnd,1),'Hypothetical_Gene_',18)) >= vGeneRangeLD+2
-                            vLDisNOTaProblem = 1;
-                        end
-                    end
-                    %Check if there are at least two local duplication groups
-                    if vLDisNOTaProblem == 0
-                        vMCL = sum(vG_MCL(sum(vBiomG_G(vEIDs(1,1),:),1)>0,:),1)>0;
-                        vj = 1;
-                        vTwoGroups = 0;
-                        while vj <= size(vEIDs,1) && vTwoGroups == 0
-                            if sum(vMCL & sum(vG_MCL(sum(vBiomG_G(vEIDs(vj,1),:),1)>0,:),1)==0) > 0
-                                vTwoGroups = 1;
-                            end
-                            vj = vj + 1;
-                        end
-                        if vTwoGroups == 1
-                            vLDisNOTaProblem = 1;
-                        end
-                    end
-                    if vLDisNOTaProblem == 0
-                        vAbolishCluster = 1;
-                    end
-                end
-                % Get rid of clusters that only have one reaction set
-                if vAbolishCluster == 0
-                    vRxns = sum(Gene2Rxn(sum(vMapG_Gpgdb(sum(vBiomG_G(vEIDs(1,1),:),1)>0,:),1)>0,:),1)>0;
-                    vj = 1;
-                    vTwoGroups = 0;
-                    while vj <= size(vEIDs,1) && vTwoGroups == 0
-                        if sum(vRxns & sum(Gene2Rxn(sum(vMapG_Gpgdb(sum(vBiomG_G(vEIDs(vj,1),:),1)>0,:),1)>0,:),1)==0) > 0
-                            vTwoGroups = 1;
-                        end
-                        vj = vj + 1;
-                    end
-                    if vTwoGroups == 0
-                        vAbolishCluster = 1;
-                    end
-                end
-                if vAbolishCluster == 0
-                    vClusters(vClusterWrite,:) = [vStepSize,vEIDs(1,1),vEIDs(end,1),size(vEIDs,1),sum(vBiom_Hypo(vEIDs(1,1):vEIDs(end,1),1))];
-                    vClusterWrite = vClusterWrite + 1;
-                end
-                vi = vEnd + 1;
-            end
+            # find the end
+            stop_search_end = False
+            while not stop_search_end:
+                if end is None:
+                    log.error("type of end is none")
+                    raise Exception("Cluster search end was type None")
+                end_s = end + 1  # stop search
+                # stop search step size
+                end_e = min(end + 1 + step_size, len(vGeneLocation.data))
+                end_df = vGeneLocation.data.with_row_index().filter(
+                    is_enzyme_criteria
+                    & chromosome_criteria
+                    & (pl.col("index") > end_s)
+                    & (pl.col("index") <= end_e)
+                )
+                if end_df.height > 0:
+                    end = end_df.select(pl.last("index"))["index"][0]
+                else:
+                    stop_search_end = True
 
-            vC_IDs = vClusters(:,1) == vStepSize;
-            vC_IDs(vClusterWrite:end,1) = 0;
+            if not abolish_cluster:
+                # get rid of clusters that only have one reaction set
+                if (
+                    len(vGeneLocation.data[start:end].filter(is_enzyme_criteria))
+                    < vEnzMinForClusters
+                ):
+                    abolish_cluster = True
+            if not abolish_cluster and not ld_is_not_a_problem(
+                vGeneLocation, start, end
+            ):
+                # get rid of clusters that only have one local duplicate
+                # criteria for this is outlined in the ld_is_not_a_problem function
+                abolish_cluster = True
 
-            % Compute background of clusters
-            % Get all sizes of clusters of this round
-            [vClusterBackground, vClusterBackgroundWrite] = f_compute_background(
-                vClusterBackground, vClusters, vClusterBackgroundWrite, vGeneLocation2, vGeneLocation_Att, vBiomG_E, vC_IDs);
+            if not abolish_cluster:
+                # This is the code that writes the cluster into the clusters dataframe
+                # what goes in here is described in line 3426 in matlab, but it is flexible
+                # based on how you want to use it
 
-            % Evaluate clusters for criterion (stepsize found?)
-            if vVerbose >= 2
-                if vCriterion == 1
-                    fprintf('Number of enzymes - number of non-enzymes in clustered genes: %i\n', sum(vClusters(
-                        vC_IDs,4))-(sum(vClusters(vC_IDs,3)-vClusters(vC_IDs,2)+1)-sum(vClusters(vC_IDs,4))));
-                elseif vCriterion == 3
-                    fprintf('Number of enzymes - number of non-enzymes (no hypos) - 2* number of hypos in clustered genes: %i\n', sum(vClusters(vC_IDs,4))-(
-                        sum(vClusters(vC_IDs,3)-vClusters(vC_IDs,2)+1)-sum(vClusters(vC_IDs,4))-sum(vClusters(vC_IDs,5)))-2*sum(vClusters(vC_IDs,5)))
-                elseif vCriterion == 4
-                    if vStepSize ~= 0
-                        fprintf('Number of clustes more than last stepsize: %i\n', size(vClusters(vC_IDs,1)) - size(vClusters(:,1)==vStepSize-1));
-                    else
-                        fprintf('Number of clustes Stepsize 0: %i\n',
-                                size(vClusters(vC_IDs,1)));
-                    end
-                end
-            end
-            if vCriterion == 1
-                if vStepSize == vMaxStepSize
-                    vContinueSearch = 0;
-                    vFinalStepsize = vStepSize;
-                    fprintf(
-                        'Warning: maximal step size reached: %i. Consider increasing this variable.\n', vMaxStepSize)
-                elseif sum(vC_IDs)==0
-                    fprintf(
-                        'Warning: no clusters found for stepsize %i.\n', vStepSize);
-                elseif sum(vClusters(vC_IDs,4))/sum(vClusters(vC_IDs,3)-vClusters(vC_IDs,2)+1)<0.5
-                    if vContinueSearch == 1
-                        vFinalStepsize = vStepSize-1;
-                    end
-                    vContinueSearch = 0;
-                end
-            elseif vCriterion == 2
-                if vStepSize == vMinStepSize
-                    vFinalStepsize = 3;
-                    vContinueSearch = 0;
-                end
-            elseif vCriterion == 3
-                if vStepSize == vMaxStepSize
-                    vContinueSearch = 0;
-                    vFinalStepsize = vStepSize;
-                    fprintf(
-                        'Warning: maximal step size reached: %i. Consider increasing this variable.\n', vMaxStepSize)
-                elseif sum(vC_IDs)==0
-                    fprintf(
-                        'Warning: no clusters found for stepsize %i.\n', vStepSize);
-                elseif sum(vClusters(vC_IDs,4))-(sum(vClusters(vC_IDs,3)-vClusters(vC_IDs,2)+1)-sum(vClusters(vC_IDs,4))-sum(vClusters(vC_IDs,5)))-2*sum(vClusters(vC_IDs,5)) < 0
-                    if vContinueSearch == 1
-                        vFinalStepsize = vStepSize-1;
-                    end
-                    vContinueSearch = 0;
-                end
-            elseif vCriterion == 4
-                if vStepSize == vMaxStepSize
-                    vContinueSearch = 0;
-                    vFinalStepsize = vStepSize;
-                    fprintf(
-                        'Warning: maximal step size reached: %i. Consider increasing this variable.\n', vMaxStepSize)
-                elseif sum(vC_IDs)==0
-                    fprintf(
-                        'Warning: no clusters found for stepsize %i.\n', vStepSize);
-                elseif size(vClusters(vC_IDs,1)) - size(vClusters(:,1)==vStepSize-1) < 0
-                    if vContinueSearch == 1
-                        vFinalStepsize = vStepSize-1;
-                    end
-                    vContinueSearch = 0;
-                end
-            end
-            vStepSize = vStepSize + 1;
-        end
-        vClusters = vClusters(1:vClusterWrite-1,:);
-        vClusterBackground = vClusterBackground(vClusterBackground(:,4) ~= 0,:);
-        vStepSize_Max = vStepSize-1;
-        fprintf('Stepsize chosen: %i\n', vFinalStepsize);
-    end"""
+                _cluster = vGeneLocation.data[start:end]
+
+                clusters.append(
+                    cluster_tuple(
+                        step_size,
+                        start,
+                        end,
+                        _cluster.filter(pl.col("has_reaction")).height,  # enzyme_count
+                        _cluster.filter(
+                            pl.col("has_reaction").not_()
+                            & pl.col("Gene Name")
+                            .str.starts_with("Hypothetical_Gene_")
+                            .not_()
+                        ).height,  # non_enzyme_gene_count
+                        _cluster.filter(
+                            pl.col("Gene Name")
+                            .str.starts_with("Hypothetical_Gene_")
+                            .not_()
+                        ).height,  # hypothetical_gene_count
+                    )
+                )
+
+        if len(clusters) > 0:
+            clusters_df = pl.DataFrame(clusters)
+            # re-calculate clusters_background to test against criterion
+            clusters_background = compute_background(
+                clusters_df, vGeneLocation, clusters_background
+            )
+            match vCriterion:
+                case 1:
+                    # (Schlapfer et al. 2017 criteria)
+                    # sum (enzymes in clusters) - sum(non-enzymes in clusters (incl. hypo genes?)) > 0
+                    # TODO: validate criterion
+                    log.debug(
+                        "Number of enzymes - number of non-enzymes in clustered genes: %i",
+                        clusters_df.filter(pl.col("step_size") == step_size)
+                        .with_columns(pl.col("enzyme_count"))
+                        .sum(),
+                    )
+                    if step_size == vMaxStepSize:
+                        continue_search = False
+                        final_step_size = step_size
+                        log.warning(
+                            "Maximal step size reached: %i. Consider increasing.",
+                            vMaxStepSize,
+                        )
+                    elif (
+                        clusters_df.filter(pl.col("step_size") == step_size).height == 0
+                    ):
+                        log.warning("No clusters found for step size %i.", step_size)
+                    # FIXME: this criterion is only for clusters in the step_size
+                    elif (
+                        clusters_df.filter(pl.col("step_size") == step_size).select(
+                            (
+                                pl.col("enzyme_count").sum()
+                                / pl.col("non_enzyme_gene_count").sum()
+                            ).alias("enz_over_genes")
+                        )["enz_over_genes"][0]
+                        < 0.5
+                    ):
+                        if continue_search:
+                            final_step_size = step_size - 1
+                        continue_search = False
+                case 2:
+                    # stepsize 3 (because most organisms take this one)
+                    log.debug(
+                        "Number of enzymes - number of non-enzymes (no hypos) - 2* number if hypos in clustered genes: %i",
+                        clusters_df["enzyme_count"].count()
+                        - clusters_df["non_enzyme_gene_count"].count(),
+                        -2 * clusters_df["hypothetical_gene_count"].count(),
+                    )
+                    if step_size == vMinStepSize:
+                        final_step_size = 3
+                        continue_search = False
+                case 3:
+                    # sum(enzymes in clusters) - sum(non-enzymes in clusters without hypo genes) - 2*sum(hypo genes)
+                    if step_size == vMaxStepSize:
+                        continue_search = False
+                        final_step_size = step_size
+                        log.warning(
+                            "Maximal step size reached: %i. Consider increasing.",
+                            vMaxStepSize,
+                        )
+                    elif (
+                        clusters_df.filter(pl.col("step_size") == step_size).height == 0
+                    ):
+                        log.warning("No clusters found for step size %i.", step_size)
+                    elif (
+                        clusters_df.filter(pl.col("step_size") == step_size).select(
+                            (
+                                pl.col("enzyme_count").sum()
+                                - (
+                                    pl.col("non_enzyme_gene_count").sum()
+                                    - pl.col("hypothetical_gene_count").sum()
+                                    + 1
+                                )
+                                - pl.col("enzyme_count").sum()
+                                - 2 * pl.col("hypoothetical_gene_count").sum()
+                            ).alias("enz_less_genes")
+                        )["enz_less_genes"][0]
+                        < 0
+                    ):
+                        # FIXME: Validate this logic
+                        if continue_search:
+                            final_step_size = step_size - 1
+                        continue_search = False
+                case 4:
+                    # sum(count of clusters in stepsize n) > sum(count of clusters in stepsize n + 1)
+                    if step_size != 0:
+                        log.debug(
+                            "Number of clusters more than last stepsize %i",
+                            clusters_df.filter(
+                                pl.col("step_size") > (step_size - 1)
+                            ).height,
+                        )
+                    else:
+                        log.debug(
+                            "Number of clusters Stopsize 0: %i",
+                            clusters_df.filter(pl.col("step_size") == 0).height,
+                        )
+                    if step_size == vMaxStepSize:
+                        continue_search = False
+                        final_step_size = step_size
+                        log.warning(
+                            "Maximal step size reached: %i. Consider increasing.",
+                            vMaxStepSize,
+                        )
+                    elif (
+                        clusters_df.filter(pl.col("step_size") == step_size).height == 0
+                    ):
+                        log.warning("No clusters found for step size %i.", step_size)
+                    elif (
+                        clusters_df.filter(pl.col("step_size") == step_size - 1).height
+                        > clusters_df.filter(pl.col("step_size") == step_size).height
+                    ):
+                        if continue_search:
+                            final_step_size = step_size - 1
+                        continue_search = False
+
+                case _:
+                    # this should be impossible in normal operation
+                    raise Exception(
+                        "Invalid search criterion, valid options are 1,2,3 or 4."
+                    )
+        step_size += 1
     return Clusters(
-        ClusterMeta=pl.DataFrame(),
-        ClusterBackground=pl.DataFrame(),
-        FinalStepsize=0,
-        MaxStepSize=0,
-    )  # FIXME: return value
+        ClusterMeta=pl.DataFrame(clusters),
+        ClusterBackground=clusters_background,
+        # FIXME: there should be no path to final_step_size being unbound
+        FinalStepSize=final_step_size or step_size - 1,
+        MaxStepSize=step_size - 1,
+    )
 
 
 def compute_background(
-    vClusters: Clusters,
-    vClusterBackgroundWrite,
-    vGeneLocation: pl.DataFrame,
-    vBiomG_E: List[int],
-    vC_IDs: List[str],
-) -> tuple[pl.DataFrame, int]:
+    clusters: pl.DataFrame,
+    vGeneLocation: GeneLoc,
+    clusters_background: pl.DataFrame,
+    # vC_IDs: List[str],
+) -> pl.DataFrame:
     """
     ---------------------------------------------------------------------------
 
@@ -1459,66 +1520,98 @@ def compute_background(
     ---------------------------------------------------------------------------
 
     Args:
-        vClusterBackground: Density information about the genome (window size,
-                            number of enzymes, Occurrence of windowsize with
-                            this many enzymes in the genome, occurence of
-                            this windowsize in the genome, Frequency of seeing
-                            a windowsize of this size with at least as many
-                            enzymes in the genome)
         vClusters: Cluster Information (stepsize, chromosome id, gene start,
-                   gene end, number of enzymes)
-        vClusterBackgroundWrite: Defines where the next entry should be written
-                                 in vClusterBackground.
-        vGeneLocation2: DataFrame about the gene location information,
+                   gene end, number of enzymes, number of non-enzyme genes,
+                   number of hypothetical genes)
+        vGeneLocation: DataFrame about the gene location information,
                         generated in PlantClusterFinder function.
-        vBiomG_E: A vector describing which gene has at least one reaction
-                  annotated in the pgdb (1, if no reaction 0)
+        clusters_background: DataFrame of backgrounds for up to vClusters
+                max_step_size - 1. (window_size, enzyme_count,
+                                    window_occurrence, winzyme_occurrence, winzyme_frequency)
+                "Winzyme" is a window with enzyme_count enzymes in it.
         vC_IDs: Defines which Entries in vClusters are Clusters of the current
                 Stepsize that was calculated and should be checked if the
                 background of that size of cluster (number of genes) was
                 already calculated.
 
     Returns:
-        Tuple with the following information:
         - **vClusterBackground**: Density information about the genome (window size,
                             number of enzymes, Occurrence of windowsize with
-                            this many enzymes in the genome, occurence of
+                            this many enzymes in the genome, occurrence of
                             this windowsize in the genome, Frequency of seeing
                             a windowsize of this size with at least as many
                             enzymes in the genome)
-        - **vClusterBackgroundWrite**: Defines where the next entry should be written
-                                 in vClusterBackground.
     """
+    # (for a given) window size
+    # (for a given) number of enzymes
+    # occurrence of window size in genome
+    # frequency of seeing window size with at least this many genes
 
-    _ = """
-        % MATLAB code
-         vBackgroundToCheck = unique(
-             vClusters(vC_IDs,3)-vClusters(vC_IDs,2)+1);
-         % Check which backgrounds have already been produced and compute new backgrounds
-         vi = 1;
-         while vi <= size(vBackgroundToCheck,1)
-             if sum(vClusterBackground(1:vClusterBackgroundWrite-1,1) == vBackgroundToCheck(vi,1)) == 0
-                 vClusterBackground(vClusterBackgroundWrite:vClusterBackgroundWrite+vBackgroundToCheck(vi,1),1) = vBackgroundToCheck(vi,1);
-                 vClusterBackground(vClusterBackgroundWrite:vClusterBackgroundWrite+vBackgroundToCheck(vi,1),2) = 0:1:vBackgroundToCheck(vi,1);
-                 for vk = 1:size(vBiomG_E,1)-(vBackgroundToCheck(vi,1)-1)
-                     if size(unique(vGeneLocation2.(char(vGeneLocation_Att(1,4)))(vk:(vk+vBackgroundToCheck(vi,1)-1),1)),1) == 1
-                         vClusterBackground(vClusterBackgroundWrite:vClusterBackgroundWrite+vBackgroundToCheck(vi,1),4) = vClusterBackground(vClusterBackgroundWrite:vClusterBackgroundWrite+vBackgroundToCheck(vi,1),4) + 1;
-                         vClusterBackground(vClusterBackgroundWrite+sum(vBiomG_E(vk:vk+vBackgroundToCheck(vi,1)-1,1)),3) = vClusterBackground(vClusterBackgroundWrite+sum(vBiomG_E(vk:vk+vBackgroundToCheck(vi,1)-1,1)),3) + 1;
-                     end
-                 end
-                 for vk = vClusterBackgroundWrite+vBackgroundToCheck(vi,1):-1:vClusterBackgroundWrite
-                     vClusterBackground(vk,5) = sum(vClusterBackground(vk:vClusterBackgroundWrite+vBackgroundToCheck(vi,1),3))/vClusterBackground(vk,4);
-                 end
-                 vClusterBackgroundWrite = vClusterBackgroundWrite + \
-                     vBackgroundToCheck(vi,1) + 1;
-             end
-             vi = vi + 1;
-         end
-    end"""
-    return (pl.DataFrame(), 0)  # FIXME: return values
+    index_offset = len(vGeneLocation)
+    chromosome_offsets = pl.DataFrame(
+        [
+            {
+                "Chromosome Name": x["Chromosome Name"],
+                "index_offset": x["chr_idx"] * index_offset,
+            }
+            for x in vGeneLocation.data.select(pl.col("Chromosome Name").unique())
+            .with_row_index("chr_idx")
+            .to_dicts()
+        ]
+    )
+    indexed_gene_location = (
+        vGeneLocation.data.with_row_index("idx")
+        .join(chromosome_offsets, on="Chromosome Name")
+        .with_columns(idx=pl.col("idx") + pl.col("index_offset"))
+        .sort(pl.col("idx"))
+    )
+    # "winzyme" is window x enzyme
+    max_step_size = clusters.select(pl.col("step_size").max())["step_size"][0]
+    if clusters_background.is_empty():
+        clusters_background = pl.DataFrame(
+            [],
+            schema=[
+                ("window_size", pl.UInt32),
+                ("enzyme_count", pl.UInt32),
+                ("winzyme_occurrence", pl.Int32),
+                ("window_occurrence", pl.Int32),
+                ("winzyme_frequency", pl.Float64),
+            ],
+        )
+        prev_max_step_size = 1
+    else:
+        prev_max_step_size = clusters_background.select(pl.max("window_size"))[
+            "window_size"
+        ][0]
+    for window_size in range(prev_max_step_size, max_step_size + 1):
+        background_df_win = (
+            indexed_gene_location.select(
+                # The first (window_size-1) rows will not be window_size windows
+                window_size=pl.len().rolling(
+                    index_column="idx", period=f"{window_size}i"
+                ),
+                enzyme_count=pl.sum("has_reaction").rolling(
+                    index_column="idx", period=f"{window_size}i"
+                ),
+                window_occurrence=1,
+            )
+            .filter(pl.col("window_size") == window_size)
+            .group_by("window_size", "enzyme_count")
+            .agg(winzyme_occurrence=pl.sum("window_occurrence"))
+        )
+        total_window_occurrence = len(background_df_win)
+        clusters_background.extend(
+            background_df_win.with_columns(
+                window_occurrence=total_window_occurrence,
+                winzyme_frequency=pl.col("winzyme_occurrence")
+                / total_window_occurrence,
+            )
+        )
+
+    return clusters_background
 
 
-def perform_cutoff(clusters: Clusters, vTopPercentClusters: int) -> List[float]:
+def perform_cutoff(clusters: Clusters, vTopPercentClusters: int) -> List[bool]:
     """
     ---------------------------------------------------------------------------
 
@@ -1559,7 +1652,13 @@ def perform_cutoff(clusters: Clusters, vTopPercentClusters: int) -> List[float]:
             end
         end
     end"""
-    return []  # FIXME: return value
+    # TODO: This logic should be able to push a modified cluster object
+    cluster_meta_in_top = clusters.ClusterMeta.join(
+        clusters.ClusterBackground,
+        left_on=["step_size", "enzyme_count"],
+        right_on=["window_size", "enzyme_count"],
+    ).select(in_top=pl.col("winzyme_frequency") >= vTopPercentClusters / 100)
+    return cluster_meta_in_top["in_top"].to_list()
 
 
 def write_gene_output(
@@ -1573,7 +1672,7 @@ def write_gene_output(
     vBiomG_G: Dict[Any, Any],
     vBiomG_E: Dict[Any, Any],
     local_duplications: pl.DataFrame,
-    vClusters_Top: List[float],
+    vClusters_Top: List[bool],
     annotated_metabolic_domains: AnnotatedMetabolicDomains,
     vRpgdb_Rmd: Dict[Any, Any],
     reaction_labels: ReactionLabels,
@@ -1674,11 +1773,13 @@ def write_gene_output(
         elif vOutputType == "old":
             for i in range(clusters.MaxStepSize):
                 header += [
-                    f'{"CHOSEN " if i==clusters.FinalStepsize else ""}Stepsize {i}',
-                    f'{"CHOSEN " if i==clusters.FinalStepsize else ""}Stepsize {i}, Top {vTopPercentClusters}%',
+                    f"{'CHOSEN ' if i == clusters.FinalStepSize else ''}Stepsize {i}",
+                    f"{'CHOSEN ' if i == clusters.FinalStepSize else ''}Stepsize {
+                        i
+                    }, Top {vTopPercentClusters}%",
                 ]
         elif vOutputType == "simple":
-            header += [f"Stepsize {clusters.FinalStepsize}, Top {vTopPercentClusters}%"]
+            header += [f"Stepsize {clusters.FinalStepSize}, Top {vTopPercentClusters}%"]
         elif vOutputType == "verbose":
             for i in range(clusters.MaxStepSize):
                 header += [
@@ -1835,7 +1936,7 @@ def write_cluster_output(
     vClusterOutputFile: Path,
     vGeneLocation: pl.DataFrame,
     clusters: Clusters,
-    vClusters_Top: List[float],
+    vClusters_Top: List[bool],
     vOutputType: str,
 ) -> None:
     if vOutputType not in ["old", "simple", "verbose"]:
@@ -1980,11 +2081,13 @@ def read_in_pgdb_flat(
     # By encapsulating the parsing logic in a generator,
     #  it opens up the door to potentially deferring reading
     #  or simplifying asynchronous reading
-    def _row_gen(fh, attrib, unique_keys):
+    def _row_gen(
+        fh: IO, attrib: Tuple[str], unique_keys: Tuple[str]
+    ) -> Iterator[Dict[str, Any]]:
         """
         Generate a row from the pgdb flat file
         """
-        y = {att: None for att in attrib}
+        y: Dict[str, Any] = {att: None for att in attrib}
         for line in fh:
             if line.startswith("#"):
                 continue
@@ -1993,8 +2096,8 @@ def read_in_pgdb_flat(
                 y = {att: None for att in attrib}
                 continue
             elif " - " in line:
-                key, *value = line.split(" - ")
-                value = (" - ".join(value)).strip()
+                key, *value_arr = line.split(" - ")
+                value: str = (" - ".join(value_arr)).strip()
                 if key in y:
                     if y[key] is None:
                         if key in unique_keys:

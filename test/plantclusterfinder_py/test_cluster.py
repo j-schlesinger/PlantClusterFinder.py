@@ -201,7 +201,6 @@ def test_get_MCL_clustering():
         conversion,
         True,  # overvrite MCL cluster file
         False,  # remove protein locations
-        vParallelize=1,
     )
     assert 9_627 == len(mcl_cluster.Gene2MCLClusters)
 
@@ -308,13 +307,80 @@ def test_compute_local_duplication(genelocation_obj):
 
 
 # Part 16
-def test_compute_background():
+def test_compute_background(genelocation_obj):
     """Used by perform_clustering"""
-    assert 1 == 0  # TEST INCOMPLETE
+    from plantclusterfinder_py.cluster import compute_background
+    from plantclusterfinder_py.genelocation import GeneLoc
+
+    gene_location = GeneLoc(
+        file_path=Path("./test/data/background_computation_test.tsv")
+    )
+    has_reaction = pl.read_csv(
+        Path("./test/data/background_computation_has_reaction.csv")
+    )
+    gene_location._data = gene_location.data.join(has_reaction, on="Gene Name")
+
+    cluster = pl.DataFrame({"step_size": 10})
+
+    background = compute_background(cluster, gene_location, pl.DataFrame())
+    assert 52 == background.height
+    return
+    # compute_background(test_clusters, gene_location)
 
 
-def test_perform_clustering():
-    assert 1 == 0  # TEST INCOMPLETE
+def test_perform_clustering(genelocation_obj):
+    from plantclusterfinder_py.cluster import (
+        map_pgdb_reactions_to_genes,
+        map_PGDBs_to_conversion_file,
+        perform_clustering,
+        read_in_conversion_file,
+        read_in_pgdb_flat,
+        read_MCL_clustering_file,
+    )
+
+    pgdb_dir = Path("./csubellipsoidea/pgdb/csubellipsoideacyc/1.0/data")
+    gene_info_from_genes_dat = ["ACCESSION-1"]  # TODO what is this?
+    ids_to_map = "T"
+
+    conversion = read_in_conversion_file(
+        "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
+    )
+    gene_location = genelocation_obj
+    # needs conversion data
+    gene_location.remove_protein_transcript_info(conversion)
+    gene2rxn = map_pgdb_reactions_to_genes(pgdb_dir)
+    genes_all = read_in_pgdb_flat(
+        pgdb_dir / "genes.dat",
+        ("UNIQUE-ID", "ACCESSION-1"),
+        unique_keys=("UNIQUE-ID", "ACCESSION-1"),
+    )
+    pgdb_conversions_dict = map_PGDBs_to_conversion_file(
+        conversion, genes_all, gene_info_from_genes_dat, ids_to_map
+    )
+    # needs enzyme info
+    gene_location.annotate_enzyme_info(pgdb_conversions_dict, gene2rxn)
+    # needs mcl clusters
+    mcl_cluster_data = read_MCL_clustering_file(
+        "./csubellipsoidea/MCL_clustering_expected_results/dump.CsubellipsoideaC_169_227_v2.0.protein.pcf13.mci.I20",
+        "./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa",
+        conversion,
+        False,  # do not remove proteins
+    )
+    # using the defaults from main.py
+    clusters = perform_clustering(
+        genelocation_obj,
+        mcl_cluster_data,
+        3,  # enzymes min for clusters
+        100000,  # kb for ld
+        10,  # genes for ld
+        2,  # criterion
+        5,  # min step size
+        20,  # max step size
+    )
+    assert 3 == clusters.FinalStepSize
+    assert 5 == clusters.MaxStepSize
+    assert 7996 == clusters.ClusterMeta.height
+    assert 34 == clusters.ClusterBackground.height
 
 
 # Part 17
