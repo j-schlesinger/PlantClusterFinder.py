@@ -18,6 +18,26 @@ class GeneLoc(BaseModel):
     class provides functionality for loading genomic data, sorting genes, and mapping
     gene names to specific gene sets such as Genes, Proteins, or Transcripts.
 
+    The default columns are:
+    - gene name
+    - gene start (bp)
+    - gene end (bp)
+    - chromosome name
+    - strand
+    Additionally, the following columns are added as part of clustering
+    - gene ID
+    - protein ID
+    - transcript ID
+    - reaction ID(s)
+
+    The class will also hold a list of intergenic regions and hard breaks with the
+    columns:
+    - chromosome name
+    - region start (bp)
+    - region end (bp)
+    - gene ID preceding
+    - gene ID following
+
     --------------------------------------------------------------------------------
 
     Attributes:
@@ -79,7 +99,7 @@ class GeneLoc(BaseModel):
                - strand
         """
         super().__init__(**input)
-        log.debug(f"Reading TSV f{input["file_path"]} to get gene location data.")
+        log.debug(f"Reading TSV f{input['file_path']} to get gene location data.")
         self._data = pl.read_csv(
             input["file_path"],
             separator="\t",
@@ -233,8 +253,9 @@ class GeneLoc(BaseModel):
         ):
             raise Exception(
                 "Gene / Transcript / Protein location file (Gene position file) matches several entries to more than one gene.\n"
-                + f"Please clean up entries for {vGeneLocation.group_by(
-                    "Gene Name").len()} in your input files.\n",
+                + f"Please clean up entries for {
+                    vGeneLocation.group_by('Gene Name').len()
+                } in your input files.\n",
             )
         self._data = vGeneLocation
         self._converted = True
@@ -450,7 +471,8 @@ class GeneLoc(BaseModel):
         if not self._annotated:
             log.debug(
                 f"Mapping {len(genes_with_reactions)} genes with reactions to {
-                    len(self._data)} genes"
+                    len(self._data)
+                } genes"
             )
             self._data = self._data.with_columns(
                 has_reaction=pl.col("Protein Name").is_in(genes_with_reactions)
@@ -465,14 +487,11 @@ class GeneLoc(BaseModel):
 
     def introduce_hard_breaks(
         self,
-        # vUniqueChrom: List[str],
-        # vInterChrom: pl.DataFrame,
         vSeqGaps: pl.DataFrame,  # from annotate_sequencing_gaps()
         vMaxSeqGapSize: int = -1,  # from args
         vMaxInterGeneDist: int = -1,  # from args
         vPercentileForMaxInterGeneDist: Optional[float] = None,  # from args
         vMaxInterGeneDistByMedian: int = -1,  # from args
-        # vBiomG_G: Dict[Any, Any],
         vHardBreakGaps: List[
             int
         ] = [],  # from args - specific lengths of gaps that indicate hard breaks
@@ -487,12 +506,6 @@ class GeneLoc(BaseModel):
         ---------------------------------------------------------------------------
 
         Args:
-            vGeneLocation: DataFrame about the gene location information,
-                            generated in PlantClusterFinder function.
-            vUniqueChrom: A list with unique entries of all chromosome and scaffold
-                        names.
-            vInterChrom: A DataFrame defining chromosome, start bp, end bp, gene
-                        before and gene after a intergenic region.
             vSeqGaps: A string array (cell) DataFrame containing the
                     - chromosome/scaffold,
                     - the identification if it is coding (A) or masked (N) DNA
@@ -515,7 +528,7 @@ class GeneLoc(BaseModel):
                             these specific lengths are preventing cluster formation
                             (Default is an empty list []).
         """
-        vGeneLocation = self
+        self = self
 
         # this holds the SeqGaps_Hard data
         vSeqGaps = vSeqGaps.with_columns(
@@ -528,7 +541,7 @@ class GeneLoc(BaseModel):
             and vPercentileForMaxInterGeneDist != 1
         ):
             vMaxInterGeneDist_temp = (
-                vGeneLocation.find_intergenic_regions()
+                self.find_intergenic_regions()
                 .select(len=pl.col("End") - pl.col("Start") + 1)
                 .quantile(vPercentileForMaxInterGeneDist / 100)
             )["len"][0]
@@ -546,7 +559,7 @@ class GeneLoc(BaseModel):
                 else min(vMaxInterGeneDist, vMaxInterGeneDist_temp)
             )
         if vMaxInterGeneDistByMedian is None or vMaxInterGeneDistByMedian != -1:
-            vMaxInterGeneDist_temp = vGeneLocation.data.select(
+            vMaxInterGeneDist_temp = self.data.select(
                 len=pl.col("Gene End (bp)") - pl.col("Gene Start (bp)")
             ).quantile(0.50)["len"][0]
             vMaxInterGeneDist = (
@@ -559,16 +572,12 @@ class GeneLoc(BaseModel):
             )
 
         hard_breaks = (
-            vGeneLocation.find_intergenic_regions()
+            self.find_intergenic_regions()
             .join_where(  # using join_where as a cheeky filter
                 vSeqGaps,
                 pl.col("Start").is_between(
                     pl.col("start index"),
                     pl.col("end index"),
-                    # | pl.col("End").is_between(
-                    # pl.col("start index"), pl.col("end index")
-                    # )
-                    # | ( pl.lit(vMaxInterGeneDist != -1) & pl.col("Length") > vMaxInterGeneDist)
                 ),
             )
             .filter(pl.col("hard_gap"))
@@ -585,7 +594,7 @@ class GeneLoc(BaseModel):
                     {
                         "break_start": prev_end,
                         "break_end": h_break[1],
-                        "pchromosome name": f"{h_break[0]}_{h_break[5]-1}",
+                        "pchromosome name": f"{h_break[0]}_{h_break[5] - 1}",
                     }
                 )
                 prev_end = h_break[2]
@@ -599,8 +608,9 @@ class GeneLoc(BaseModel):
                 chromosome_name_old=pl.col("Chromosome Name"),
             )
 
-    def insert_genes(self, other_genes: pl.DataFrame) -> None:
-        _ = self._data.extend(other_genes)  # modifies in place and returns DataFrame
+    def insert_genes(self, other_genes: pl.DataFrame):
+        # modifies in place and returns DataFrame
+        _ = self._data.extend(other_genes)
 
 
 # Example usage

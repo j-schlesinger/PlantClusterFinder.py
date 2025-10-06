@@ -54,6 +54,7 @@ mypy-extensions==1.0.0
     # via mypy
 nodeenv==1.8.0
     # via pre-commit
+    # via pyright
 numpy==1.26.3
     # via pandas
     # via pyarrow
@@ -87,6 +88,7 @@ pyflakes==3.2.0
 pygments==2.17.2
     # via pdoc
     # via sphinx
+pyright==1.1.404
 pytest==8.0.1
 python-dateutil==2.9.0.post0
     # via pandas
@@ -98,7 +100,7 @@ pyyaml==6.0.1
     # via pre-commit
 requests==2.31.0
     # via sphinx
-ruff==0.3.0
+ruff==0.13.3
 scipy==1.12.0
     # via plantclusterfinder-py
 setuptools==69.1.1
@@ -124,10 +126,11 @@ typing-extensions==4.10.0
     # via mypy
     # via pydantic
     # via pydantic-core
+    # via pyright
 tzdata==2024.1
     # via pandas
 urllib3==2.2.0
     # via requests
-uv==0.3.3
+uv==0.6.10
 virtualenv==20.25.1
     # via pre-commit
