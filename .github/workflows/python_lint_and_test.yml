@@ -31,9 +31,13 @@ jobs:
       run: |
         rye --version
         rye lint
+        echo "start mypy"
         rye run mypy --version
         rye run mypy src test
+        echo "start isort"
         rye run isort --version
         rye run isort --profile black --filter-files --check src test || rye run isort --profile-black --filter-files --check src test -v
+        echo "start fmt"
         rye fmt --check
+        echo "start pytest"
         rye run pytest
