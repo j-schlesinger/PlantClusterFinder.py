@@ -702,13 +702,10 @@ def main() -> None:
             error_message.append(f"File {filename} is a file that could not be found.")
         except PermissionError:
             error_message.append(
-                f"You do not have permission to read the {
-                    err}"
-                + " file at {filename}"
+                f"You do not have permission to read the {err}" + " file at {filename}"
             )
         except OSError as e:
-            error_message.append(f"Cannot read {err} {
-                                 filename} because of {e}.")
+            error_message.append(f"Cannot read {err} {filename} because of {e}.")
     test_writable_file = {
         vGeneOutputFile: "Gene Output file (-gout)",
         vClusterOutputFile: "Cluster Output file (-cout)",

@@ -686,20 +686,14 @@ def get_MCL_clustering(
         "-o",
         f"{vProtein_sequence_FastaFile}.MCLMATRIX.I20",
     ]
-    overwrite_dump_workaround = (
-        ""
-        if vOverwriteMCLClustering
-        else f"{
-        os.getpid()}."
-    )
+    overwrite_dump_workaround = "" if vOverwriteMCLClustering else f"{os.getpid()}."
     command_for["mcxdump"] = [
         "-icl",
         f"{vProtein_sequence_FastaFile}.MCLMATRIX.I20",
         "-tabr",
         f"{vProtein_sequence_FastaFile}.MCLTAB",
         "-o",
-        f"{vProtein_sequence_FastaFile}.{
-            overwrite_dump_workaround}MCLTAB.dump.I20",
+        f"{vProtein_sequence_FastaFile}.{overwrite_dump_workaround}MCLTAB.dump.I20",
     ]
 
     for app in apps:
@@ -717,8 +711,7 @@ def get_MCL_clustering(
 
     return read_MCL_clustering_file(
         Path(
-            f"{vProtein_sequence_FastaFile}.{
-                overwrite_dump_workaround}MCLTAB.dump.I20"
+            f"{vProtein_sequence_FastaFile}.{overwrite_dump_workaround}MCLTAB.dump.I20"
         ),
         vProtein_sequence_FastaFile,
         conversion,
@@ -937,8 +930,7 @@ def match_pgdb_flat(
         )
         raise Exception("Column-matching Mismatch")
     if flat1[join_on[0]].dtype == pl.Null:
-        log.error(f"Primary table join ID {
-                  [join_on[0]]} is null dtype, cannot join")
+        log.error(f"Primary table join ID {[join_on[0]]} is null dtype, cannot join")
         log.info(f"Columns of flats are are {flat1.columns}, {flat2.columns}")
         raise Exception("Column-matching Mismatch")
     if flat2[join_on[1]].dtype == pl.Null:

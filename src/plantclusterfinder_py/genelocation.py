@@ -99,7 +99,7 @@ class GeneLoc(BaseModel):
                - strand
         """
         super().__init__(**input)
-        log.debug(f"Reading TSV f{input["file_path"]} to get gene location data.")
+        log.debug(f"Reading TSV f{input['file_path']} to get gene location data.")
         self._data = pl.read_csv(
             input["file_path"],
             separator="\t",
@@ -253,8 +253,9 @@ class GeneLoc(BaseModel):
         ):
             raise Exception(
                 "Gene / Transcript / Protein location file (Gene position file) matches several entries to more than one gene.\n"
-                + f"Please clean up entries for {vGeneLocation.group_by(
-                    "Gene Name").len()} in your input files.\n",
+                + f"Please clean up entries for {
+                    vGeneLocation.group_by('Gene Name').len()
+                } in your input files.\n",
             )
         self._data = vGeneLocation
         self._converted = True
@@ -470,7 +471,8 @@ class GeneLoc(BaseModel):
         if not self._annotated:
             log.debug(
                 f"Mapping {len(genes_with_reactions)} genes with reactions to {
-                    len(self._data)} genes"
+                    len(self._data)
+                } genes"
             )
             self._data = self._data.with_columns(
                 has_reaction=pl.col("Protein Name").is_in(genes_with_reactions)
@@ -592,7 +594,7 @@ class GeneLoc(BaseModel):
                     {
                         "break_start": prev_end,
                         "break_end": h_break[1],
-                        "pchromosome name": f"{h_break[0]}_{h_break[5]-1}",
+                        "pchromosome name": f"{h_break[0]}_{h_break[5] - 1}",
                     }
                 )
                 prev_end = h_break[2]
