@@ -203,7 +203,6 @@ def introduce_hypo_genes(
 
       Function that introduces Hypothetical genes if a sequencing gap reached a
       critical size vGeneLengthHypoMin.
-
     ---
     Args:
         hard_breaks: Object with the gene location, chromosome regions, sequence gaps,
@@ -375,9 +374,7 @@ def annotate_sequencing_gaps(
         .iter_rows()
     ):
         log.warning(
-            f"DNA Fasta file '{
-                vFile
-            }' contains chromosomes or scaffolds not covered with the "
+            f"DNA Fasta file '{vFile}' contains chromosomes or scaffolds not covered with the "
             + f"gene position file: {bad_chromosome}"
         )
     sequencing_gaps = sequencing_gaps.filter(
