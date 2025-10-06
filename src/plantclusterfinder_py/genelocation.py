@@ -56,6 +56,7 @@ class GeneLoc(BaseModel):
     _sorted: bool = False
     _annotated: bool = False
     _data: pl.DataFrame
+    _cache: dict = dict()
 
     def __init__(self, **input) -> None:
         """
@@ -92,6 +93,14 @@ class GeneLoc(BaseModel):
             "Strand",
         ]:
             raise Exception("Gene Location File does not match expected format.")
+        if (
+            self.data.select(pl.col("Chromosome Name", "Gene Name"))
+            .is_duplicated()
+            .any()
+        ):
+            log.warning(
+                "There are duplicate gene records, typical of transcript read ingestion. Please run consolidate_gene_info() to de-duplicate"
+            )
 
         log.debug(f"Read {self._data.height} genes from Gene Location file")
 
@@ -246,10 +255,21 @@ class GeneLoc(BaseModel):
         ---------------------------------------------------------------------------
 
         Returns:
-            Tuple containing the following values
             - **vUniqueChrom**: A list with unique entries of all chromosome and scaffold
                         names.
         """
+        if (
+            self.data.select(pl.col("Chromosome Name", "Gene Name"))
+            .is_duplicated()
+            .any()
+        ):
+            log.warning("De-duplicating gene data")
+            current_columns = self.columns
+            current_columns.remove("Gene Start (bp)")
+            current_columns.remove("Gene End (bp)")
+            self._data = self.data.group_by(pl.col(current_columns)).agg(
+                pl.col("Gene Start (bp)").min(), pl.col("Gene End (bp)").max()
+            )
 
         return (
             self.data.select(pl.col("Chromosome Name").unique()).to_series(0).to_list()
@@ -345,13 +365,20 @@ class GeneLoc(BaseModel):
         ---------------------------------------------------------------------------
 
         Returns:
-            **InterChrom**: A DataFrame defining chromosome, start bp, end bp, gene
-                        before and gene after a intergenic region.
+            **InterChrom**: A DataFrame defining
+                - chromosome,
+                - start bp,
+                - end bp,
+                - gene before and
+                - gene after a intergenic region.
         """
 
         if not self._sorted:
             log.warning("Implicitly Requested Gene Sorting")
             self.sort_genes()
+
+        if "InterChrom" in self._cache:
+            return self._cache["InterChrom"]
 
         ret: List[Dict[str, Any]] = []
         last_gene = None
@@ -388,7 +415,8 @@ class GeneLoc(BaseModel):
                 )
             last_gene = (chromosome, max(gene_start, gene_end), gene_name)
 
-        return pl.DataFrame(ret)
+        self._cache["InterChrom"] = pl.DataFrame(ret)
+        return self._cache["InterChrom"]
 
     def annotate_enzyme_info(
         self,
@@ -434,6 +462,145 @@ class GeneLoc(BaseModel):
             .rows_by_key("Gene Name")
             .items()
         }
+
+    def introduce_hard_breaks(
+        self,
+        # vUniqueChrom: List[str],
+        # vInterChrom: pl.DataFrame,
+        vSeqGaps: pl.DataFrame,  # from annotate_sequencing_gaps()
+        vMaxSeqGapSize: int = -1,  # from args
+        vMaxInterGeneDist: int = -1,  # from args
+        vPercentileForMaxInterGeneDist: Optional[float] = None,  # from args
+        vMaxInterGeneDistByMedian: int = -1,  # from args
+        # vBiomG_G: Dict[Any, Any],
+        vHardBreakGaps: List[
+            int
+        ] = [],  # from args - specific lengths of gaps that indicate hard breaks
+    ) -> None:
+        """
+        ---------------------------------------------------------------------------
+
+        Function that prevents formation of clusters Sequencing gaps that
+        exceed vMaxSeqGapSize or that are defined not to be crossed by
+        vHardBreakGaps.
+
+        ---------------------------------------------------------------------------
+
+        Args:
+            vGeneLocation: DataFrame about the gene location information,
+                            generated in PlantClusterFinder function.
+            vUniqueChrom: A list with unique entries of all chromosome and scaffold
+                        names.
+            vInterChrom: A DataFrame defining chromosome, start bp, end bp, gene
+                        before and gene after a intergenic region.
+            vSeqGaps: A string array (cell) DataFrame containing the
+                    - chromosome/scaffold,
+                    - the identification if it is coding (A) or masked (N) DNA
+                    - start bp and
+                    - length of a masked region.
+                    In addition there is the information stored in with
+                    intergenic region the gap is encoded and its start and end
+                    bp, corrected for maximal size (= intergenic region).
+            vMaxSeqGapSize: Maximal masked nucleotide region (in bp) that a cluster
+                            is allowed to bridge (-1 or None is inactive).
+            vMaxInterGeneDist: Maximal intergenic distance that still can be
+                            gene cluster.
+            vPercentileForMaxInterGeneDist: Prevents clusters to be spanned over
+                                            the top n% of intergenic distances.
+                                            (-1 or None is inactive)
+            vMaxInterGeneDistByMedian: Maximal intergenic distance that still can
+                                    be spanned by a gene cluster: this number
+                                    times the median of the gene sizes.
+            vHardBreakGaps: A list of numbers. The masked nucleotides sequences of
+                            these specific lengths are preventing cluster formation
+                            (Default is an empty list []).
+        """
+        vGeneLocation = self
+
+        # this holds the SeqGaps_Hard data
+        vSeqGaps = vSeqGaps.with_columns(
+            hard_gap=pl.col("seq_gaps_length").is_in(vHardBreakGaps)
+            | pl.col("seq_gaps_length")
+            > vMaxSeqGapSize
+        )
+        if (
+            vPercentileForMaxInterGeneDist is not None
+            and vPercentileForMaxInterGeneDist != 1
+        ):
+            vMaxInterGeneDist_temp = (
+                vGeneLocation.find_intergenic_regions()
+                .select(len=pl.col("End") - pl.col("Start") + 1)
+                .quantile(vPercentileForMaxInterGeneDist / 100)
+            )["len"][0]
+            log.info(
+                "Percentile used for intergenic distance: %ibp",
+                vPercentileForMaxInterGeneDist,
+            )
+            log.info(
+                "Clusters broken when spanning distance larger: %ibp.\n",
+                vMaxInterGeneDist_temp,
+            )
+            vMaxInterGeneDist = (
+                vMaxInterGeneDist_temp
+                if vMaxInterGeneDist is None or vMaxInterGeneDist == -1
+                else min(vMaxInterGeneDist, vMaxInterGeneDist_temp)
+            )
+        if vMaxInterGeneDistByMedian is None or vMaxInterGeneDistByMedian != -1:
+            vMaxInterGeneDist_temp = vGeneLocation.data.select(
+                len=pl.col("Gene End (bp)") - pl.col("Gene Start (bp)")
+            ).quantile(0.50)["len"][0]
+            vMaxInterGeneDist = (
+                vMaxInterGeneDist_temp * vMaxInterGeneDistByMedian
+                if vMaxInterGeneDist is None or vMaxInterGeneDist == -1
+                else min(
+                    vMaxInterGeneDist,
+                    vMaxInterGeneDist_temp * vMaxInterGeneDistByMedian,
+                )
+            )
+
+        hard_breaks = (
+            vGeneLocation.find_intergenic_regions()
+            .join_where(  # using join_where as a cheeky filter
+                vSeqGaps,
+                pl.col("Start").is_between(
+                    pl.col("start index"),
+                    pl.col("end index"),
+                    # | pl.col("End").is_between(
+                    # pl.col("start index"), pl.col("end index")
+                    # )
+                    # | ( pl.lit(vMaxInterGeneDist != -1) & pl.col("Length") > vMaxInterGeneDist)
+                ),
+            )
+            .filter(pl.col("hard_gap"))
+            .select(
+                pl.col(["Chromosome Name", "Start", "End", "Gene Before", "Gene After"])
+            )
+            .with_columns(pseudochromosome=pl.col("Chromosome Name").cum_count())
+        )
+        prev_end = 0
+        pseudochromosome = []
+        if len(hard_breaks) > 0:
+            for h_break in hard_breaks.iter_rows():
+                pseudochromosome.append(
+                    {
+                        "break_start": prev_end,
+                        "break_end": h_break[1],
+                        "pchromosome name": f"{h_break[0]}_{h_break[5]-1}",
+                    }
+                )
+                prev_end = h_break[2]
+            pseudochrom_df = pl.DataFrame(pseudochromosome)
+            self._data = self._data.join_where(
+                pseudochrom_df,
+                pl.col("Start Location (bp)") >= pl.col("break_start"),
+                pl.col("End Location (bp)") < pl.col("break_end"),
+            ).with_columns(
+                pl.col("pchromosome name").alias("Chromosome Name"),
+                chromosome_name_old=pl.col("Chromosome Name"),
+            )
+
+    def insert_genes(self, other_genes: pl.DataFrame) -> None:
+        _ = self._data.extend(other_genes)  # modifies in place and returns DataFrame
 
 
 # Example usage

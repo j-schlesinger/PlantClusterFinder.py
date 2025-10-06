@@ -13,7 +13,6 @@ from plantclusterfinder_py.cluster import (
     compute_local_duplication,
     get_MCL_clustering,
     get_metabolic_domains,
-    introduce_hard_breaks,
     introduce_hypo_genes,
     label_reactions_with_sig_and_tail,
     map_pgdb_reactions_to_genes,
@@ -646,8 +645,8 @@ def main() -> None:
     vHypoGenePercentile = args.HypoGenePercentile  # default 5
     vMaxSeqGapSize = args.MaxSeqGapSize
     vMaxInterGeneDist = args.MaxInterGeneDist
-    vMaxInterGeneDistByMedian = args.MaxInterGeneDistByMedian
     vPercentileForMaxInterGeneDist = args.PercentileForMaxInterGeneDist
+    vMaxInterGeneDistByMedian = args.MaxInterGeneDistByMedian
     vSeqGapSizesChromBreak = args.SeqGapSizesChromBreak
     vTopPercentClusters = args.TopPercentClusters
     vMinStepSize = args.MinStepSize
@@ -866,7 +865,7 @@ def main() -> None:
         vPartFinished = 7
         if vTempsaves == 1:
             vPartFinished = _tempsaves(locals())["vPartFinished"]
-        vGeneLocation = locals().pop("vGeneLocation4")
+        vGeneLocation = locals().pop("vGeneLocation")
 
     # % Map Biomartfile to Gene Map
     if vPartFinished < 8:
@@ -947,14 +946,6 @@ def main() -> None:
 
         # % Introduce Hardbreaks (split chromosomes)
     if vPartFinished < 12:
-        if (
-            vMaxInterGeneDist != -1
-            or vMaxSeqGapSize != -1
-            or len(vSeqGapSizesChromBreak) != 0
-            or vPercentileForMaxInterGeneDist != -1
-            or vMaxInterGeneDistByMedian != -1
-        ):
-            log.info("Prevent clusters:")
         if vMaxSeqGapSize != -1:
             log.info(
                 "Prevent clusters spanning sequencing gaps longer or equal than %ibp",
@@ -966,11 +957,11 @@ def main() -> None:
                 "Prevent clusters spanning sequencing gaps of length %sbp",
                 vNumbers,
             )
-            if vMaxInterGeneDist != -1:
-                log.info(
-                    "Prevent clusters spanning intergenic distances longer or equal than %ibp",
-                    vMaxInterGeneDist,
-                )
+        if vMaxInterGeneDist != -1:
+            log.info(
+                "Prevent clusters spanning intergenic distances longer or equal than %ibp",
+                vMaxInterGeneDist,
+            )
         if vPercentileForMaxInterGeneDist != -1:
             log.info(
                 "Prevent clusters spanning the top %i%% intergenic distances",
@@ -981,18 +972,12 @@ def main() -> None:
                 "Prevent clusters spanning intergenic distances longer or equal than %i * the median of gene sizes",
                 vMaxInterGeneDistByMedian,
             )
-            # WARNING: Mutating vGeneLocation?
-            # ( vGeneLocation, vSeqGaps, vInterChrom, vBiomG_G,)
-            hard_breaks1 = introduce_hard_breaks(
-                vGeneLocation,
-                vUniqueChrom,
-                vInterChrom,
+            vGeneLocation.introduce_hard_breaks(
                 vSeqGaps,
                 vMaxSeqGapSize,
                 vMaxInterGeneDist,
                 vPercentileForMaxInterGeneDist,
                 vMaxInterGeneDistByMedian,
-                vBiomG_G,
                 vSeqGapSizesChromBreak,
             )
 
@@ -1012,9 +997,10 @@ def main() -> None:
                 log.error("vHypoAmount does not exist. Needs to be set as an Argument.")
             else:
                 hard_breaks2 = introduce_hypo_genes(
-                    hard_breaks1,
+                    # hard_breaks1,
                     #  vGeneLengthHypoMin,
-                    vBiomG_G,
+                    vGeneLocation,
+                    vGeneLocation.find_intergenic_regions(),
                     vInsertHypos,
                     vHypoAmount,
                 )

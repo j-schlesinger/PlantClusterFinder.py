@@ -5,7 +5,6 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-import numpy as np
 import polars as pl
 
 from plantclusterfinder_py.cluster_datatypes import (
@@ -13,10 +12,10 @@ from plantclusterfinder_py.cluster_datatypes import (
     Clusters,
     Conversion,
     GenesToReactions,
-    HardBreaks,
     MclClusterData,
     ReactionLabels,
 )
+from plantclusterfinder_py.genelocation import GeneLoc
 from plantclusterfinder_py.get_positions_of_gap import get_positions_of_gap
 
 log = logging.getLogger(__name__)
@@ -69,7 +68,7 @@ def label_reactions_with_sig_and_tail(
 
 
 def compute_local_duplication(
-    vGeneLocation: pl.DataFrame,
+    gene_location: GeneLoc,
     mcl_cluster_data: MclClusterData,
     vBiomG_G: Dict[Any, Any],
     vKbRangeLD: int,
@@ -84,7 +83,7 @@ def compute_local_duplication(
     ---------------------------------------------------------------------------
 
     Args:
-        vGeneLocation: DataFrame about the gene location information,
+        gene_location: DataFrame about the gene location information,
                         generated in PlantClusterFinder function.
         mcl_cluster_data : Mapping between the genes in the conversion-ID file and the
                 MCL-clustering file.
@@ -92,8 +91,7 @@ def compute_local_duplication(
                   conversion file.
         vKbRangeLD: Genes that are encoded more than this bp apart, are not
                     called local duplicates.
-        vGeneRangeLD: Number of genes that space two genes from each other.
-                      Genes that have more than this many intervening genes
+        vGeneRangeLD: Genes that have more than this many intervening genes
                       between themare not called local duplicates.
 
     Returns:
@@ -104,118 +102,106 @@ def compute_local_duplication(
                being True if the gene was considered to be locally duplicated (a
                gene was within vKbRangeLD bp distance and not spaced more than
                with vGeneRangeLD genes from another gene with the same MCL
-               clustering given by vG_MCL.
-        - ClusterIds: The MCL clusters of the gene (comma separated if more
-                        than 1 peptide is associated to a gene
+               clustering given by mcl_cluster_data).
+        - ClusterIds: The MCL clusters of the gene (list)
     """
 
-    """
-        % MATLAB code
-        vNgenes = size(vGeneLocation2.(char(vGeneLocation_Att(1,1))),1);
-        vG_LD = false(vNgenes,1);
-        vG_LD_ClustIDs = cell(vNgenes,1);
-        vGStartbp = str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,2)))));
-        vGEndbp = str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,3)))));
-    """
-    n_genes = len(vGeneLocation)
-    for row in vGeneLocation.iter_rows(named=True):
-        log.debug(
-            f"Checking local duplication of Gene {row['gene name']} of {len(vGeneLocation)}"
+    # FIXME: This is glacially slow
+
+    # For each gene G
+    # Get genes which appear in the same cluster as key gene
+    # mcl_df
+    mcl_clusts = set([y for x in mcl_cluster_data.Gene2MCLClusters.values() for y in x])
+    mcl_c2g = dict()
+    for cluster in mcl_clusts:
+        acc = []
+        for gene, mcl in mcl_cluster_data.Gene2MCLClusters.items():
+            if cluster in mcl:
+                acc.append(gene)
+        mcl_c2g[cluster] = acc
+    mcl_g2g = dict()
+    for gene, mcl in mcl_cluster_data.Gene2MCLClusters.items():
+        acc = []
+        for cluster in mcl:
+            acc.extend(mcl_c2g[cluster])
+        mcl_g2g[gene] = list(set(acc))
+    mcl_df = pl.from_dicts(
+        [
+            {
+                "Gene Name": k,
+                "mcl_genes": [x for x in v if x != k],
+                "mcl_clusters": mcl_cluster_data.Gene2MCLClusters[k],
+            }
+            for k, v in mcl_g2g.items()
+        ]
+    )
+
+    # For each gene G
+    # find genes G_i from -GeneRangeLD to GeneRangeLD (excluding G_0, which would just be G)
+    # only consider genes within vKbRangeLd of G
+    # nieghbor_genes
+    prev_genes: list[pl.Row] = []  # rows from -GeneRangeLD to GeneRangeLD
+    next_genes: list[pl.Row] = []
+    current_gene = None
+    neighbor_col: Dict[str, list[str]] = dict()
+    for row in gene_location.data.iter_rows():
+        next_genes.append(row)
+        if len(next_genes) > vGeneRangeLD:
+            if current_gene is None:
+                current_gene = next_genes.pop(-1)
+            else:
+                prev_genes.append(current_gene)
+                current_gene = next_genes.pop(-1)
+        if len(prev_genes) > vGeneRangeLD:
+            prev_genes.pop(-1)
+        if current_gene is None:
+            continue
+        prev_genes_filtered: filter[pl.Row] = filter(
+            lambda x: (x[2] - current_gene[1]) < vKbRangeLD,
+            prev_genes,  # prev_genes[2] is gene end
         )
-        if list(row.keys())[0].startswith("Hypothetical_Gene_"):
-            _start_g = (
-                row["gene start"] - vGeneRangeLD - 1
-                if row["gene start"] < (vGeneRangeLD - 1)
-                else 1
-            )
-            _end_g = (
-                row["gene end"] + vGeneRangeLD + 1
-                if (row["gene end"] + vGeneRangeLD + 1) < n_genes
-                else n_genes
-            )
-        """
-        for vi = 1:vNgenes
-            if vVerbose >= 2
-                fprintf(
-                    'Checking Local duplication of Gene %i of %i\n', vi, vNgenes);
-            end
-            if ~strncmp(vGeneLocation2.(char(vGeneLocation_Att(1,1)))(vi,1),'Hypothetical_Gene_',18)
-                vStartG = vi - vGeneRangeLD - 1;
-                vEndG = vi + vGeneRangeLD + 1;
-                if vStartG < 1
-                    vStartG = 1;
-                end
-                if vEndG > vNgenes
-                    vEndG = vNgenes;
-                end
-        """
-        _ids = np.array((n_genes, 1))
+        next_genes_filtered: filter[pl.Row] = filter(
+            lambda x: current_gene[2] - x[1] < vKbRangeLD,
+            next_genes,  # next_genes[1] is gene start
+        )
+        neighbor_col[current_gene[0]] = list(prev_genes_filtered) + list(
+            next_genes_filtered
+        )
+    neighbor_df = pl.from_dicts(
+        [
+            {"Gene Name": k, "neighbor_genes": [x[0] for x in v if x != k]}
+            for k, v in neighbor_col.items()
+        ]
+    )
 
-    """
-                vIDs = false(vNgenes,1);
-                vIDs(vStartG:vEndG,1) = 1;
-                vIDs(vi,1) = 0;
-                vIDs = vIDs & strcmp(vGeneLocation2.(char(vGeneLocation_Att(1,4))),vGeneLocation2.(char(vGeneLocation_Att(1,4)))(vi,1));
-
-                vStartbp = vGEndbp(vi,1)-vKbRangeLD;
-                vEndbp = vGStartbp(vi,1)+vKbRangeLD;
-                vIDs = vIDs & vGStartbp >= vStartbp & vGEndbp <= vEndbp;
-                vIDs_find = find(vIDs);
-
-                vMCL = sum(vG_MCL(sum(vBiomG_G(vi,:),1)>0,:),1)>0;
-                vMCL_find = find(vMCL);
-                clear vTempMCLString_array
-                if size(vMCL_find,2)~=0
-                    vTempMCLString_array = cellstr(['MCL_' num2str(vMCL_find(1,1))]);
-                end
-                for vj = 2:size(vMCL_find,2)
-                    vTempMCLString_array = [vTempMCLString_array; cellstr(['MCL_' num2str(vMCL_find(1,1))])];
-                end
-                if exist('vTempMCLString_array','var')
-                    vTempMCLString_array = unique(vTempMCLString_array);
-                end
-                vTempMCLString = '';
-                if exist('vTempMCLString_array','var')
-                    if size(vTempMCLString_array,1)~=0
-                        vTempMCLString = char(vTempMCLString_array);
-                    end
-                    for vj = 2:size(vTempMCLString_array,1)
-                        vTempMCLString = [vTempMCLString ', ' char(vTempMCLString_array)];
-                    end
-                end
-                vG_LD_ClustIDs(vi,1) = cellstr(vTempMCLString);
-                vN_MCL = size(vMCL,2);
-
-                vStop = 0;
-                vj = 1;
-                while vj <= size(vIDs_find,1) && vStop == 0
-                    if sum(vMCL)==0
-                        fprintf('Warning: %s has no entry in MCL clustering file.\n',char(vGeneLocation2.(char(vGeneLocation_Att(1,1)))(vi,1)))
-                        vG_LD(vi,1) = -1;
-                    elseif sum(vMCL == (sum(vG_MCL(sum(vBiomG_G(vIDs_find(vj,1),:),1)>0,:),1)>0)) == vN_MCL
-                        vG_LD(vi,1) = 1;
-                        vStop = 1;
-                    end
-                    vj = vj + 1;
-                end
-            end
-        end
-    end
-    """
-    return pl.DataFrame()  # FIXME: needs return value
+    # Using the above datasets
+    # see if mcl_df genes are in neighbor_genes
+    # and mark G as locally duplicated if
+    #  any G_i has the same MCL cluster as G
+    locally_duplicated = neighbor_df.join(mcl_df, on="Gene Name")
+    a = locally_duplicated.with_columns(
+        locally_duplicated=pl.col("neighbor_genes")
+        .list.set_intersection("mcl_genes")
+        .list.len()
+        > 0,
+    )  # .select(pl.col(["Gene Name", "mcl_clusters", "locally_duplicated"]))
+    # return a.with_columns(
+    #    is_locally_duplicated=pl.col( ["mcl_clusters", "Gene End (bp)", "Gene Start (bp)"])
+    return gene_location.data.join(a, on="Gene Name", how="left")
 
 
 def introduce_hypo_genes(
-    hard_breaks: HardBreaks,
-    vBiomG_G: Dict[Any, Any],
-    insert_hypos: bool = False,
+    gene_location: GeneLoc,
+    sequencing_gaps: pl.DataFrame,
+    # hard_breaks: HardBreaks,
     vHypoAmount: int = 0,
-) -> HardBreaks:
+    vGeneLengthHypoMin: int = -1,
+) -> GeneLoc:
     """
     ---
+
       Function that introduces Hypothetical genes if a sequencing gap reached a
       critical size vGeneLengthHypoMin.
-
     ---
     Args:
         hard_breaks: Object with the gene location, chromosome regions, sequence gaps,
@@ -223,7 +209,12 @@ def introduce_hypo_genes(
             genes
         vBiomG_G: Mapping between the Gene location file and the gene-IDs in the
                   conversion file.
-        vInsertHypos: If set to True, then Hypothetical genes are introduced.
+        vGeneLengthHypoMin: A size that defines the minimal length of a
+                            sequencing gap that should still be processed. If
+                            this is bigger than 0, then all sequencing gaps
+                            smaller than this are deleted, unless they are
+                            among the list of vSeqGapSizesChromBreak, which
+                            also needs to be set. Default is -1, not active.
     Optional Args:
         **vHypoAmount**: integer describing the number of hypothetical genes
             a sequencing gap that is not a physical break should be populated
@@ -232,313 +223,64 @@ def introduce_hypo_genes(
         **HardBreaks** object containing the gene location information, the
             inter-chromosomal matrix, and the HypoAmount populated.
     """
-    if not insert_hypos:
-        # why would you even call the function?!?
-        return hard_breaks
+    # get the 5th and 7th columns of SeqGaps
+    if sequencing_gaps is None:
+        raise Exception(
+            "Sequencing Gaps must be populated to insert hypothetical genes"
+        )
+    gap_positions = (
+        sequencing_gaps.select(pl.col(["Chromosome Name", "Start", "End"]))
+        .with_columns(seq_gaps_length=pl.col("End") - pl.col("Start"))
+        .with_columns(
+            hypo_to_place=pl.lit(vHypoAmount)
+            if vGeneLengthHypoMin < 0
+            or (pl.col("seq_gaps_length") >= pl.lit(vGeneLengthHypoMin))
+            else pl.lit(0)
+        )
+    )
+    vBreakAfter = []
+    for pos in gap_positions.iter_rows():
+        vBreakAfter.append(gene_location.find_intergenic_regions())
 
-    """
-        % MATLAB code
-        vCurrArgin = 8;
-        if nargin > vCurrArgin
-            vi = 1;
-            while vi <= nargin - vCurrArgin
-                if strcmp(varargin{1,vi},'HypoAmount')
-                    if ischar(varargin{1,vi+1})
-                        vHypoAmount = str2num(varargin{1,vi + 1});
-                    else
-                        vHypoAmount = varargin{1,vi + 1};
-                    end
-                    vi = vi + 1;
-                end
-                vi = vi + 1;
-            end
-        end
+    # WARNING: This is a slow way to process dataframe
+    ngaps = sequencing_gaps.height
+    hypothetical_genes = []
+    for i, row in enumerate(gap_positions.iter_rows()):
+        log.debug("Populate hypothetical genes %i of %i", i, ngaps)
+        # no hypothetical genes to populate
+        hypo_to_place = row[-1]
+        if hypo_to_place == 0:
+            continue
+        # start_2 = vBreakAfter(i) #?
+        # start_3 = end_3 - (end_2 - start_2)
+        place_last_gene_end = row[1]  # gap start position
+        space_between_genes = row[3]  # gap length
+        for hypo_i in range(hypo_to_place):
+            place_to_insert = place_last_gene_end + int(
+                space_between_genes / (hypo_to_place + 1) * hypo_i
+            )
+            new_row = (
+                f"Hypothetical_Gene_{hypo_to_place+hypo_i}",
+                place_to_insert,
+                place_to_insert,
+                row[0],  # chromosome/scaffold
+                "-1",  # FIXME: Strand - originally strand of start gene, but no clear reason why
+            )
+            hypothetical_genes.append(new_row)
+    hypo_gene_df = pl.DataFrame(
+        hypothetical_genes,
+        schema=(
+            ("Gene Name", pl.String),
+            ("Gene Start (bp)", pl.Int64),
+            ("Gene End (bp)", pl.Int64),
+            ("Chromosome Name", pl.String),
+            ("Strand", pl.String),
+        ),
+        orient="row",
+    )
 
-        if vInsertHypos > 0
-            %Check where and how many Hypothetical genes should be placed.
-            if vInsertHypos == 1
-                vSeqGaps_5 = str2num(char(vSeqGaps(:,5)));
-                vSeqGaps_7 = str2num(char(vSeqGaps(:,7)));
-                vHypoToPlace = zeros(size(vSeqGaps_5,1),1);
-                vBreakAfter = zeros(size(vSeqGaps_5,1),1);
-                if exist('vHypoAmount','var')
-                    vNi = size(vSeqGaps,1);
-                    for vi = vNi:-1:1
-                        if vVerbose >= 2
-                            fprintf('Estimate number of gaps: %i of %i\n',
-                                    vNi - vi + 1, vNi);
-                        end
-                        vBreakAfter(vi,1) = vInterChrom(vSeqGaps_5(vi,1),4);
-
-                        if vSeqGaps_7(vi,1) >= vGeneLengthHypoMin
-                            vHypoToPlace(vi,1) = vHypoAmount;
-                        end
-                    end
-                else
-                    error(
-                        'vHypoAmount not defined, needs to be defined for InsertHypos = 1.');
-                end
-            else
-                error('Not other option (>1) programmed.');
-            end
-
-            %Sort the Breaks:
-            [~, vBreakAfter_sort_ID] = sort(vBreakAfter);
-
-            %Remove several sequencing gaps within one intergenic region.
-            vBreakafterkill = false(size(vSeqGaps,1),1);
-            vOld_Breakafter_sort_ID = vBreakAfter_sort_ID(1,1);
-            for vi = 2:size(vSeqGaps,1)
-                if vBreakAfter(vBreakAfter_sort_ID(vi,1),1) == vBreakAfter(vOld_Breakafter_sort_ID,1)
-                    vBreakafterkill(vBreakAfter_sort_ID(vi,1),1) = 1;
-                    %It is possible that a sequencing gap does not meet the
-                    %minimal Hypo length, but the next one does. We populate 2
-                    %genes in total once one of them meets the criterion.
-                    if vHypoToPlace(vOld_Breakafter_sort_ID,1) < vHypoToPlace(vBreakAfter_sort_ID(vi,1),1)
-                        vHypoToPlace(vOld_Breakafter_sort_ID,1) = vHypoToPlace(vBreakAfter_sort_ID(vi,1),1);
-                    end
-                else
-                    vOld_Breakafter_sort_ID = vBreakAfter_sort_ID(vi,1);
-                end
-            end
-            vSeqGaps = vSeqGaps(~vBreakafterkill,:);
-    %         vSeqGaps_5 = vSeqGaps_5(~vBreakafterkill,:);
-    %         vSeqGaps_7 = vSeqGaps_7(~vBreakafterkill,:);
-            vBreakAfter = vBreakAfter(~vBreakafterkill,:);
-            vHypoToPlace = vHypoToPlace(~vBreakafterkill,:);
-
-            [~, vBreakAfter_sort_ID] = sort(vBreakAfter);
-
-            %Increase the size of the gene locations.
-            for vk = 1:size(vGeneLocation_Att,2)
-                vGeneLocation3.(char(vGeneLocation_Att(1,vk))) = cell(size(vGeneLocation2.(char(vGeneLocation_Att(1,vk))),1) + sum(vHypoToPlace), ...
-                    size(vGeneLocation2.(char(vGeneLocation_Att(1,vk))),2));
-            end
-
-            %Increase the size of all variables that are connected to the gene
-            %locations.
-            vBiomG_G_3 = logical(spalloc(
-                size(vBiomG_G,1) + sum(vHypoToPlace),size(vBiomG_G,2),size(vBiomG_G,2)*2));
-
-            %Populate the new gene location variable with the hypothetical genes.
-            vEnd_GeneLocation2 = size(vGeneLocation2.(char(vGeneLocation_Att(1,1))),1);
-            vEnd_GeneLocation3 = size(vGeneLocation3.(char(vGeneLocation_Att(1,1))),1);
-            for vi = size(vSeqGaps,1):-1:1
-                if vVerbose >= 2
-                    fprintf('Populate hypothetical genes: %i of %i\n',
-                            vNi - vi + 1, vNi);
-                end
-                if vHypoToPlace(vBreakAfter_sort_ID(vi,1),1) ~= 0
-                    vStart_GeneLocation2 = vBreakAfter(
-                        vBreakAfter_sort_ID(vi,1),1) + 1;
-                    vStart_GeneLocation3 = vEnd_GeneLocation3 - \
-                        (vEnd_GeneLocation2 - vStart_GeneLocation2);
-                    for vl = 1:vHypoToPlace(vBreakAfter_sort_ID(vi,1),1)
-                        vPlaceLastGeneEnd = str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,3)))(vStart_GeneLocation2-1,1)));
-                        vPlaceBetweenGenes = str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,2)))(vStart_GeneLocation2,1))) - vPlaceLastGeneEnd - 1;
-                        vPlaceToInsert = vPlaceLastGeneEnd + \
-                            floor(vPlaceBetweenGenes/(vHypoToPlace(vBreakAfter_sort_ID(vi,1),1)+1)*vl);
-                        for vk = 1:size(vGeneLocation_Att,2)
-                            vGeneLocation3.(char(vGeneLocation_Att(1,vk)))(vStart_GeneLocation3:vEnd_GeneLocation3,:) = ...
-                            vGeneLocation2.(char(vGeneLocation_Att(1,vk)))(vStart_GeneLocation2:vEnd_GeneLocation2,:);
-                            if vk == 1
-                                vGeneLocation3.(char(vGeneLocation_Att(1,vk)))(vStart_GeneLocation3-vl,1) = cellstr(['Hypothetical_Gene_' num2str(sum(vHypoToPlace(1:vBreakAfter_sort_ID(vi,1)-1,1))+vl)]);
-                            elseif vk == 2
-                                vGeneLocation3.(char(vGeneLocation_Att(1,vk)))(vStart_GeneLocation3-vl,1) = cellstr(num2str(vPlaceToInsert));
-                            elseif vk == 3
-                                vGeneLocation3.(char(vGeneLocation_Att(1,vk)))(vStart_GeneLocation3-vl,1) = cellstr(num2str(vPlaceToInsert));
-                            elseif vk == 4
-                                vGeneLocation3.(char(vGeneLocation_Att(1,vk)))(vStart_GeneLocation3-vl,1) = vGeneLocation2.(char(vGeneLocation_Att(1,vk)))(vBreakAfter(vBreakAfter_sort_ID(vi,1),1),1);
-                            elseif vk == 5
-                                vGeneLocation3.(char(vGeneLocation_Att(1,vk)))(vStart_GeneLocation3-vl,1) = vGeneLocation2.(char(vGeneLocation_Att(1,vk)))(vBreakAfter(vBreakAfter_sort_ID(vi,1),1),1);
-                            elseif vk == 6
-                                vGeneLocation3.(char(vGeneLocation_Att(1,vk)))(vStart_GeneLocation3-vl,1) = vGeneLocation2.(char(vGeneLocation_Att(1,vk)))(vBreakAfter(vBreakAfter_sort_ID(vi,1),1),1);
-                            end
-                        end
-                    end
-                    if vVerbose >= 2
-                        fprintf('Inserting Hypothetical genes: Copy old %i to %i to new %i to %i\n',
-                                vStart_GeneLocation2, vEnd_GeneLocation2, vStart_GeneLocation3, vEnd_GeneLocation3);
-                    end
-                    vBiomG_G_3(vStart_GeneLocation3:vEnd_GeneLocation3,:) = vBiomG_G(vStart_GeneLocation2:vEnd_GeneLocation2,:);
-                    vIDs_to_change = vInterChrom(:,5)>vBreakAfter(vBreakAfter_sort_ID(vi,1),1);
-                    vInterChrom(vIDs_to_change,5) = vInterChrom(vIDs_to_change,5) + vHypoToPlace(vBreakAfter_sort_ID(vi,1),1);
-                    vIDs_to_change = vInterChrom(:,4)>vBreakAfter(vBreakAfter_sort_ID(vi,1),1);
-                    vInterChrom(vIDs_to_change,4) = vInterChrom(vIDs_to_change,4) + vHypoToPlace(vBreakAfter_sort_ID(vi,1),1);
-                    vEnd_GeneLocation2 = vStart_GeneLocation2-1;
-                    vEnd_GeneLocation3 = vStart_GeneLocation3- \
-                        (1+vHypoToPlace(vBreakAfter_sort_ID(vi,1),1));
-                end
-            end
-            vStart_GeneLocation3 = 1;
-            vStart_GeneLocation2 = 1;
-            vBiomG_G_3(vStart_GeneLocation3:vEnd_GeneLocation3,:) = vBiomG_G(vStart_GeneLocation2:vEnd_GeneLocation2,:);
-            for vk = 1:size(vGeneLocation_Att,2)
-                vGeneLocation3.(char(vGeneLocation_Att(1,vk)))(1:vEnd_GeneLocation3,:) = ...
-                vGeneLocation2.(char(vGeneLocation_Att(1,vk)))(1:vEnd_GeneLocation2,:);
-            end
-            vGeneLocation2 = vGeneLocation3;
-            vBiomG_G = vBiomG_G_3;
-        end
-    end"""
-    return hard_breaks  # FIXME: return value
-
-
-def introduce_hard_breaks(
-    vGeneLocation: pl.DataFrame,
-    vUniqueChrom: List[str],
-    vInterChrom: pl.DataFrame,
-    vSeqGaps: pl.DataFrame,
-    vMaxSeqGapSize: int,
-    vMaxInterGeneDist: int,
-    vPercentileForMaxInterGeneDist: float,
-    vMaxInterGeneDistByMedian: int,
-    vBiomG_G: Dict[Any, Any],
-    vHardBreakGaps: List[int] = [],
-) -> HardBreaks:
-    """
-    ---------------------------------------------------------------------------
-
-      Function that prevents formation of clusters Sequencing gaps that
-      exceed vMaxSeqGapSize or that are defined not to be crossed by
-      vHardBreakGaps.
-
-    ---------------------------------------------------------------------------
-
-    Args:
-        vGeneLocation: DataFrame about the gene location information,
-                        generated in PlantClusterFinder function.
-        vUniqueChrom: A list with unique entries of all chromosome and scaffold
-                      names.
-        vInterChrom: A DataFrame defining chromosome, start bp, end bp, gene
-                     before and gene after a intergenic region.
-        vSeqGaps: A string array (cell) DataFrame containing the
-                  - chromosome/scaffold,
-                  - the identification if it is coding (A) or masked (N) DNA
-                  - start bp and
-                  - length of a masked region.
-                  In addition there is the information stored in with
-                  intergenic region the gap is encoded and its start and end
-                  bp, corrected for maximal size (= intergenic region).
-        vMaxSeqGapSize: Maximal masked nucleotide region (in bp) that a cluster
-                        is allowed to bridge (-1 or None is inactive).
-        vMaxInterGeneDist: Maximal intergenic distance that still can be
-                           gene cluster.
-        vPercentileForMaxInterGeneDist: Prevents clusters to be spanned over
-                                        the top n% of intergenic distances.
-        vMaxInterGeneDistByMedian: Maximal intergenic distance that still can
-                                   be spanned by a gene cluster: this number
-                                   times the median of the gene sizes.
-        vBiomG_G: Mapping between the Gene location file and the gene-IDs in the
-                  conversion file.
-        vHardBreakGaps: A list of numbers. The masked nucleotides sequences of
-                        these specific lengths are preventing cluster formation
-                        (Default is an empty list []).
-
-    Returns:
-        HardBreaks object containing the gene location information, the
-            inter-chromosomal matrix, and the SeqGaps populated.
-    """
-
-    _ = """
-        % MATLAB code
-        vCurrArgin = 11;
-        if nargin > vCurrArgin
-            vi = 1;
-            while vi <= nargin - vCurrArgin
-
-                vi = vi +1;
-            end
-        end
-
-        vSeqSize = str2num(char(vSeqGaps(:,end)));
-        vSeqHard = false(size(vSeqSize,1),1);
-        for vi = 1:size(vHardBreakGaps,2)
-            vSeqHard = vSeqHard | vSeqSize == vHardBreakGaps(1,vi);
-        end
-        if vMaxSeqGapSize ~= -1
-            vSeqHard = vSeqHard | vSeqSize >= vMaxSeqGapSize;
-        end
-        vSeqGaps_Hard = vSeqGaps(vSeqHard,:);
-        vSeqGaps = vSeqGaps(~vSeqHard,:);
-
-        %Check maximal intergenic distance via percent
-        if vPercentileForMaxInterGeneDist ~= -1
-            %Change From Median to Percentile
-            %vMultiplierInterGeneDist = median(vInterChrom(:,3)-vInterChrom(:,2)+1);
-            %vMaxInterGeneDist_temp = vMultiplierInterGeneDist*vPercentileForMaxInterGeneDist;
-            %Use 95% Percentile Cutoff Instead
-            vMaxInterGeneDist_temp = prctile(vInterChrom(:,3)-vInterChrom(:,2)+1, vPercentileForMaxInterGeneDist);
-            fprintf('Percentile used for intergenic distance: %ibp\nClusters broken when spanning distance larger: %ibp.\n',
-                    vPercentileForMaxInterGeneDist, vMaxInterGeneDist_temp);
-            if vMaxInterGeneDist == -1
-                vMaxInterGeneDist = vMaxInterGeneDist_temp;
-            else
-                vMaxInterGeneDist = min(
-                    [vMaxInterGeneDist,vMaxInterGeneDist_temp]);
-            end
-        end
-
-        %Check maximal intergenic distance via median gene size
-        if vMaxInterGeneDistByMedian ~= -1
-            vMaxInterGeneDist_temp = prctile(str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,3)))(:,1))) - ...
-                                             str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,2)))(:,1))), 50);
-            if vMaxInterGeneDist == -1
-                vMaxInterGeneDist = vMaxInterGeneDist_temp*vMaxInterGeneDistByMedian;
-            else
-                vMaxInterGeneDist = min(
-                    [vMaxInterGeneDist,vMaxInterGeneDist_temp*vMaxInterGeneDistByMedian]);
-            end
-        end
-
-        %Check intergenic distances
-        if vMaxInterGeneDist ~= -1
-            vG_start = str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,2)))(:,1)));
-            vG_end = str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,3)))(:,1)));
-            vAct_Crom = '';
-            vNG = size(vGeneLocation2.(char(vGeneLocation_Att(1,4))),1);
-            for vi = vNG:-1:2
-                if strcmp(vGeneLocation2.(char(vGeneLocation_Att(1,4)))(vi-1,1),vGeneLocation2.(char(vGeneLocation_Att(1,4)))(vi,1))
-                    if vG_end(vi,1) - vG_start(vi-1,1) >= vMaxInterGeneDist
-                        if ~strcmp(vAct_Crom,vGeneLocation2.(char(vGeneLocation_Att(1,4)))(vi,1))
-                            vChrom_counter = 1;
-                            vAct_Crom = vGeneLocation2.(char(vGeneLocation_Att(1,4)))(vi,1);
-                        else
-                            vChrom_counter = vChrom_counter + 1;
-                        end
-                        vIDs = strcmp(vGeneLocation2.(char(vGeneLocation_Att(1,4)))(:,1),vGeneLocation2.(char(vGeneLocation_Att(1,4)))(vi,1));
-                        vIDs(1:vi-1,1) = 0;
-                        vGeneLocation2.(char(vGeneLocation_Att(1,4)))(vIDs,1) = cellstr([char(vGeneLocation2.(char(vGeneLocation_Att(1,4)))(vi,1)) '_' num2str(vChrom_counter)]);
-                    end
-                end
-            end
-        end
-
-        %Check physical hard breaks
-        vGeneLocation2.([char(vGeneLocation_Att(1,4)) '_old']) = vGeneLocation2.(char(vGeneLocation_Att(1,4)));
-        vGeneLocation_Att = [vGeneLocation_Att, [char(vGeneLocation_Att(1,4)) '_old']];
-        for vi = size(vUniqueChrom,1):-1:1
-            vTempHardGaps = vSeqGaps_Hard(strcmp(vSeqGaps_Hard(:,1),vUniqueChrom(vi,1)),:);
-            if size(vTempHardGaps,1) > 0
-                vTempChrom = cell(size(vTempHardGaps,1)+1,1);
-                for vj = 1:size(vTempChrom,1)
-                    vTempChrom(vj,1) = cellstr([char(vUniqueChrom(vi,1)) '_' num2str(vj)]);
-                end
-                for vj = size(vTempHardGaps,1):-1:1
-                    vBreakAfter = vInterChrom(
-                        str2num(char(vTempHardGaps(vj,5))),4);
-                    vTemp_IDs = strcmp(vGeneLocation2.(char(vGeneLocation_Att(1,4)))(:,1),vUniqueChrom(vi,1));
-                    vTemp_IDs(1:vBreakAfter) = 0;
-                    vGeneLocation2.(char(vGeneLocation_Att(1,4)))(vTemp_IDs,1) = vTempChrom(vj + 1,1);
-                end
-                vTemp_IDs = strcmp(vGeneLocation2.(char(vGeneLocation_Att(1,4)))(:,1),vUniqueChrom(vi,1));
-                vGeneLocation2.(char(vGeneLocation_Att(1,4)))(vTemp_IDs,1) = vTempChrom(1,1);
-            end
-        end
-    end"""
-    return HardBreaks(
-        GeneLocation=vGeneLocation, InterChrom=vInterChrom, SeqGaps=vSeqGaps
-    )  # FIXME: return value
+    gene_location.insert_genes(hypo_gene_df)
+    return gene_location
 
 
 def annotate_sequencing_gaps(
@@ -554,7 +296,7 @@ def annotate_sequencing_gaps(
     """
     ---------------------------------------------------------------------------
 
-      Functions that uses the output of f_get_Sequencing_Gaps and reformulates
+      Functions that uses the output of get_sequencing_gaps and reformulates
       it such that it is clear in which intergenic region the sequening gap
       lies.
 
@@ -562,8 +304,13 @@ def annotate_sequencing_gaps(
 
     Args:
         vFile: Fasta file of the masked genome nucleotide sequences.
-        vInterGeneLocation: A DataFrame defining chromosome, start bp, end bp, gene
-                     before and gene after a intergenic region.
+        vInterGeneLocation: A DataFrame describing
+                        - chromosome,
+                        - start bp,
+                        - end bp,
+                        - gene before,
+                        - and gene after
+                      a intergenic region.
         vUniqueChrom: A list with unique entries of all chromosome and scaffold
                       names.
     Optional Args:
@@ -586,121 +333,75 @@ def annotate_sequencing_gaps(
                             also needs to be set. Default is -1, not active.
     Returns:
         **DataFrame** containing the
-                  - chromosome/scaffold
+                  - chromosome/scaffold,
                   - the identification if it is coding (A) or masked (N) DNA
-                  - start bp
-                  - length of a masked region
+                  - start bp and
+                  - length of a masked region.
                   In addition there is the information stored in with
                   intergenic region the gap is encoded and its start and end
                   bp, corrected for maximal size (= intergenic region).
     """
 
-    _ = """
-        % MATLAB code
-        vCurrNargin = 7;
-        vGeneLengthHypoMin = -1;
-        vSeqGapSizesChromBreak = [];
-        vSet = 0;
-        if nargin > vCurrNargin
-            vi = 1;
-            while vi <= nargin - vCurrNargin
-                if ischar(varargin{1,vi})
-                    if strcmp(varargin{1,vi},'SeqGapSizesChromBreak')
-                        vSeqGapSizesChromBreak = varargin{1,vi+1};
-                        vSet = vSet + 1;
-                        vi = vi + 1;
-                    elseif strcmp(varargin{1,vi},'GeneLengthHypoMin')
-                        vGeneLengthHypoMin = varargin{1,vi+1};
-                        vSet = vSet + 1;
-                        vi = vi + 1;
-                    end
-                end
-                vi = vi + 1;
-            end
-        end
-        if vGeneLengthHypoMin ~= -1 && vSet ~= 2
-            error('f_annotate_Sequencing_Gaps needs both SeqGapSizesChromBreak and GeneLengthHypoMin to be set or to be unset.');
-        end
-    """
     if not (vGeneLengthHypoMin == -1 or vSeqGapSizesChromBreak == []):
         log.error(
             "annotate_sequencing_gaps needs both SeqGapSizesChromBreak and GeneLengthHypoMin to be set or to be unset."
         )
         raise Exception("Incompatable parameters in annotate_sequencing_gaps function")
-    _ = """
-        vMaxInit = 7000000;
-        if ispc()
-            if ~exist([vFile '_GAPOutput'], 'file') || vOverwriteSeqGapInfo
-                f_get_Sequencing_Gaps(
-                    vFile, vPara, vVerbose, vOverwriteSeqGapInfo, vUnmaskedDNA)
-            end
-        else
-            [~,vOutput] = system(['ls' ' ' '''' vFile '_GAPOutput''']);
-            if strncmp(vOutput,'ls: cannot access', 17) || vOverwriteSeqGapInfo
-                f_get_Sequencing_Gaps(
-                    vFile, vPara, vVerbose, vOverwriteSeqGapInfo, vUnmaskedDNA)
-            end
-        end
 
-        vFIO = fopen([vFile '_GAPOutput']);
-        vSeqGaps = cell(vMaxInit,4);
-        vLine = fgetl(vFIO);
-        vL = 1;
-        while ischar(vLine)
-            %Split the line into four columns using the space-character as
-            %delimiter.
-            vSplit = regexp(vLine,' ','split');
-            if size(vSplit,2) ~= 4
-                error('%s is corrupt at line %i. It should contain 4 columns split by spaces, it contains %i.\n\n', [vFile '_GAPOutput'],vL, size(vSplit,2));
-            end
-
-            if vGeneLengthHypoMin == -1 || sum(vSeqGapSizesChromBreak == str2num(char(vSplit(1,4)))) > 0 || (vGeneLengthHypoMin ~= -1 && vGeneLengthHypoMin <= str2num(char(vSplit(1,4))))
-                if vL > vMaxInit
-                    vSeqGaps = [vSeqGaps; cell(1,4)];
-                end
-                vSeqGaps(vL,:) = vSplit;
-                vL = vL + 1;
-            end
-            vLine = fgetl(vFIO);
-        end
-        fclose(vFIO);
-        vSeqGaps = vSeqGaps(1:(vL-1),:);
-    """
     gap_output_file = vFile.with_suffix(vFile.suffix + "_GAPOutput")
     if vOverwriteSeqGapInfo or not gap_output_file.exists():
         get_sequencing_gaps(vFile, 1, vOverwriteSeqGapInfo, vUnmaskedDNA)
-    sequencing_gaps = pl.read_csv(
-        gap_output_file,
-        separator=" ",
-        has_header=False,
-        new_columns=["scaffold", "amino acid", "start index", "length"],
+    sequencing_gaps = (
+        pl.read_csv(
+            gap_output_file,
+            separator=" ",
+            has_header=False,
+            new_columns=["scaffold", "amino acid", "start index", "length"],
+        )
+        .with_columns(
+            (pl.col("start index") + pl.col("length") - pl.lit(1)).alias("end index")
+        )
+        .filter(
+            pl.col("amino acid") == pl.lit("N")
+        )  # Do not process all non N sequences.
+    )
+    for bad_chromosome, *_ in (
+        sequencing_gaps.filter(pl.col("scaffold").is_in(vUniqueChrom).not_())
+        .select(pl.col("scaffold").unique())
+        .iter_rows()
+    ):
+        log.warning(
+            f"DNA Fasta file '{vFile}' contains chromosomes or scaffolds not covered with the "
+            + f"gene position file: {bad_chromosome}"
+        )
+    sequencing_gaps = sequencing_gaps.filter(
+        pl.col("scaffold").is_in(vUniqueChrom)
+    )  # Do not process sequences that do not lie on a chromosome we want
+    sequencing_gaps = (
+        sequencing_gaps.join_where(
+            vInterGeneLocation,
+            pl.col("Chromosome Name") == pl.col("scaffold"),
+            pl.col("Start")
+            <= pl.col("start index"),  # intergenic region starts before gap start
+            pl.col("End")
+            >= pl.col("start index"),  # intergenic region ends after gap start
+            pl.col("Start")
+            <= pl.col("end index"),  # intergenic region starts before gap end
+            pl.col("End")
+            >= pl.col("end index"),  # intergenic region ends after gap end
+        )
+        .group_by(["scaffold", "start index", "end index"])
+        .agg(
+            seq_gaps_start=pl.col("Start").min(),
+            seq_gaps_end=pl.col("End").max(),
+        )
+        .with_columns(
+            seq_gaps_length=pl.col("seq_gaps_end") - pl.col("seq_gaps_start") + 1
+        )
     )
     # find the intergenic region of the gap, if the gap is present within a
     # gene model, get rid of the gap.
     _ = """
-        vSeqGaps = [vSeqGaps, cell(size(vSeqGaps,1),3)];
-        vSeqGaps_3 = str2num(char(vSeqGaps(:,3)));
-        vSeqGaps_4 = str2num(char(vSeqGaps(:,4)));
-        vSeqGaps_4 = vSeqGaps_3 + vSeqGaps_4 - 1;
-
-        vnvi = size(vSeqGaps,1);
-        vKillSeqGaps = false(vnvi,1); % Check which sequences should not be processed
-        vKillSeqGaps = vKillSeqGaps | ~strcmp(vSeqGaps(:,2),'N'); % Do not process all non N sequences.
-        % Do not process sequences that do not lie on a chromosome we want.
-        vHasGeneLocChrom = false(vnvi,1);
-        for vi = 1:size(vUniqueChrom,1)
-            vHasGeneLocChrom = vHasGeneLocChrom | strcmp(vSeqGaps(:,1),vUniqueChrom(vi,1));
-        end
-        vBadUniqueChrom = unique(vSeqGaps(~vHasGeneLocChrom,1));
-        for vi = 1:size(vBadUniqueChrom,1)
-            warning('DNA Fasta file ''%s'' contains chromosomes or scaffolds not covered with the gene position file: %s\n',
-                    vFile, char(vBadUniqueChrom(vi,1)));
-        end
-        vKillSeqGaps = vKillSeqGaps | ~vHasGeneLocChrom;
-        vSeqGaps = vSeqGaps(~vKillSeqGaps,:);
-        vSeqGaps_3 = vSeqGaps_3(~vKillSeqGaps,:);
-        vSeqGaps_4 = vSeqGaps_4(~vKillSeqGaps,:);
-        vnvi = size(vSeqGaps,1);
         vKillSeqGaps = false(vnvi,1); % Check which sequences should not be processed
         for vi =1:vnvi
             vChromID = find(strcmp(vUniqueChrom,vSeqGaps(vi,1)));
@@ -723,11 +424,9 @@ def annotate_sequencing_gaps(
                 vSeqGaps(vi,7) = cellstr(num2str(vSeqGapsEnd-vSeqGapsStart+1));
             end
         end
-        vSeqGaps = vSeqGaps(~vKillSeqGaps,:);
-    %     vSeqGaps_3 = vSeqGaps_3(~vKillSeqGaps,:);
-    %     vSeqGaps_4 = vSeqGaps_4(~vKillSeqGaps,:);
     end"""
-    # FIXME: only gaps which are in intergenic regions
+    # FIXME: validate logic:
+    # only gaps which are in intergenic regions
     # & indicate which intergenic region
     return sequencing_gaps
 
@@ -740,11 +439,13 @@ def get_sequencing_gaps(
 ) -> None:
     """
     ---------------------------------------------------------------------------
+
       Function that screens a DNA FASTA file for masked streches of DNA
       (masked by N).
 
-      Creates a _GAPOutput file from the FASTA file, then creates a
-      _GAPOutput_count.txt file by running analyze_plant_cluster_gap_file()
+      Creates a "..._GAPOutput" file from the FASTA file, then creates a
+      "..._GAPOutput_count.txt" file by running analyze_plant_cluster_gap_file()
+
     ---------------------------------------------------------------------------
     Args:
         vFile: FASTA file of the masked genome nucleotide sequences.
@@ -945,7 +646,7 @@ def get_MCL_clustering(
         "-out",
         f"{vProtein_sequence_FastaFile}.blastOUT",
         "-outfmt",
-        "'6 qseqid sseqid evalue bitscore length pident qstart qend sstart send'",
+        "6 qseqid sseqid evalue bitscore length pident qstart qend sstart send",
     ]
     if vParallelize > 1:
         command_for["blastp"].extend(["-num_threads", str(vParallelize)])
@@ -953,16 +654,15 @@ def get_MCL_clustering(
         "-f",
         "1,2,3",
         f"{vProtein_sequence_FastaFile}.blastOUT",
-        ">",
-        f"{vProtein_sequence_FastaFile}.MCLIN",
     ]
+    cut_output = f"{vProtein_sequence_FastaFile}.MCLIN"
     command_for["mcxload"] = [
         "-abc",
         f"{vProtein_sequence_FastaFile}.MCLIN",
         "--stream-mirror",
         "--stream-neg-log10",
         "-stream-tf",
-        "'ceil(200)'",
+        "ceil(200)",
         "-o",
         f"{vProtein_sequence_FastaFile}.MCLMATRIX",
         "-write-tab",
@@ -987,11 +687,16 @@ def get_MCL_clustering(
 
     for app in apps:
         log.info(f"{app_path[app]} {' '.join(command_for[app])}")
-        subprocess.run(
-            str(app_path[app]) + " " + " ".join(command_for[app]),
-            shell=True,
-            check=True,
-        )
+        if app == "cut":
+            with open(cut_output, "w") as f:
+                subprocess.run(
+                    [str(app_path[app])] + command_for[app], check=True, stdout=f
+                )
+        else:
+            subprocess.run(
+                [str(app_path[app])] + command_for[app],
+                check=True,
+            )
 
     return read_MCL_clustering_file(
         Path(
@@ -1416,7 +1121,7 @@ def map_PGDBs_to_conversion_file(
 
 
 def perform_clustering(
-    vGeneLocation: pl.DataFrame,
+    vGeneLocation: GeneLoc,
     vBiomG_E: Dict[Any, Any],
     vEnzMinForClusters: int,
     vKbRangeLD: int,
@@ -1442,12 +1147,12 @@ def perform_clustering(
     ---------------------------------------------------------------------------
 
     Args:
+        vGeneLocation: DataFrame about the gene location information,
+                        generated in PlantClusterFinder function.
         vMinStepSize: Minimal intervening gene size that should be computed
                       (default is 5).
         vMaxStepSize: Maximal intervening gene size that should be computed
                       (default is 20).
-        vGeneLocation: DataFrame about the gene location information,
-                        generated in PlantClusterFinder function.
         vBiomG_E: A dictionary describing which gene has at least one reaction
                   annotated in the pgdb (1, if no reaction 0)
         vEnzMinForClusters: Defines the minimum number of enyzmes that need to
@@ -1457,7 +1162,7 @@ def perform_clustering(
         vGeneRangeLD: Number of genes that space two genes from each other.
                       Genes that have more than this many intervening genes
                       between themare not called local duplicates.
-        vG_MCL: Mapping between the genes in the conversion-ID file and the
+        mcl_cluster_data: Mapping between the genes in the conversion-ID file and the
                 MCL-clustering file.
         vBiomG_G: Mapping between the Gene location file and the gene-IDs in the
                   conversion file.
@@ -1499,6 +1204,18 @@ def perform_clustering(
         vClusterBackgroundWrite = 1;
         vStepSize = 0;
         vBiom_Hypo = strncmp(vGeneLocation2.(char(vGeneLocation_Att(1,1))),'Hypo',4);
+    """
+
+    # continue_search = True
+    # cluster_write = True
+    # cluster_background_write = True
+    # step_size = 0
+
+    # clusters = ( pl.DataFrame())  #  Stepsize, start, end, number of enzymes, number of hypos
+    # clusters_background = ( pl.DataFrame())  # Size, number of enzymes, count, number of total
+    # note: hypothetical gene names start with "Hypo"
+
+    """
         while vStepSize <= vMinStepSize || vContinueSearch == 1
             % Get all clusters
             vi = 1;
@@ -1510,6 +1227,27 @@ def perform_clustering(
                 vStart = vi - 1 + find(vBiomG_E(vi:end,1),1,'first');
                 vEnd = vStart;
                 vAbolishCluster = 0;
+                """
+    for x in range(1):
+        abolish_cluster = False
+        start = x + vBiomG_E[0]
+        if start == 0:
+            abolish_cluster = True
+        else:
+            # search for neighbor_genes
+            neighbor_genes: List[Any] = []
+            pass
+
+        if not abolish_cluster and len(neighbor_genes) < vEnzMinForClusters:
+            abolish_cluster = True
+
+        def ld_is_not_a_problem(
+            gene_location: GeneLoc, neighbor_genes: List[int]
+        ) -> bool:
+            pass
+            return False
+
+        """
                 if size(vStart,1) == 0
                     vAbolishCluster = 1;
                     vStart = size(vBiomG_E,1) + 1;
@@ -1539,12 +1277,14 @@ def perform_clustering(
                         vAbolishCluster = 1;
                     end
                 end
-
+        """
+        if not abolish_cluster and ld_is_not_a_problem(vGeneLocation, neighbor_genes):
+            pass
+        """
                 if vAbolishCluster == 0
                     vLDisNOTaProblem = 0;
                     % Get rid of clusters that only contain LD
                     vEIDs = vStart+find(vBiomG_E(vStart:vEnd))-1;
-    %                 vEIDs_find = find(vEIDs);
                     % Test if they are encoded within kb range
                     vStart_kb = min([str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,2)))(vEIDs,1))); ...
                         str2num(char(vGeneLocation2.(char(vGeneLocation_Att(1,3)))(vEIDs,1)))]);
@@ -1703,7 +1443,7 @@ def compute_background(
 
       Function that lookes at all clusters that were found by the function
       f_perform_clustering(), and computes the background information for the
-      windowsizes of these clusters (e.g. a cluster has 4 enzymes and two non
+      window sizes of these clusters (e.g. a cluster has 4 enzymes and two non
       enzymes, then its size is 6. The function goes with a window size 6
       through the genome and checks how many windows exist with 0, 1, 2, ...,
       5, 6 enzymes. It then calculates the probability to see a cluster with
