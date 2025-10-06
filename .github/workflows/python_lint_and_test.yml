@@ -38,6 +38,7 @@ jobs:
         rye run isort --version
         rye run isort --profile black --filter-files --check src test || rye run isort --profile-black --filter-files --check src test -v
         echo "start fmt"
-        rye fmt --check
+        rye run ruff -V
+        rye fmt --check -q || rye fmt --check -v
         echo "start pytest"
         rye run pytest
