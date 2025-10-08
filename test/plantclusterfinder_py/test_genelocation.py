@@ -206,7 +206,7 @@ def test_introduce_hard_breaks(genelocation_obj):
 def test_insert_genes(genelocation_obj):
     print(genelocation_obj.data.head(10))
     test_genes = [
-        (f"TEST{i+1:02}", 50 + 1000 * i, 50 + 1000 * i, "test_scaffold", "-1")
+        (f"TEST{i + 1:02}", 50 + 1000 * i, 50 + 1000 * i, "test_scaffold", "-1")
         for i in range(500)
     ]
     gene_location = genelocation_obj.model_copy()
