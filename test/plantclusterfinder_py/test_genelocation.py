@@ -45,8 +45,18 @@ def test_remove_protein_transcript_info_from_genepositionfile(
     conversion = read_in_conversion_file(
         "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
     )
+    expected_columns = [
+        "Gene Name",
+        "Gene Start (bp)",
+        "Gene End (bp)",
+        "Chromosome Name",
+        "Strand",
+        "Transcript Name",  # added
+        "Protein Name",  # added
+    ]
     gene_location.remove_protein_transcript_info(conversion)
     assert 7 == len(gene_location.columns)
+    assert expected_columns == gene_location.columns
     assert 9_629 == len(gene_location)
 
     test_gene_location = t_gene_loc
@@ -95,9 +105,19 @@ def test_map_genelocation_to_conversion_file(genelocation_obj):
             "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
         )
     )
+    expected_columns = [
+        "Gene Name",
+        "Gene Start (bp)",
+        "Gene End (bp)",
+        "Chromosome Name",
+        "Strand",
+        "Transcript Name",  # added
+        "Protein Name",  # added
+    ]
     gene_location = genelocation_obj
     genelocation_obj.remove_protein_transcript_info(conversion)
     BiomG_G = gene_location.map_to_conversion_file(conversion.MapG)
+    assert expected_columns == gene_location.data.columns
     assert 9629 == len(BiomG_G)
 
 
@@ -180,6 +200,20 @@ def test_annotate_enzyme_info(genelocation_obj):
     genes_with_reactions = gene_location.annotate_enzyme_info(
         pgdb_conversions_dict, gene2rxn
     )
+    expected_columns = [
+        "Gene Name",
+        "Gene Start (bp)",
+        "Gene End (bp)",
+        "Chromosome Name",
+        "Strand",
+        "Transcript Name",
+        "Protein Name",
+        "pgdb_gene_id",  # added
+        "has_reaction",  # added
+        "pgdb_reaction_id",  # added
+        "EC-NUMBER",  # added
+    ]
+    assert expected_columns == gene_location.data.columns
     assert 9629 == len(genes_with_reactions)
     assert 2053 == len(list(filter(lambda x: x, genes_with_reactions.values())))
 
@@ -216,4 +250,43 @@ def test_insert_genes(genelocation_obj):
     )
     print(test_gene_df.head(10))
     gene_location.insert_genes(test_gene_df)
-    assert orig_gene_count + 500 == len(gene_location)
+    assert orig_gene_count + 500 == (gene_location)
+
+
+def test_compute_local_duplication(genelocation_obj):
+    from plantclusterfinder_py.cluster import (
+        read_in_conversion_file,
+        read_MCL_clustering_file,
+    )
+
+    conversion = read_in_conversion_file(
+        "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
+    )
+
+    mcl_cluster_data = read_MCL_clustering_file(
+        "./csubellipsoidea/MCL_clustering_expected_results/dump.CsubellipsoideaC_169_227_v2.0.protein.pcf13.mci.I20",
+        "./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa",
+        conversion,
+        False,  # do not remove proteins
+    )
+    gene_location = genelocation_obj
+    gene_location.remove_protein_transcript_info(conversion)
+    local_duplication = gene_location.compute_local_duplication(
+        mcl_cluster_data, {}, 10000, 5
+    )
+    expected_columns = [
+        "Gene Name",
+        "Gene Start (bp)",
+        "Gene End (bp)",
+        "Chromosome Name",
+        "Strand",
+        "Transcript Name",
+        "Protein Name",
+        "neighbor_genes",
+        "mcl_genes",
+        "mcl_clusters",
+        "is_locally_duplicated",
+    ]
+    print(local_duplication.columns)
+    assert expected_columns == local_duplication.columns
+    assert 848 == local_duplication.filter(pl.col("is_locally_duplicated")).height

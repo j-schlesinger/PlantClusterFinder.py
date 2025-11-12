@@ -280,30 +280,7 @@ def test_introduce_hypo_genes(genelocation_obj):
 
 
 # Part 15
-def test_compute_local_duplication(genelocation_obj):
-    from plantclusterfinder_py.cluster import (
-        compute_local_duplication,
-        read_in_conversion_file,
-        read_MCL_clustering_file,
-    )
-
-    conversion = read_in_conversion_file(
-        "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
-    )
-
-    mcl_cluster_data = read_MCL_clustering_file(
-        "./csubellipsoidea/MCL_clustering_expected_results/dump.CsubellipsoideaC_169_227_v2.0.protein.pcf13.mci.I20",
-        "./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa",
-        conversion,
-        False,  # do not remove proteins
-    )
-    gene_location = genelocation_obj
-    gene_location.remove_protein_transcript_info(conversion)
-    local_duplication = compute_local_duplication(
-        gene_location, mcl_cluster_data, {}, 10000, 5
-    )
-    print(local_duplication)
-    assert 848 == local_duplication.filter(pl.col("locally_duplicated")).height
+# in genelocation test
 
 
 # Part 16

@@ -10,7 +10,6 @@ from scipy.io import loadmat, savemat  # type: ignore
 
 from plantclusterfinder_py.cluster import (
     annotate_sequencing_gaps,
-    compute_local_duplication,
     get_MCL_clustering,
     get_metabolic_domains,
     introduce_hypo_genes,
@@ -165,8 +164,7 @@ def main() -> None:
              Bo Xue, December 2017
 
     """
-    print(main.__doc__)
-    log = logging.getLogger()
+    # print(main.__doc__)
     help_epilog = """ Outputs:
          None (Two files are generated: vGeneOutputFile, containing all the
               information about genes and vClusterOutputFile, containing all
@@ -278,12 +276,11 @@ def main() -> None:
         nargs="+",
         default=["UNIQUE-ID", "ACCESSION-1", "ACCESSION-2"],
         type=str,
-        action="extend",
         help="""
         Needs to be followed by a list of Attributes in
          genes.dat. Defines where gene ID information
          should be searched for.
-         Default is 'UNIQUE-ID', 'ACCESSION-1', 'ACCESSION-2'""",
+         Default is "UNIQUE-ID, ACCESSION-1, ACCESSION-2" """,
     )
     parser.add_argument(
         "--MCLClusterFile",
@@ -324,11 +321,11 @@ def main() -> None:
     parser.add_argument(
         "--MaxInterGeneDist",
         type=int,
-        default=-1,
+        default=None,
         help="""
         Needs to be followed by a number. Maximal
          intergenic distance ( in bp) that still can be
-         crossed by a gene cluster. (default is -1, thus
+         crossed by a gene cluster. (default is None, thus
          inactive).""",
     )
     parser.add_argument(
@@ -346,7 +343,7 @@ def main() -> None:
     parser.add_argument(
         "--PercentileForMaxInterGeneDist",
         type=int,
-        default=-1,
+        default=None,
         help="""
         Needs to be followed by a number.
          Calculates the maximal intergenic
@@ -365,7 +362,6 @@ def main() -> None:
         "--SeqGapSizesChromBreak",
         type=int,
         nargs="+",
-        action="extend",
         default=[],
         help="""
         Needs to be followed by a list of numbers.
@@ -504,7 +500,6 @@ def main() -> None:
         "--PGDBIdsToMap",
         type=str,
         default="G",
-        choices=["G", "T", "P"],
         help="""
         Needs to be followed by a string. Can contain the
          Letters G and/or T and/or P. In that case (the pgdb
@@ -621,25 +616,32 @@ def main() -> None:
 
     verbose_level = args.Verbose
     if verbose_level == 1:
-        log.setLevel(logging.INFO)
+        logging.basicConfig(level=logging.INFO)
+        log = logging.getLogger()
+        log.warning("Log verbosity set to 1 (INFO)")
     elif verbose_level >= 2:
-        log.setLevel(logging.DEBUG)
+        logging.basicConfig(level=logging.DEBUG)
+        log = logging.getLogger()
         if verbose_level > 2:
             log.warning("Maximum verbosity exceeded, defaulting to 2 (DEBUG)")
+        else:
+            log.warning("Log verbosity set to 2 (DEBUG)")
+    else:
+        log = logging.getLogger()
 
-    vMD_to_annotate = args.md
+    list_of_MD_to_annotate = args.md
     # Verify is directory
-    vPGDB_FlatFileFolder = os.path.dirname(args.pgdb)
+    vPGDB_FlatFileFolder = Path(os.path.dirname(args.pgdb))
     # Verify is file
     vMD_reactions_File = args.rmdf
     vProtein_sequence_FastaFile = args.psf
     vGeneTranscriptProtein_mapping_File = args.gtpf
     vGeneLocation_File = args.glof
-    vDNA_FastaFile = args.dnaf
+    vDNA_FastaFile = Path(args.dnaf)
     vSignatureTailorFile = args.sitf
     # Verify Writable
-    vGeneOutputFile = args.gout
-    vClusterOutputFile = args.cout
+    gene_output_path = Path(args.gout)
+    vClusterOutputFile = Path(args.cout)
 
     vGenesDat_GeneInfo = args.GenesDat_GeneInfo
     vHypoGenePercentile = args.HypoGenePercentile  # default 5
@@ -648,7 +650,7 @@ def main() -> None:
     vPercentileForMaxInterGeneDist = args.PercentileForMaxInterGeneDist
     vMaxInterGeneDistByMedian = args.MaxInterGeneDistByMedian
     vSeqGapSizesChromBreak = args.SeqGapSizesChromBreak
-    vTopPercentClusters = args.TopPercentClusters
+    top_percent_clusters = args.TopPercentClusters
     vMinStepSize = args.MinStepSize
     vMaxStepSize = args.MaxStepSize
     vCriterion = args.Criterion
@@ -687,7 +689,7 @@ def main() -> None:
         vSignatureTailorFile: "Signature & Tailoring File (-sitf)",
     }
     test_writable_file = {
-        vGeneOutputFile: "Gene Output file (-gout)",
+        gene_output_path: "Gene Output file (-gout)",
         vClusterOutputFile: "Cluster Output file (-cout)",
     }
     log.info("Check files for reading and writing")
@@ -707,7 +709,7 @@ def main() -> None:
         except OSError as e:
             error_message.append(f"Cannot read {err} {filename} because of {e}.")
     test_writable_file = {
-        vGeneOutputFile: "Gene Output file (-gout)",
+        gene_output_path: "Gene Output file (-gout)",
         vClusterOutputFile: "Cluster Output file (-cout)",
     }
     for filename, err in test_writable_file.items():
@@ -770,7 +772,7 @@ def main() -> None:
     if vPartFinished < 2:
         log.info("Read in pgdb flat files")
         # ( vGenes_all, _, vReactions_all, vReactions_all_Att, vG2R,)
-        vG2R = map_pgdb_reactions_to_genes(vPGDB_FlatFileFolder)
+        genes_to_reactions = map_pgdb_reactions_to_genes(vPGDB_FlatFileFolder)
         vPartFinished = 2
         if vTempsaves == 1:
             vPartFinished = _tempsaves(locals())["vPartFinished"]
@@ -780,10 +782,10 @@ def main() -> None:
         log.info("Read in and map metabolic domains")
         # (vRxnMetaDom, vRxnMetaDom_Att, vR_MD) =
         annotated_metabolic_domains = get_metabolic_domains(
-            vMD_reactions_File, vMD_to_annotate
+            vMD_reactions_File, list_of_MD_to_annotate
         )
         # Match PGDBs to MDs
-        vRpgdb_Rmd = match_PGDBs_to_MDs(vG2R, annotated_metabolic_domains)
+        vRpgdb_Rmd = match_PGDBs_to_MDs(genes_to_reactions, annotated_metabolic_domains)
         #    vG2R.Gene2Rxn, vR_MD, vG2R.ReactionsAll,  # vReactions_all, vRxnMetaDom,)
         vPartFinished = 3
         if vTempsaves == 1:
@@ -794,7 +796,7 @@ def main() -> None:
         log.info(["Label reactions with signature and tailoring information"])
         # ( vSTClasses, vSigOrTail, vR_STClasses, vR_SigOrTail,)
         reaction_labels = label_reactions_with_sig_and_tail(
-            vG2R.ReactionsAll, vSignatureTailorFile
+            genes_to_reactions.ReactionsAll, vSignatureTailorFile
         )
         vPartFinished = 4
         if vTempsaves == 1:
@@ -803,10 +805,10 @@ def main() -> None:
     # % Map PGDB genes to Maping genes
     if vPartFinished < 5:
         log.info("Map pgdb genes to conversion file gene-IDs")
-        vGenesDat_GeneInfo = vGenesDat_GeneInfo.replace("-", "_").upper()
-        vMapG_Gpgdb = map_PGDBs_to_conversion_file(
+        vGenesDat_GeneInfo = [info.strip().upper() for info in vGenesDat_GeneInfo]
+        map_genes_to_pgdb_genes = map_PGDBs_to_conversion_file(
             conversion,
-            vG2R.GenesAll,
+            genes_to_reactions.GenesAll,
             vGenesDat_GeneInfo,
             vPGDBIdsToMap,
         )
@@ -865,7 +867,7 @@ def main() -> None:
         vPartFinished = 7
         if vTempsaves == 1:
             vPartFinished = _tempsaves(locals())["vPartFinished"]
-        vGeneLocation = locals().pop("vGeneLocation")
+        gene_location = locals().pop("gene_location")
 
     # % Map Biomartfile to Gene Map
     if vPartFinished < 8:
@@ -898,23 +900,14 @@ def main() -> None:
         log.info(
             "Calculate size of sequence gap that should be populated by hypothetical genes"
         )
-        vGeneLengthHypoMin = math.ceil(
-            (vGeneLocation["gene end"] - vGeneLocation["gene start"]).quantile(
-                vHypoGenePercentile / 100.0
+        possibly_none_quantile = (
+            gene_location.data["Gene End (bp)"] - gene_location.data["Gene Start (bp)"]
+        ).quantile(vHypoGenePercentile / 100.0)
+        if possibly_none_quantile is None:
+            raise Exception(
+                "Sequence gap calculation failed: quantile calculation returned None. Check HypoGenePercentile"
             )
-        )
-        """
-        % get the 5th percentile length of genes
-        vGeneLengthHypoMin = ceil(
-            prctile(
-                int(
-                    char(vGeneLocation2(charvGeneLocation_Att[1, 3])[:, 1])
-                    - int(vGeneLocation2char(vGeneLocation_Att[1, 2]))[:, 1]
-                ),
-                vHypoGenePercentile, % # default 5
-            )
-        )
-        """
+        vGeneLengthHypoMin = math.ceil(possibly_none_quantile)
         vPartFinished = 10
         if vTempsaves == 1:
             vPartFinished = _tempsaves(locals())["vPartFinished"]
@@ -946,33 +939,34 @@ def main() -> None:
 
         # % Introduce Hardbreaks (split chromosomes)
     if vPartFinished < 12:
-        if vMaxSeqGapSize != -1:
+        if vMaxSeqGapSize is not None:
             log.info(
                 "Prevent clusters spanning sequencing gaps longer or equal than %ibp",
                 vMaxSeqGapSize,
             )
         if len(vSeqGapSizesChromBreak) != 0:
-            vNumbers = ", ".join(vSeqGapSizesChromBreak)
+            log.debug("SeqGapSizesChromBreak %s", vSeqGapSizesChromBreak)
+            vNumbers = ", ".join([str(x) for x in vSeqGapSizesChromBreak])
             log.info(
                 "Prevent clusters spanning sequencing gaps of length %sbp",
                 vNumbers,
             )
-        if vMaxInterGeneDist != -1:
+        if vMaxInterGeneDist is not None:
             log.info(
                 "Prevent clusters spanning intergenic distances longer or equal than %ibp",
                 vMaxInterGeneDist,
             )
-        if vPercentileForMaxInterGeneDist != -1:
+        if vPercentileForMaxInterGeneDist is not None:
             log.info(
                 "Prevent clusters spanning the top %i%% intergenic distances",
                 vPercentileForMaxInterGeneDist,
             )
-        if vMaxInterGeneDistByMedian != -1:
+        if vMaxInterGeneDistByMedian is not None:
             log.info(
                 "Prevent clusters spanning intergenic distances longer or equal than %i * the median of gene sizes",
                 vMaxInterGeneDistByMedian,
             )
-            vGeneLocation.introduce_hard_breaks(
+            gene_location.introduce_hard_breaks(
                 vSeqGaps,
                 vMaxSeqGapSize,
                 vMaxInterGeneDist,
@@ -999,8 +993,8 @@ def main() -> None:
                 hard_breaks2 = introduce_hypo_genes(
                     # hard_breaks1,
                     #  vGeneLengthHypoMin,
-                    vGeneLocation,
-                    vGeneLocation.find_intergenic_regions(),
+                    gene_location,
+                    gene_location.find_intergenic_regions(),
                     vInsertHypos,
                     vHypoAmount,
                 )
@@ -1012,9 +1006,9 @@ def main() -> None:
     # % Annotate Biomartfile with Enzymes (use Gene-protein mapping)
     if vPartFinished < 14:
         log.info("Annotate gene location file with enzyme information")
-        vBiomG_E = vGeneLocation.annotate_enzyme_info(
-            vMapG_Gpgdb,
-            vG2R,
+        vBiomG_E = gene_location.annotate_enzyme_info(
+            map_genes_to_pgdb_genes,
+            genes_to_reactions,
         )
         log.debug(
             "Number of genes in location file identified as enzymes: %i",
@@ -1028,8 +1022,7 @@ def main() -> None:
     if vPartFinished < 15:
         log.info("Compute local gene duplication per gene location")
         # (vG_LD, vG_LD_ClustIDs) =
-        local_duplications = compute_local_duplication(
-            vGeneLocation,
+        gene_location.compute_local_duplication(
             vG_MCL,
             vBiomG_G,
             vKbRangeLD,
@@ -1044,7 +1037,7 @@ def main() -> None:
         log.info("Perform clustering")
         # ( vClusters, vClusterBackground, vFinalStepsize, vStepSize_Max,)
         clusters = perform_clustering(
-            vGeneLocation,
+            gene_location,
             vG_MCL,
             vEnzMinForClusters,
             vKbRangeLD,
@@ -1059,8 +1052,8 @@ def main() -> None:
 
     # % Perform cutoff
     if vPartFinished < 17:
-        log.info("Perform cuttof at %i%%", vTopPercentClusters)
-        vClusters_Top = perform_cutoff(clusters, vTopPercentClusters)
+        log.info("Perform cuttof at %i%%", top_percent_clusters)
+        vClusters_Top = perform_cutoff(clusters, top_percent_clusters)
         vPartFinished = 17
         if vTempsaves == 1:
             vPartFinished = _tempsaves(locals())["vPartFinished"]
@@ -1069,21 +1062,19 @@ def main() -> None:
     if vPartFinished < 18:
         log.info("Produce GeneOutputFile")
         write_gene_output(
-            vGeneOutputFile,
-            vGeneLocation,
+            gene_output_path,  # from args
+            gene_location,
             clusters,
-            vTopPercentClusters,
-            vMD_to_annotate,
-            vG2R,
-            vMapG_Gpgdb,
-            vBiomG_G,
+            top_percent_clusters,  # from args
+            list_of_MD_to_annotate,  # from args
+            genes_to_reactions,
+            map_genes_to_pgdb_genes,
             vBiomG_E,
-            local_duplications,
             vClusters_Top,
             annotated_metabolic_domains,
             vRpgdb_Rmd,
             reaction_labels,
-            vOutputType,
+            vOutputType,  # from args
         )
         vPartFinished = 18
         if vTempsaves == 1:
@@ -1094,7 +1085,7 @@ def main() -> None:
         log.info("Produce ClusterOutputFile")
         write_cluster_output(
             vClusterOutputFile,
-            vGeneLocation,
+            gene_location,
             clusters,
             vClusters_Top,
             vOutputType,

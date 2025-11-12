@@ -5,7 +5,11 @@ from typing import Any, Dict, List, Optional
 import polars as pl
 from pydantic import BaseModel
 
-from plantclusterfinder_py.cluster_datatypes import Conversion, GenesToReactions
+from plantclusterfinder_py.cluster_datatypes import (
+    Conversion,
+    GenesToReactions,
+    MclClusterData,
+)
 
 log = logging.getLogger(__name__)
 
@@ -238,10 +242,10 @@ class GeneLoc(BaseModel):
         if self._converted:
             log.debug("Gene Location already mapped to Conversion, returning early")
             return
-        vGeneLocation = self.data.join(conversion.df, on="Gene Name")
+        gene_location = self.data.join(conversion.df, on="Gene Name")
         if (
             # This statement returns True if duplicate keys exist in "Gene Name","Protein Name",or "Transcript Name"
-            vGeneLocation.select(
+            gene_location.select(
                 pl.col(["Gene Name", "Protein Name", "Transcript Name"])
                 .is_unique()
                 .not_()
@@ -254,10 +258,10 @@ class GeneLoc(BaseModel):
             raise Exception(
                 "Gene / Transcript / Protein location file (Gene position file) matches several entries to more than one gene.\n"
                 + f"Please clean up entries for {
-                    vGeneLocation.group_by('Gene Name').len()
+                    gene_location.group_by('Gene Name').len()
                 } in your input files.\n",
             )
-        self._data = vGeneLocation
+        self._data = gene_location
         self._converted = True
 
     def __repr__(self) -> str:
@@ -305,8 +309,6 @@ class GeneLoc(BaseModel):
 
         ---------------------------------------------------------------------------
         Args:
-            vGeneLocation: DataFrame about the gene location information,
-                            generated in plantclusterfinder function.
             vMapG: unique list of gene ids stored in the conversion file.
 
         Returns:
@@ -365,7 +367,9 @@ class GeneLoc(BaseModel):
         protein_ids = pl.DataFrame({"Gene Name": vProtein_IDs})
         self._data = self._data.join(protein_ids, on="Gene Name")
         log.debug(
-            f"Gene Location data filtered from {original_gene_count} to {self._data.height} rows"
+            f"Gene Location data filtered from {original_gene_count} to {
+                self._data.height
+            } rows"
         )
         return self.BiomG_G
 
@@ -441,7 +445,7 @@ class GeneLoc(BaseModel):
 
     def annotate_enzyme_info(
         self,
-        MapG_Gpgdb: Dict[str, str],
+        MapG_Gpgdb: Dict[str, List[str]],
         Gene2Rxn: GenesToReactions,
     ) -> Dict[str, bool]:
         """
@@ -474,8 +478,42 @@ class GeneLoc(BaseModel):
                     len(self._data)
                 } genes"
             )
+            # get gene IDs for PGDB data
+            self._data = self._data.with_columns(
+                pgdb_gene_id=pl.col("Protein Name").replace_strict(
+                    {x[1].pop(0): x[0] for x in MapG_Gpgdb.items()},
+                    default=None,
+                )
+            )
+            # ID genes with any reactions
             self._data = self._data.with_columns(
                 has_reaction=pl.col("Protein Name").is_in(genes_with_reactions)
+            )
+            # Get reaction ID(s) for genes
+            self._data = self._data.with_columns(
+                pgdb_reaction_id=pl.col("pgdb_gene_id").replace_strict(
+                    Gene2Rxn.Gene2Rxn, default=None
+                )
+            )
+            rxn_2_gene = []
+            for gene, reactions in Gene2Rxn.Gene2Rxn.items():
+                for rxn in reactions:
+                    rxn_2_gene.append({"Reaction": rxn, "Gene": gene})
+            rxn_2_gene_df = pl.DataFrame(rxn_2_gene)
+            rxn_2_gene_df = rxn_2_gene_df.join(
+                Gene2Rxn.ReactionsAll,
+                left_on="Reaction",
+                right_on="UNIQUE-ID",
+                how="left",
+            )
+            gene_2_EC = rxn_2_gene_df.group_by("Gene").agg(
+                pl.col("EC-NUMBER").flatten()
+            )
+            self._data = self._data.join(
+                gene_2_EC,
+                left_on="pgdb_gene_id",
+                right_on="Gene",
+                how="left",
             )
             self._annotated = True
         return {
@@ -611,6 +649,132 @@ class GeneLoc(BaseModel):
     def insert_genes(self, other_genes: pl.DataFrame):
         # modifies in place and returns DataFrame
         _ = self._data.extend(other_genes)
+
+    def compute_local_duplication(
+        self,
+        mcl_cluster_data: MclClusterData,
+        vBiomG_G: Dict[Any, Any],
+        vKbRangeLD: int,
+        vGeneRangeLD: int,
+    ) -> pl.DataFrame:
+        """
+        ---------------------------------------------------------------------------
+
+        Function that computes wheather a gene is locally duplicated, and if so,
+        which MCL cluster it is associated with.
+
+        ---------------------------------------------------------------------------
+
+        Args:
+            gene_location: DataFrame about the gene location information,
+                            generated in PlantClusterFinder function.
+            mcl_cluster_data : Mapping between the genes in the conversion-ID file and the
+                    MCL-clustering file.
+            vBiomG_G: Mapping between the Gene location file and the gene-IDs in the
+                    conversion file.
+            vKbRangeLD: Genes that are encoded more than this bp apart, are not
+                        called local duplicates.
+            vGeneRangeLD: Genes that have more than this many intervening genes
+                        between themare not called local duplicates.
+
+        Returns:
+            DataFrame with the columns:
+
+            - GeneID: "Gene Name" in GeneLocation
+            - is_locally_duplicated: A vector of length of the number of Genes in vGeneLocation2,
+                being True if the gene was considered to be locally duplicated (a
+                gene was within vKbRangeLD bp distance and not spaced more than
+                with vGeneRangeLD genes from another gene with the same MCL
+                clustering given by mcl_cluster_data).
+            - ClusterIds: The MCL clusters of the gene (list)
+        """
+        log.debug("Computing local duplication")
+
+        # FIXME: This is glacially slow (issue #26)
+
+        # For each gene G
+        # Get genes which appear in the same cluster as key gene
+        # mcl_df
+        mcl_clusts = set(
+            [y for x in mcl_cluster_data.Gene2MCLClusters.values() for y in x]
+        )
+        mcl_c2g = dict()
+        for cluster in mcl_clusts:
+            acc = []
+            for gene, mcl in mcl_cluster_data.Gene2MCLClusters.items():
+                if cluster in mcl:
+                    acc.append(gene)
+            mcl_c2g[cluster] = acc
+        mcl_g2g = dict()
+        for gene, mcl in mcl_cluster_data.Gene2MCLClusters.items():
+            acc = []
+            for cluster in mcl:
+                acc.extend(mcl_c2g[cluster])
+            mcl_g2g[gene] = list(set(acc))
+        mcl_df = pl.from_dicts(
+            [
+                {
+                    "Gene Name": k,
+                    "mcl_genes": [x for x in v if x != k],
+                    "mcl_clusters": mcl_cluster_data.Gene2MCLClusters.get(k, []),
+                }
+                for k, v in mcl_g2g.items()
+            ]
+        )
+
+        # For each gene G
+        # find genes G_i from -GeneRangeLD to GeneRangeLD (excluding G_0, which would just be G)
+        # only consider genes within vKbRangeLd of G
+        # nieghbor_genes
+        prev_genes: list[pl.Row] = []  # rows from -GeneRangeLD to GeneRangeLD
+        next_genes: list[pl.Row] = []
+        current_gene = None
+        # Collection of genes that surround the key gene
+        neighbor_genes: Dict[str, list[str]] = dict()
+        for row in self.data.iter_rows():
+            next_genes.append(row)
+            if len(next_genes) > vGeneRangeLD:
+                if current_gene is None:
+                    current_gene = next_genes.pop(-1)
+                else:
+                    prev_genes.append(current_gene)
+                    current_gene = next_genes.pop(-1)
+            if len(prev_genes) > vGeneRangeLD:
+                prev_genes.pop(-1)
+            if current_gene is None:
+                continue
+            prev_genes_filtered: filter[pl.Row] = filter(
+                lambda x: (x[2] - current_gene[1]) < vKbRangeLD,
+                prev_genes,  # prev_genes[2] is gene end
+            )
+            next_genes_filtered: filter[pl.Row] = filter(
+                lambda x: current_gene[2] - x[1] < vKbRangeLD,
+                next_genes,  # next_genes[1] is gene start
+            )
+            neighbor_genes[current_gene[0]] = list(prev_genes_filtered) + list(
+                next_genes_filtered
+            )
+        neighbor_df = pl.from_dicts(
+            [
+                {"Gene Name": k, "neighbor_genes": [x[0] for x in v if x != k]}
+                for k, v in neighbor_genes.items()
+            ]
+        )
+
+        # Using the above datasets
+        # see if mcl_df genes are in neighbor_genes
+        # and mark G as locally duplicated if
+        #  any G_i has the same MCL cluster as G
+        is_locally_duplicated = neighbor_df.join(mcl_df, on="Gene Name").with_columns(
+            is_locally_duplicated=pl.col("neighbor_genes")
+            .list.set_intersection("mcl_genes")
+            .list.len()
+            > 0,
+        )
+        self._data = self.data.join(
+            is_locally_duplicated, on="Gene Name", how="left"
+        ).with_columns(pl.col("is_locally_duplicated").fill_null(False))
+        return self.data
 
 
 # Example usage

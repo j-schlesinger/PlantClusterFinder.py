@@ -26,6 +26,7 @@
               llvmPackages.libclang
               pkg-config
               #(python-bin.selectLatestNightlyWith ( toolchain: toolchain.default.override { extensions = [ "python-analyzer" ]; } ))
+              blast
             ];
 
             shellHook = ''

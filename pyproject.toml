@@ -1,9 +1,9 @@
 [project]
 name = "plantclusterfinder-py"
-version = "0.1.0"
-description = "Add your description here"
+version = "2.0.0"
+description = "Tool to find biosynthetic gene clusters in plants."
 authors = [
-    { name = "jschlesi", email = "jschlesi@nig.ac.jp" }
+    { name = "Jason Schlesinger", email = "jschlesi@nig.ac.jp" }
 ]
 dependencies = [
     "scipy>=1.12.0",
