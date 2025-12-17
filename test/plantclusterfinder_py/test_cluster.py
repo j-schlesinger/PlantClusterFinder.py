@@ -356,7 +356,7 @@ def test_perform_clustering(genelocation_obj):
     )
     assert 3 == clusters.FinalStepSize
     assert 5 == clusters.MaxStepSize
-    assert 7996 == clusters.ClusterMeta.height
+    assert 1672 == clusters.ClusterMeta.height
     assert 34 == clusters.ClusterBackground.height
 
 

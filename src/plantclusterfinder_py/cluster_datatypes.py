@@ -1,9 +1,10 @@
-from typing import Any, Optional
+import logging
+from typing import Any, List, Optional
 
 import polars as pl
 from pydantic import BaseModel
 
-# import numpy as np
+log = logging.getLogger(__name__)
 
 
 class ReactionLabels(BaseModel):
@@ -151,7 +152,8 @@ class Clusters(BaseModel):
         - gene end
         - number of enzymes
         - number of non-enzymes
-        - number of hypothetical genes"""
+        - number of hypothetical genes
+        - top_cluster (if perform_cutoff is run)"""
     ClusterBackground: pl.DataFrame  # Density information about the genome
     """Density information about the genome
         - window size
@@ -162,3 +164,47 @@ class Clusters(BaseModel):
     """step size chosen by criterion"""
     MaxStepSize: int
     """maximal step size computed"""
+
+    def perform_cutoff(self, vTopPercentClusters: int) -> List[bool]:
+        """
+        ---------------------------------------------------------------------------
+
+        Function that (given clusters and a background density information of a
+        genome) calculates whether the clusters are within the top n% of enzymes
+        dense clusters.
+
+        ---------------------------------------------------------------------------
+
+        Args:
+            clusters: Cluster Information (stepsize, chromosome id, gene start,
+                    gene end, number of enzymes) and
+                    Density information about the genome (window size,
+                    number of enzymes, Occurrence of windowsize with
+                    this many enzymes in the genome, occurence of
+                    this windowsize in the genome, Frequency of seeing
+                    a windowsize of this size with at least as many
+                    enzymes in the genome)
+            vTopPercentClusters: Clusters are labeled as being in the top n% if
+                                they are within this top n% of enzyme dense
+                                clusters compared to the background.
+
+        Returns:
+            List with size Number of Clusters. It is zero if
+                the density of the cluster is above or the same as given
+                by the input argument vTopPercentClusters*100.
+        """
+        log.debug(f"Perform cutoff for clusters in the top {vTopPercentClusters}%")
+        cluster_meta_in_top = self.ClusterMeta.join(
+            self.ClusterBackground.with_row_index("cluster_index"),
+            left_on=["step_size", "enzyme_count"],
+            right_on=["window_size", "enzyme_count"],
+        ).select(
+            pl.col("cluster_index"),
+            top_percent_clusters=pl.col("winzyme_frequency")
+            >= vTopPercentClusters / 100,
+        )
+        self.ClusterMeta = self.ClusterMeta.with_row_index("cluster_index").join(
+            cluster_meta_in_top, "cluster_index", how="left"
+        )
+
+        return cluster_meta_in_top["top_percent_clusters"].to_list()

@@ -250,7 +250,7 @@ def test_insert_genes(genelocation_obj):
     )
     print(test_gene_df.head(10))
     gene_location.insert_genes(test_gene_df)
-    assert orig_gene_count + 500 == (gene_location)
+    assert orig_gene_count + 500 == len(gene_location)
 
 
 def test_compute_local_duplication(genelocation_obj):

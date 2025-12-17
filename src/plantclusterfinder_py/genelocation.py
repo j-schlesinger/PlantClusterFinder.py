@@ -101,6 +101,7 @@ class GeneLoc(BaseModel):
                - gene end (bp)
                - chromosome name
                - strand
+               - hypothetical
         """
         super().__init__(**input)
         log.debug(f"Reading TSV f{input['file_path']} to get gene location data.")
@@ -125,6 +126,7 @@ class GeneLoc(BaseModel):
             log.warning(
                 "There are duplicate gene records, typical of transcript read ingestion. Please run consolidate_gene_info() to de-duplicate"
             )
+        self._data = self.data.with_columns(Hypothetical=pl.lit(False))
 
         log.debug(f"Read {self._data.height} genes from Gene Location file")
 

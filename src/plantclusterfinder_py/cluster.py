@@ -161,7 +161,7 @@ def introduce_hypo_genes(
             ("Strand", pl.String),
         ),
         orient="row",
-    )
+    ).with_columns(Hypothetical=pl.lit(True))
 
     gene_location.insert_genes(hypo_gene_df)
     log.debug(f"Inserted {len(hypo_gene_df)} hypothetical genes")
@@ -1073,6 +1073,7 @@ def perform_clustering(
         - **StepSize_Max**: Maximal stepsize that was computed.
     """
     log.debug("Performing clustering")
+    final_step_size = 0
     continue_search = True  # flag if search should continue
     clusters = []  # array of cluster identifiers
     cluster_tuple = namedtuple(
@@ -1099,7 +1100,7 @@ def perform_clustering(
 
     # get rid of clusters that only contain Local Duplicates
 
-    def ld_is_not_a_problem(geneLocation: GeneLoc, start: int, end: int) -> bool:
+    def ld_is_not_a_problem(cluster_genes: pl.DataFrame, start: int, end: int) -> bool:
         """
         Test if genes between start and end index are all local duplicates.
         Local duplicates must be within a provided range (vKbRangeLD) and
@@ -1107,9 +1108,6 @@ def perform_clustering(
         """
         if end is None:
             return False
-        cluster_genes = geneLocation.data.with_row_index().filter(
-            (pl.col("index") > start) & (pl.col("index") <= end)
-        )  # [start:end]
         if cluster_genes.height == 0:
             return False
         # LD is not a problem if genes are over vKBRangeLD apart
@@ -1122,9 +1120,7 @@ def perform_clustering(
         # LD is not a problem if "they are encoded within gene range"
         # line 3387 from matlab - count of non-hypothetical genes
         if (
-            cluster_genes.filter(
-                pl.col("Gene Name").str.starts_with("Hpythoteical_gene_").not_()
-            ).height
+            cluster_genes.filter(pl.col("Hypothetical").not_()).height
             >= vGeneRangeLD + 2
         ):
             return True
@@ -1147,39 +1143,67 @@ def perform_clustering(
             return True
         return False
 
+    gene_count = len(vGeneLocation)
+    # is there a way to make this search an expression?
     while step_size <= vMinStepSize or continue_search:  # for each valid step size
-        for i in range(len(vGeneLocation)):  # for each gene
+        cluster_starts_df = (
+            vGeneLocation.data.with_row_index("index")
+            .select(
+                pl.col("index").alias("start"),
+                pl.col("Chromosome Name"),
+                pl.col("has_reaction"),
+                enzyme_count=pl.when(pl.col("has_reaction"))
+                .then(1)
+                .otherwise(0)
+                .sum()
+                .rolling(index_column="index", period=f"{step_size}i"),
+            )
+            .filter(
+                pl.col("has_reaction")  # start is enzyme
+                # & pl.col("enzyme_count") >= 2  # another enzyme in search range
+            )
+        )
+        cluster_starts_count = len(cluster_starts_df)
+        log.debug(
+            f"Found {cluster_starts_count} cluster starts for step size {step_size}"
+        )
+        for i, gene in enumerate(cluster_starts_df.iter_rows()):
+            # gene has start index and start chromosome
+            start, chrom_start, *_ = gene
             log.debug(
-                "Potential Gene Start %i of %i (step size %i)",
+                "Potential Gene Start %i (index: %i) of %i starts, %i genes (step size %i)",
                 i,
-                len(vGeneLocation),
+                start,
+                gene_count,
+                cluster_starts_count,
                 step_size,
             )
-            # index of next enzyme in vGeneLocation.data[i:]
-            start: int = (
-                vGeneLocation.data.with_row_index()
-                .filter((pl.col("index") >= i) & (pl.col("has_reaction")))
-                .select(pl.first("index"))["index"][0]
-            )
             end: int = start
-            abolish_cluster = False  # flag if the cluster should be followed
             if start is None:
                 break  # no more enzymes
-            # chromosome at start
-            chrom_start = vGeneLocation.data["Chromosome Name"][start]
             # all genes in chrom_start chromosome
             chromosome_criteria = pl.col("Chromosome Name") == chrom_start
 
-            # find the end
+            # find the end index
+            # - search from end to end+step_size
+            # - IF there are enzymes in that range on chromosome
+            # - THEN that's the new end and continue the search
+            # - ELSE keep established end
+            # FIXME: possibly a way to collapse search?
             stop_search_end = False
             while not stop_search_end:
                 if end is None:
                     log.error("type of end is none")
                     raise Exception("Cluster search end was type None")
-                end_s = end + 1  # stop search
+                end_s = end  # end search start
                 # stop search step size
-                end_e = min(end + 1 + step_size, len(vGeneLocation.data))
-                end_df = vGeneLocation.data.with_row_index().filter(
+                end_e = min(end + step_size, len(vGeneLocation.data))
+                log.debug(
+                    f"Searching for enzyme cluster for index {start} from {end_s} to {
+                        end_e
+                    }"
+                )
+                end_df = vGeneLocation.data.with_row_index("index").filter(
                     is_enzyme_criteria
                     & chromosome_criteria
                     & (pl.col("index") > end_s)
@@ -1190,51 +1214,44 @@ def perform_clustering(
                 else:
                     stop_search_end = True
 
-            if not abolish_cluster:
-                # get rid of clusters that only have one reaction set
-                if (
-                    len(vGeneLocation.data[start:end].filter(is_enzyme_criteria))
-                    < vEnzMinForClusters
-                ):
-                    abolish_cluster = True
-            if not abolish_cluster and not ld_is_not_a_problem(
-                vGeneLocation, start, end
-            ):
+            # .filter( (pl.col("index") > start) & (pl.col("index") <= end))
+            cluster_genes = vGeneLocation.data.with_row_index("index")[start:end]
+            # get rid of clusters that only have one reaction set
+            if len(cluster_genes.filter(is_enzyme_criteria)) < vEnzMinForClusters:
+                # abolish cluster and continue search
+                continue
+            if not ld_is_not_a_problem(cluster_genes, start, end):
                 # get rid of clusters that only have one local duplicate
                 # criteria for this is outlined in the ld_is_not_a_problem function
-                abolish_cluster = True
+                # abolish cluster and continue search
+                continue
 
-            if not abolish_cluster:
-                # This is the code that writes the cluster into the clusters dataframe
-                # what goes in here is described in line 3426 in matlab, but it is flexible
-                # based on how you want to use it
+            # This is the code that writes the cluster into the clusters dataframe
+            # what goes in here is described in line 3426 in matlab, but it is flexible
+            # based on how you want to use it
 
-                _cluster = vGeneLocation.data[start:end]
-                _chromosome = _cluster["Chromosome Name"][0]
+            _cluster = cluster_genes
+            _chromosome = _cluster["Chromosome Name"][0]
 
-                clusters.append(
-                    cluster_tuple(
-                        _chromosome,
-                        step_size,
-                        start,
-                        end,
-                        _cluster.filter(pl.col("has_reaction")).height,  # enzyme_count
-                        _cluster.filter(
-                            pl.col("has_reaction").not_()
-                            & pl.col("Gene Name")
-                            .str.starts_with("Hypothetical_Gene_")
-                            .not_()
-                        ).height,  # non_enzyme_gene_count
-                        _cluster.filter(
-                            pl.col("Gene Name")
-                            .str.starts_with("Hypothetical_Gene_")
-                            .not_()
-                        ).height,  # hypothetical_gene_count
-                    )
+            clusters.append(
+                cluster_tuple(
+                    _chromosome,
+                    step_size,
+                    start,
+                    end,
+                    _cluster.filter(pl.col("has_reaction")).height,  # enzyme_count
+                    _cluster.filter(
+                        pl.col("has_reaction").not_() & pl.col("Hypothetical").not_()
+                    ).height,  # non_enzyme_gene_count
+                    _cluster.filter(
+                        pl.col("Hypothetical").not_()
+                    ).height,  # hypothetical_gene_count
                 )
+            )
 
         if len(clusters) > 0:
             clusters_df = pl.DataFrame(clusters)
+            log.debug(f"Head of clusters_df\n{clusters_df.head()}")
             # re-calculate clusters_background to test against criterion
             clusters_background = compute_background(
                 clusters_df, vGeneLocation, clusters_background
@@ -1280,9 +1297,9 @@ def perform_clustering(
                 case 2:
                     # stepsize 3 (because most organisms take this one)
                     log.debug(
-                        "Number of enzymes - number of non-enzymes (no hypos) - 2* number if hypos in clustered genes: %i",
-                        clusters_df["enzyme_count"].count()
-                        - clusters_df["non_enzyme_gene_count"].count(),
+                        "Number of enzymes - number of non-enzymes (no hypos) - 2* number if hypos in clustered genes: %i - %i - %i",
+                        clusters_df["enzyme_count"].count(),
+                        -clusters_df["non_enzyme_gene_count"].count(),
                         -2 * clusters_df["hypothetical_gene_count"].count(),
                     )
                     if step_size == vMinStepSize:
@@ -1357,8 +1374,11 @@ def perform_clustering(
                     raise Exception(
                         "Invalid search criterion, valid options are 1,2,3 or 4."
                     )
+        else:
+            final_step_size = step_size - 1
+            continue_search = False
         step_size += 1
-    if final_step_size is None:
+    if final_step_size == 0:
         final_step_size = step_size - 1
     return Clusters(
         ClusterMeta=pl.DataFrame(clusters),
@@ -1377,7 +1397,7 @@ def compute_background(
     """
     ---------------------------------------------------------------------------
 
-      Function that lookes at all clusters that were found by the function
+      Function that looks at all clusters that were found by the function
       f_perform_clustering(), and computes the background information for the
       window sizes of these clusters (e.g. a cluster has 4 enzymes and two non
       enzymes, then its size is 6. The function goes with a window size 6
@@ -1385,7 +1405,7 @@ def compute_background(
       5, 6 enzymes. It then calculates the probability to see a cluster with
       more or equal than 0 enzymes, more or equal than 1, ... more or equal
       than 6 enzymes. This is then used to define top n% clusters, e.g.
-      clusters that are at least as dense as the top 5% of windowsizes are
+      clusters that are at least as dense as the top 5% of window sizes are
       marked to be of higher interest.
 
     ---------------------------------------------------------------------------
@@ -1480,44 +1500,6 @@ def compute_background(
     return clusters_background
 
 
-def perform_cutoff(clusters: Clusters, vTopPercentClusters: int) -> List[bool]:
-    """
-    ---------------------------------------------------------------------------
-
-      Function that (given clusters and a background density information of a
-      genome) calculates whether the clusters are within the top n% of enzymes
-      dense clusters.
-
-    ---------------------------------------------------------------------------
-
-    Args:
-        clusters: Cluster Information (stepsize, chromosome id, gene start,
-                   gene end, number of enzymes) and
-                   Density information about the genome (window size,
-                   number of enzymes, Occurrence of windowsize with
-                   this many enzymes in the genome, occurence of
-                   this windowsize in the genome, Frequency of seeing
-                   a windowsize of this size with at least as many
-                   enzymes in the genome)
-        vTopPercentClusters: Clusters are labeled as being in the top n% if
-                             they are within this top n% of enzyme dense
-                             clusters compared to the background.
-
-    Returns:
-        List with size Number of Clusters. It is zero if
-               the density of the cluster is above or the same as given
-               by the input argument vTopPercentClusters*100.
-    """
-    log.debug(f"Perform cutoff for clusters in the top {vTopPercentClusters}%")
-    # TODO: This logic should be able to push a modified cluster object (issue #35)
-    cluster_meta_in_top = clusters.ClusterMeta.join(
-        clusters.ClusterBackground,
-        left_on=["step_size", "enzyme_count"],
-        right_on=["window_size", "enzyme_count"],
-    ).select(in_top=pl.col("winzyme_frequency") >= vTopPercentClusters / 100)
-    return cluster_meta_in_top["in_top"].to_list()
-
-
 def write_gene_output(
     gene_output_file: Path,
     gene_location: GeneLoc,
@@ -1606,6 +1588,141 @@ def write_gene_output(
         raise Exception(
             "Output type not supported, options are 'old' 'simple' or 'verbose'"
         )
+
+    # TODO: write cluster data
+    gene_count = len(gene_location)
+    gene_columns = gene_location.data.columns
+    log.debug(f"Columns for gene location data are {gene_columns}")
+    log.debug(f"Head for gene location data is {gene_location.data.head()}")
+    # FIXME: This can/should be one select() call (issue #36)
+    gene_output = gene_location.data
+    gene_output_cols = [
+        pl.col("Gene Name"),
+        pl.col("Gene Start (bp)"),
+        pl.col("Gene End (bp)"),
+        pl.col("Chromosome Name"),
+        pl.col("Strand"),
+        pl.col("has_reaction").alias("Enzyme"),
+        pl.col("EC-NUMBER").list.join(",").alias("EC-NUMBER"),
+        pl.col("pgdb_reaction_id").list.join(",").alias("RXN"),
+        pl.col("is_locally_duplicated").alias("Locally Duplicated"),
+        pl.col("mcl_clusters")
+        .list.eval(pl.element().cast(pl.String))  # noqa S307
+        .list.join(",")
+        .alias("LD_ClusterIds"),
+    ]
+    cluster_data = gene_location.data.join_where(
+        clusters.ClusterMeta.with_row_index("cluster_idx"),
+        (pl.col("start") <= pl.col("Gene Start (bp)"))
+        & (pl.col("Gene End (bp)") <= pl.col("end")),
+    ).group_by(pl.col("Gene Name"), pl.col("step_size"))
+    match output_type:
+        case "old":
+            for i in range(clusters.MaxStepSize):
+                # chosen stepsize x
+                # top pct clusters
+                gene_output = gene_output.join(
+                    cluster_data.agg(
+                        pl.col("cluster_idx")
+                        .implode()
+                        .alias(f"cluster_idx_stepsize{i}"),
+                    ).filter(pl.col("step_size") == pl.lit(i)),
+                    "Gene Name",
+                )
+                gene_output_cols.append(
+                    pl.col("cluster_idx")
+                    .list.len()
+                    .alias(
+                        f"{'CHOSEN ' if i == clusters.FinalStepSize else ''}Stepsize {
+                            i
+                        }"
+                    )
+                )
+                gene_output_cols.append(
+                    pl.col("top_percent_clusters").alias(f"Top {top_percent_clusters}%")
+                )
+        # FIXME: cluster IDs filter columns (vClusters 2 and 3)?
+        case "verbose":
+            for i in range(clusters.MaxStepSize):
+                # chosen stepsize x
+                # top pct clusters
+                gene_output = gene_output.join(
+                    cluster_data.agg(
+                        pl.col("cluster_idx")
+                        .implode()
+                        .alias(f"cluster_idx_stepsize{i}"),
+                    ).filter(pl.col("step_size") == pl.lit(i)),
+                    "Gene Name",
+                )
+                for j in range(clusters.MaxStepSize):
+                    gene_output_cols.append(
+                        pl.col("cluster_idx")
+                        .list.len()
+                        .alias(
+                            f"{
+                                'CHOSEN ' if i == clusters.FinalStepSize else ''
+                            }Stepsize {i}"
+                        )
+                    )
+                    gene_output_cols.append(
+                        pl.col("top_percent_clusters").alias(
+                            f"Top {top_percent_clusters}%"
+                        )
+                    )
+        case "simple":
+            # stepsize x
+            # top pct clusters
+            top_pct_cluster_idx = cluster_data.agg(
+                pl.col("cluster_idx")
+                .count()
+                .alias(f"Stepsize {clusters.FinalStepSize}"),
+                pl.col("top_percent_clusters")
+                .count()
+                .alias(f"Top {top_percent_clusters}%"),
+            ).filter(pl.col("step_size") == pl.lit(clusters.FinalStepSize))
+            gene_output = gene_output.join(
+                top_pct_cluster_idx,
+                "Gene Name",
+            )
+
+    # describe metabolic domains to annotate for run
+    gene_output_cols.append(
+        pl.lit(",".join(metabolic_domains_to_annotate)).alias(
+            "Metabolic Domains to Annotate"
+        )
+    )
+
+    # add the enzyme classes and  if they are signature/tailoring
+    gene_output_cols.extend(
+        (
+            pl.col("pgdb_reaction_id")
+            .list.eval(  # noqa s307
+                pl.element()
+                .replace_strict(reaction_labels.Rxn_STClasses)
+                .list.join("|")
+            )
+            .list.join(",")
+            .alias("Signature Tailoring Enzyme Class"),
+            pl.col("pgdb_reaction_id")
+            .list.eval(  # noqa s307
+                pl.element()
+                .replace_strict(reaction_labels.Rxn_SigOrTail)
+                .list.join("|")
+            )
+            .list.join(",")
+            .alias("Signature or Tailoring"),
+        )
+    )
+    # debug: see explain plan for each column
+    for i, column in enumerate(gene_output_cols):
+        log.debug(f"Column {i} {column.meta.output_name()}")
+        try:
+            log.debug(f" explain: {gene_output.select(column).schema}")
+        except Exception as e:
+            log.warning(f" column {i} failed to explain {e}")
+    gene_output.select(gene_output_cols).write_csv(gene_output_file, separator="\t")
+
+    return
     with gene_output_file.open(mode="w") as fio:
         writer = csv.writer(fio, delimiter="\t")
         # write header
@@ -1643,13 +1760,6 @@ def write_gene_output(
         header += ["Signature Tailoring Enzyme Class", "Signature or Tailoring"]
 
         writer.writerow(header)
-
-        # TODO: write cluster data
-        gene_count = len(gene_location)
-        gene_columns = gene_location.data.columns
-        log.debug(f"Columns for gene location data are {gene_columns}")
-        log.debug(f"Head for gene location data is {gene_location.data.head()}")
-        # FIXME: This can/should be one select() call (issue #36)
 
         # iter_rows returns a tuple, not a dict.
         for i, gene in enumerate(gene_location.data.iter_rows()):
@@ -1794,6 +1904,70 @@ def write_cluster_output(
     log.debug("Writing cluster output")
     if output_type not in ["old", "simple", "verbose"]:
         raise Exception("Output type not supported, options are 'simple' or 'verbose'")
+    cluster_genes = (
+        gene_location.data.with_row_index("gene_idx")
+        .join_where(
+            clusters.ClusterMeta.with_row_index("cluster_id"),
+            (pl.col("Chromosome Name") == pl.col("chromosome")),
+            (pl.col("gene_idx") >= pl.col("start")),
+            (pl.col("gene_idx") <= pl.col("end")),
+        )
+        .group_by("cluster_id")
+        .agg(
+            pl.col("Gene Name").alias("cluster_genes"),
+            pl.col("Gene Start (bp)").min().alias("start_bp"),
+            pl.col("Gene End (bp)").min().alias("end_bp"),
+        )
+    )
+    test_data = clusters.ClusterMeta.with_row_index("cluster_id").select(
+        pl.col("cluster_id"), pl.col("chromosome"), pl.col("start"), pl.col("end")
+    )
+    log.debug(f"Clusters Data ID, chromosome, and start and end {test_data}")
+    log.debug(f"Cluster Genes Only {cluster_genes.head()}")
+    log.debug(f"Cluster Genes Rows {len(cluster_genes)}")
+    log.debug(f"Cluster Genes Columns {cluster_genes.columns}")
+    cluster_output = clusters.ClusterMeta.with_row_index("cluster_id").join(
+        cluster_genes, on="cluster_id"
+    )
+    cluster_output = (
+        cluster_output.with_columns(
+            cluster_in_top_percent=pl.col("cluster_id").replace_strict(
+                {i: x for i, x in enumerate(clusters_in_top_percent)}, default=False
+            ),
+            cluster_length=pl.col("end_bp") - pl.col("start_bp") + pl.lit(1),
+            total_gene_count=pl.col("enzyme_count") + pl.col("non_enzyme_gene_count"),
+        ).select(
+            pl.col("step_size").alias("Stepsize"),
+            pl.col("cluster_id").alias("ClusterID"),
+            pl.col("cluster_in_top_percent").alias("Top n% cluster"),
+            pl.col("chromosome").alias("Chromosome"),
+            pl.col("start_bp").alias("Start bp"),
+            pl.col("end_bp").alias("End bp"),
+            pl.col("cluster_length").alias("Physical size bp"),
+            pl.col("total_gene_count").alias("Number of genes"),
+            pl.col("hypothetical_gene_count").alias("Number of Hypothetical Genes"),
+            pl.col("enzyme_count").alias("Number of Enzymes"),
+            pl.col("cluster_genes").list.first().alias("Start Gene"),
+            pl.col("cluster_genes").list.last().alias("End Gene"),
+            # pl.col("cluster_genes").list.join(",").alias("Gene IDs"),
+        )
+    ).filter(
+        (pl.lit(output_type) == pl.lit("old"))
+        & (
+            (pl.lit(output_type) == pl.lit("verbose"))
+            & (pl.col("Stepsize") <= pl.lit(clusters.FinalStepSize))
+        )
+        & (
+            (pl.lit(output_type) == pl.lit("simple"))
+            & (pl.col("Stepsize") == pl.lit(clusters.FinalStepSize))
+            & pl.col("Top n% cluster")
+        )
+    )
+    log.debug(f"Cluster output dtypes {cluster_output.dtypes}")
+    log.debug(f"Cluster output {cluster_output}")
+    cluster_output.write_csv(cluster_output_file, separator="\t")
+    return  # early return to keep the old code
+
     with cluster_output_file.open(mode="w") as fio:
         writer = csv.writer(fio, delimiter="\t")
         # write header
@@ -1821,11 +1995,25 @@ def write_cluster_output(
             clusters.ClusterMeta.with_row_index("cluster_id").iter_rows(),
         ):
             cluster = {
-                col: cval for col, cval in zip(clusters.ClusterMeta.columns, _cluster)
+                col: cval
+                for col, cval in zip(
+                    ["cluster_id"] + clusters.ClusterMeta.columns, _cluster
+                )
             }
-            if i % 1000 == 0:
-                log.debug(cluster)
-            log.debug("Write cluster %d of %d", i + 1, number_of_clusters)
+            log.debug("Write cluster %d of %d?", i + 1, number_of_clusters)
+            log.debug(
+                f"Cluster step size {cluster['step_size']} == final step size {
+                    clusters.FinalStepSize
+                }"
+            )
+            top_pct_max_msg = (
+                repr(clusters_in_top_percent[i])
+                if i in clusters_in_top_percent
+                else f"Only {len(clusters_in_top_percent)} clusters, this is cluster {
+                    i
+                }"
+            )
+            log.debug(f"Cluster in top percent?{top_pct_max_msg}")
             if (
                 output_type == "old"
                 or (
@@ -1838,6 +2026,8 @@ def write_cluster_output(
                     and clusters_in_top_percent[i]
                 )
             ):
+                if i % 1000 == 0:
+                    log.debug(cluster)
                 cluster_genes = gene_location.data.filter(
                     (pl.col("Chromosome Name") == cluster["chromosome"])
                     & (pl.col("Gene Start (bp)") >= cluster["start"])
