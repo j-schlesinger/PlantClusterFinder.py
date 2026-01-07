@@ -37,6 +37,7 @@ dev-dependencies = [
     "uv>=0.6.10",
     "pandas>=2.2.2",
     "pyright>=1.1.404",
+    "viztracer>=1.1.1",
 ]
 
 [tool.ruff]

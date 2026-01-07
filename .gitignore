@@ -39,3 +39,4 @@ venv.bak/
 .idea/
 
 octave-workspace/
+Outputs/

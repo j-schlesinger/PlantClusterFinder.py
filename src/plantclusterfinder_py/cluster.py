@@ -1,4 +1,3 @@
-import csv
 import logging
 import os
 import subprocess
@@ -19,7 +18,7 @@ from plantclusterfinder_py.cluster_datatypes import (
 from plantclusterfinder_py.genelocation import GeneLoc
 from plantclusterfinder_py.get_positions_of_gap import get_positions_of_gap
 
-log = logging.getLogger(__name__)
+_log = logging.getLogger(__name__)
 
 
 def label_reactions_with_sig_and_tail(
@@ -48,7 +47,7 @@ def label_reactions_with_sig_and_tail(
             list of types of enzymes, and mapping between reactions and
             enzyme classes as well as signature or tailoring enymes
     """
-    log.debug(f"Reading in the signature tailor file {vSignatureTailorFile}")
+    _log.debug(f"Reading in the signature tailor file {vSignatureTailorFile}")
     stdata = pl.read_csv(
         vSignatureTailorFile,
         has_header=True,
@@ -57,11 +56,17 @@ def label_reactions_with_sig_and_tail(
         truncate_ragged_lines=True,
     )
     cols = stdata.columns
-    log.debug(f"read {len(stdata)} rows with columns {cols}")
-    stclasses = stdata[cols[1]].unique()
-    sigortail = stdata[cols[2]].unique()
-    rxn_class = stdata.to_pandas().groupby(cols[0])[cols[1]].apply(list).to_dict()
-    rxn_sig_or_tail = stdata.to_pandas().groupby(cols[0])[cols[2]].apply(list).to_dict()
+    _log.debug(f"read {len(stdata)} rows with columns {cols}")
+    if len(stdata) != len(stdata["EC_number or RXN_ID"].unique()):
+        _log.warning("signature tailor file has duplicate EC numbers or RXN IDs.")
+    stclasses = stdata["Enzyme class"].unique()
+    sigortail = stdata["Enzyme role"].unique()
+    rxn_class = stdata.select("EC_number or RXN_ID", "Enzyme class").rows_by_key(
+        "EC_number or RXN_ID", unique=True
+    )
+    rxn_sig_or_tail = stdata.select("EC_number or RXN_ID", "Enzyme role").rows_by_key(
+        "EC_number or RXN_ID", unique=True
+    )
     return ReactionLabels(
         STClasses=list(stclasses),
         SigOrTail=list(sigortail),
@@ -73,7 +78,6 @@ def label_reactions_with_sig_and_tail(
 def introduce_hypo_genes(
     gene_location: GeneLoc,
     sequencing_gaps: pl.DataFrame,
-    # hard_breaks: HardBreaks,
     vHypoAmount: int = 0,
     vGeneLengthHypoMin: int = -1,
 ) -> GeneLoc:
@@ -103,7 +107,7 @@ def introduce_hypo_genes(
         **HardBreaks** object containing the gene location information, the
             inter-chromosomal matrix, and the HypoAmount populated.
     """
-    log.debug("Introducing hypothetical genes into sequence")
+    _log.debug("Introducing hypothetical genes into sequence")
     # get the 5th and 7th columns of SeqGaps
     if sequencing_gaps is None:
         raise Exception(
@@ -131,7 +135,7 @@ def introduce_hypo_genes(
     ngaps = sequencing_gaps.height
     hypothetical_genes = []
     for i, row in enumerate(gap_positions.iter_rows()):
-        log.debug("Populate hypothetical genes %i of %i", i, ngaps)
+        _log.debug("Populate hypothetical genes %i of %i", i, ngaps)
         # no hypothetical genes to populate
         hypo_to_place = row[-1]
         if hypo_to_place == 0:
@@ -149,6 +153,7 @@ def introduce_hypo_genes(
                 row[0],  # chromosome/scaffold
                 "-1",  # originally strand of real gene at start
                 # FIXME: Strand "-" but no clear reason why (issue #27)
+                True,
             )
             hypothetical_genes.append(new_row)
     hypo_gene_df = pl.DataFrame(
@@ -159,12 +164,13 @@ def introduce_hypo_genes(
             ("Gene End (bp)", pl.Int64),
             ("Chromosome Name", pl.String),
             ("Strand", pl.String),
+            ("Hypothetical", pl.Boolean),
         ),
         orient="row",
     ).with_columns(Hypothetical=pl.lit(True))
 
     gene_location.insert_genes(hypo_gene_df)
-    log.debug(f"Inserted {len(hypo_gene_df)} hypothetical genes")
+    _log.debug(f"Inserted {len(hypo_gene_df)} hypothetical genes")
     return gene_location
 
 
@@ -228,11 +234,11 @@ def annotate_sequencing_gaps(
     """
 
     if not (vGeneLengthHypoMin == -1 or vSeqGapSizesChromBreak == []):
-        log.error(
+        _log.error(
             "annotate_sequencing_gaps needs both SeqGapSizesChromBreak and GeneLengthHypoMin to be set or to be unset."
         )
         raise Exception("Incompatable parameters in annotate_sequencing_gaps function")
-    log.debug("Annotating sequence gaps")
+    _log.debug("Annotating sequence gaps")
 
     gap_output_file = vFile.with_suffix(vFile.suffix + "_GAPOutput")
     if vOverwriteSeqGapInfo or not gap_output_file.exists():
@@ -256,7 +262,7 @@ def annotate_sequencing_gaps(
         .select(pl.col("scaffold").unique())
         .iter_rows()
     ):
-        log.warning(
+        _log.warning(
             f"DNA Fasta file '{
                 vFile
             }' contains chromosomes or scaffolds not covered with the "
@@ -329,9 +335,9 @@ def get_sequencing_gaps(
     """
     if vOverwriteSeqGapInfo:
         if vFile.exists():
-            log.error("Cannot overwrite existing _GAPOutput with tag set")
+            _log.error("Cannot overwrite existing _GAPOutput with tag set")
             raise Exception("Overwrite Protection Enforcement of Existing Gap File")
-    log.debug(f"Writing sequence gap file {vFile}")
+    _log.debug(f"Writing sequence gap file {vFile}")
     get_positions_of_gap(
         vFile, vFile.with_suffix(vFile.suffix + "_GAPOutput"), parallelize=vParallelize
     )
@@ -366,12 +372,13 @@ def get_metabolic_domains(
         AnnotatedMetabolicDomains object with all items stored in Metabolic domain file aw well as
             mappings for metabolic domains of interest described in `MD_to_annotate`.
     """
-    log.debug(f"Getting metabolic domains from file {vGenesMetabolicDomains_File}")
+    _log.debug(f"Getting metabolic domains from file {vGenesMetabolicDomains_File}")
     # TODO: Why does this file have \r EOL char? (issue #29)
     rxn_meta_dom = (
         pl.read_csv(vGenesMetabolicDomains_File, separator="\t", eol_char="\r")
+        .with_columns(pl.col("Reaction ID").str.strip_chars(" ").alias("Reaction ID"))
         .unpivot(
-            [f"Class{n + 1}" for n in range(6)],
+            [f"Class{n + 1}" for n in range(6)] + ["SM1A"],
             index=["Reaction ID", "Pathway"],
             value_name="Metabolic Domain",
         )
@@ -411,7 +418,7 @@ def read_MCL_clustering_file(
         genes in the conversion-ID file and the MCL-clustering file,
         as well as a list of protein-IDs stored in the fasta file.
     """
-    log.debug(f"Reading in MCL Clustering File {vFile}")
+    _log.debug(f"Reading in MCL Clustering File {vFile}")
     if vRemoveNonProtLocations:
         _protein_init = 300_000
     protein_ids = []
@@ -420,23 +427,39 @@ def read_MCL_clustering_file(
             if line.startswith(">"):
                 protein_ids.append(line[1:].strip())
 
-    mcl_cluster_data = []
-    clusters_by_p: Dict[str, List[int]] = dict()
+    mcl_cluster_data: List[Dict[str, int | str | List[str]]] = []
+    clusters_by_p: Dict[str, List[str]] = dict()
+    clusters_by_g: Dict[str, List[str]] = dict()
+
+    # Read in MCL clusters, and assign ID based on index
     with open(vFile, "r") as f:
         for i, line in enumerate(f):
-            log.debug(f"MCL_Line {i}")
             # if i <= init_max:
+            mcl_id = f"MCL_{i}"
             prots_in_cluster = line.strip().split()
-            mcl_cluster_data.append(prots_in_cluster)
+            # Convert Transcript ID to Gene Name
+            genes_in_cluster = [conversion.MapP_MapG[p][0] for p in prots_in_cluster]
+            _log.debug(f"{mcl_id}: {prots_in_cluster}")
+            mcl_cluster_data.append(
+                {
+                    "ID": mcl_id,
+                    "Transcript_IDs": prots_in_cluster,
+                    "Gene_Names": genes_in_cluster,
+                    "Cluster_Size": len(prots_in_cluster),
+                }
+            )
             for prot in prots_in_cluster:
-                clusters_by_p[prot] = clusters_by_p.get(prot, []) + [i]
+                clusters_by_p[prot] = clusters_by_p.get(prot, []) + [mcl_id]
+            for gene in genes_in_cluster:
+                clusters_by_g[gene] = clusters_by_g.get(gene, []) + [mcl_id]
 
-    clusters_by_g = {
-        conversion.MapP_MapG[p][0]: clust for p, clust in clusters_by_p.items()
-    }
     proteins_list = list(clusters_by_p.keys())
 
-    return MclClusterData(Gene2MCLClusters=clusters_by_g, Protein_IDs=proteins_list)
+    return MclClusterData(
+        Gene2MCLClusters=clusters_by_g,
+        MCL_Clusters=pl.DataFrame(mcl_cluster_data),
+        Protein_IDs=proteins_list,
+    )
 
 
 def get_MCL_clustering(
@@ -477,7 +500,7 @@ def get_MCL_clustering(
         genes in the conversion-ID file and the MCL-clustering file,
         as well as a list of protein-IDs stored in the fasta file.
     """
-    log.debug("Getting MCL clustering by running blastp and mcl")
+    _log.debug("Getting MCL clustering by running blastp and mcl")
     int_cpu_count: int = os.cpu_count() or 1
     if vParallelize == 0:
         vParallelize = max(1, int_cpu_count - 1)
@@ -559,7 +582,7 @@ def get_MCL_clustering(
     ]
 
     for app in apps:
-        log.info(f"{app_path[app]} {' '.join(command_for[app])}")
+        _log.info(f"{app_path[app]} {' '.join(command_for[app])}")
         if app == "cut":
             with open(cut_output, "w") as f:
                 subprocess.run(
@@ -624,7 +647,7 @@ def map_pgdb_reactions_to_genes(
             - ReactionsAll: searched-for attributes of all reactions in reactions.dat of pgdb
             - Gene2Rxn: Mapping between records in GenesAll and ReactionsAll
     """
-    log.debug("Mapping PGDB reactions to genes")
+    _log.debug("Mapping PGDB reactions to genes")
     # Attributes of Flatfiles that should be read out
     _genes_attributes = tuple(
         kwargs.get(
@@ -672,31 +695,31 @@ def map_pgdb_reactions_to_genes(
     )
 
     # Read in all attributes and store them
-    log.info("Reading in genes.dat")
+    _log.info("Reading in genes.dat")
     genes_all = read_in_pgdb_flat(
         vPGDB_FlatFileFolder / "genes.dat",
         genes_attributes,
         unique_keys=genes_attributes,
     )
-    log.info("Reading in proteins.dat")
+    _log.info("Reading in proteins.dat")
     proteins_all = read_in_pgdb_flat(
         vPGDB_FlatFileFolder / "proteins.dat", proteins_attributes
     )
-    log.info("Reading in enzrxns.dat")
+    _log.info("Reading in enzrxns.dat")
     enzrxns_all = read_in_pgdb_flat(
         vPGDB_FlatFileFolder / "enzrxns.dat", enzrxns_attributes
     )
-    log.info("Reading in reactions.dat")
+    _log.info("Reading in reactions.dat")
     reactions_all = read_in_pgdb_flat(
         vPGDB_FlatFileFolder / "reactions.dat", reactions_attributes
     )
 
     # Match flat files to each other
-    log.info("Matching genes to proteins")
+    _log.info("Matching genes to proteins")
     G2_P = match_pgdb_flat(
         genes_all, proteins_all, G2P, primary_id="GENE-ID", secondary_id="PROTIEN-ID"
     )
-    log.info("Matching proteins to protein-complexes")
+    _log.info("Matching proteins to protein-complexes")
     P_P = match_pgdb_flat(
         proteins_all,
         proteins_all,
@@ -705,22 +728,7 @@ def map_pgdb_reactions_to_genes(
         secondary_id="COMPONENTS",
     )
 
-    # collect all proteins associated with a primary protein ID
-    _ = """
-    for i in range(len(P_P)):
-        P_P[i, i] = 1
-    sum_old = -1
-    sum_new = sum(P_P)
-    while sum_new != sum_old:
-        sum_old = sum_new
-        for i in range(len(P_P)):
-            ids1 = P_P[i, :] == 1 or P_P[:, i].transpose == 1
-            P_P[i, ids1] = 1
-            P_P[ids1, i] = 1
-        sum_new = sum(P_P)
-    """
-
-    log.info("Match proteins and protein complexes to enzymereactions")
+    _log.info("Match proteins and protein complexes to enzymereactions")
     P_E = match_pgdb_flat(
         proteins_all,
         enzrxns_all,
@@ -728,21 +736,17 @@ def map_pgdb_reactions_to_genes(
         primary_id="PROTIEN-ID",
         secondary_id="ENZYME-ID",
     )
-    log.info("Matching enzymereactions to reactions")
+    _log.info("Matching enzymereactions to reactions")
     E2_R = match_pgdb_flat(
         enzrxns_all,
         reactions_all,
         E2R,
-        # R2_E = match_pgdb_flat(
-        #    reactions_all,
-        # enzrxns_all,
-        #        R2E,
         primary_id="ENZYME-ID",
         secondary_id="REACTION-ID",
     )
 
     # Match Genes to reactions directly.
-    log.info("Match genes to to reactions")
+    _log.info("Match genes to to reactions")
     # initialize matrix the size of [G2_P, E_R2]
     # gene2rxn = (
     gene_prot = G2_P.join(P_P, on="PROTIEN-ID", validate="1:1")
@@ -780,29 +784,29 @@ def match_pgdb_flat(
         F1_F2: A mapping between items of the first pgdb file to the second
                 one.
     """
-    log.debug(f"Matching PGDB flat files {flat1} and {flat2}")
+    _log.debug(f"Matching PGDB flat files {flat1} and {flat2}")
     if join_on[0] not in flat1.columns:
-        log.error(
+        _log.error(
             f"Matching column {join_on[0]} not in input data"
             + f" {flat1.columns}, note the other table's columns are {flat2.columns}"
         )
         raise Exception("Column-matching Mismatch")
     if join_on[1] not in flat2.columns:
-        log.error(
+        _log.error(
             f"Matching column {join_on[1]} not in input data"
             + f" {flat2.columns}, note the other table's columns are {flat1.columns}"
         )
         raise Exception("Column-matching Mismatch")
     if flat1[join_on[0]].dtype == pl.Null:
-        log.error(f"Primary table join ID {[join_on[0]]} is null dtype, cannot join")
-        log.info(f"Columns of flats are are {flat1.columns}, {flat2.columns}")
+        _log.error(f"Primary table join ID {[join_on[0]]} is null dtype, cannot join")
+        _log.info(f"Columns of flats are are {flat1.columns}, {flat2.columns}")
         raise Exception("Column-matching Mismatch")
     if flat2[join_on[1]].dtype == pl.Null:
-        log.warning(
+        _log.warning(
             f"Cannot map {join_on[0]} to {join_on[1]}"
             + ": dtype is Null, returning Null for second column"
         )
-        log.info(f"Columns of flats are are {flat1.columns}, {flat2.columns}")
+        _log.info(f"Columns of flats are are {flat1.columns}, {flat2.columns}")
         return flat1.select(
             pl.col(join_on[0]).alias(primary_id), pl.lit(None).alias(secondary_id)
         )
@@ -815,7 +819,7 @@ def match_pgdb_flat(
         right_on=join_on[1],
         suffix="_right",
     )
-    log.debug(f"SUCCESSFUL JOIN: {joined_dbs}")
+    _log.debug(f"SUCCESSFUL JOIN: {joined_dbs}")
     return joined_dbs.select(
         pl.col("UNIQUE-ID").alias(primary_id), pl.col(join_on[0]).alias(secondary_id)
     )
@@ -843,7 +847,7 @@ def read_in_conversion_file(
         Conversion object containing the IDs from the conversion file
     Raises
     """
-    log.debug(f"Reading in conversion file {vGeneTranscriptProtein_mapping_File}")
+    _log.debug(f"Reading in conversion file {vGeneTranscriptProtein_mapping_File}")
     conversion_data = pl.read_csv(
         vGeneTranscriptProtein_mapping_File,
         separator="\t",
@@ -853,36 +857,36 @@ def read_in_conversion_file(
     )
     column_names = conversion_data.columns
     conversion_len = len(conversion_data)
-    log.debug(
+    _log.debug(
         "Read in conversion data, %d rows, columns are %s", conversion_len, column_names
     )
     conversion = Conversion(df=conversion_data)
     # Validate conversion before output
     # TODO: are unclean protein ID files an unrecoverable error? (issue #30)
     if len(conversion.MapG_MapT) < len(conversion.MapG):
-        log.warning("Some Transcripts match multiple genes in the ID Conversion file")
+        _log.warning("Some Transcripts match multiple genes in the ID Conversion file")
         transcript_multi = (
             conversion_data.group_by(column_names[1])
             .n_unique()
             .filter(pl.col(column_names[0]) > 1)[column_names[1]]
         )
         for transcript in transcript_multi:
-            log.warning("Please check the transcript %s", transcript)
-        log.error("Please clean the protein ID file")
+            _log.warning("Please check the transcript %s", transcript)
+        _log.error("Please clean the protein ID file")
     if len(conversion.MapG_MapP) < len(conversion.MapG):
-        log.warning("Some Proteins match multiple genes in the ID Conversion file")
+        _log.warning("Some Proteins match multiple genes in the ID Conversion file")
         prot_multi = (
             conversion_data.group_by(column_names[2])
             .n_unique()
             .filter(pl.col(column_names[0]) > 1)[column_names[2]]
         )
         for prot in prot_multi:
-            log.warning("Please check the protein %s", prot)
-        log.error("Please clean the protein ID file")
-    log.info(
+            _log.warning("Please check the protein %s", prot)
+        _log.error("Please clean the protein ID file")
+    _log.info(
         "Number of Gene-ID to Transcript-ID mappings: %i", len(conversion.MapG_MapT)
     )
-    log.info("Number of Gene-ID to Protein mappings: %i", len(conversion.MapG_MapP))
+    _log.info("Number of Gene-ID to Protein mappings: %i", len(conversion.MapG_MapP))
     return conversion
 
 
@@ -909,7 +913,7 @@ def match_PGDBs_to_MDs(
         vRpgdb_Rmd: A mapping between reactions stored in the pgdb and the
                     reactions given in the metabolic domain file. Used by write_gene_output.
     """
-    log.debug("Matching PGDBs to annotated metabolic domains")
+    _log.debug("Matching PGDBs to annotated metabolic domains")
 
     return (
         Gene2Rxn.ReactionsAll.join(
@@ -951,9 +955,9 @@ def map_PGDBs_to_conversion_file(
         A dictionary mapping between Genes in the conversion file and genes
                      stored in the pgdb genes.dat file.
     """
-    log.debug("Mapping PGDBs to conversion file")
+    _log.debug("Mapping PGDBs to conversion file")
     if vPGDBIdsToMap not in "GTP":
-        log.error("Invalid PGDBIdsToMap mapping value, valid values are G, T, and P")
+        _log.error("Invalid PGDBIdsToMap mapping value, valid values are G, T, and P")
         raise Exception("Invalid Mapping Value")
 
     gene_map = dict()
@@ -1001,13 +1005,9 @@ def map_PGDBs_to_conversion_file(
 def perform_clustering(
     vGeneLocation: GeneLoc,
     mcl_cluster_data: MclClusterData,  # covered by genelocation
-    # vBiomG_E: Dict[Any, Any],# covered by geneLocation
     vEnzMinForClusters: int,
     vKbRangeLD: int,
     vGeneRangeLD: int,
-    # vBiomG_G: Dict[Any, Any], #covered by genelocation
-    # genes_to_reactions: GenesToReactions, # covered by genelocation
-    # vMapG_Gpgdb: Dict[Any, Any], #c covered by genelocation
     vCriterion: int,  # TODO: this should be an enum (issue #32)
     vMinStepSize: int = 5,
     vMaxStepSize: int = 20,
@@ -1025,38 +1025,29 @@ def perform_clustering(
     ---------------------------------------------------------------------------
 
     Args:
-        vGeneLocation: DataFrame about the gene location information,
-                        generated in PlantClusterFinder function.
-        vMinStepSize: Minimal intervening gene size that should be computed
-                      (default is 5).
-        vMaxStepSize: Maximal intervening gene size that should be computed
-                      (default is 20).
-        vBiomG_E: A dictionary describing which gene has at least one reaction
-                  annotated in the pgdb (1, if no reaction 0) (removed?)
-       vEnzMinForClusters: Defines the minimum number of enyzmes that need to
+        vGeneLocation: DataFrame about the gene location information.
+        mcl_cluster_data: Mapping between the genes in the conversion-ID file and the
+                MCL-clustering file.
+        vEnzMinForClusters: Defines the minimum number of enyzmes that need to
                             be present in a cluster.
         vKbRangeLD: Genes that are encoded more than this bp apart, are not
                     called local duplicates.
         vGeneRangeLD: Number of genes that space two genes from each other.
                       Genes that have more than this many intervening genes
-                      between themare not called local duplicates.
-        mcl_cluster_data: Mapping between the genes in the conversion-ID file and the
-                MCL-clustering file.
-        vBiomG_G: Mapping between the Gene location file and the gene-IDs in the
-                  conversion file.
-        Gene2Rxn: Mapping of all genes in the Genes_all to the Reactions in
-              Reactions_all
-        vMapG_Gpgdb: A mapping between Genes in the conversion file and genes
-                     stored in the pgdb genes.dat file.
-        vCriterion: Criterion after which stepsize is chosen
-                    1: as published in Schlapfer et al 2017
+                      between them are not called local duplicates.
+        vCriterion: Criterion after which step size is chosen
+                   - 1: as published in Schlapfer et al 2017
                        sum(enzymes in clusters) - sum(non-enzymes in clusters)
                        > 0.
-                    2: stepsize 3 (because most organisms take this one)
-                    3: sum(enzymes in clusters) - sum(non-enzymes in clusters,
+                   - 2: stepsize 3 (because most organisms take this one)
+                   - 3: sum(enzymes in clusters) - sum(non-enzymes in clusters,
                        without hypo genes) -2*sum(hypogenes)
-                    4: sum(clusters in stepsize n) > sum(clusters in stepsize
+                   - 4: sum(clusters in stepsize n) > sum(clusters in stepsize
                        n+1).
+        vMinStepSize: Minimal intervening gene size that should be computed
+                      (default is 5).
+        vMaxStepSize: Maximal intervening gene size that should be computed
+                      (default is 20).
 
     Returns:
         Cluster object which contains the following information:
@@ -1072,7 +1063,7 @@ def perform_clustering(
                         contain in average more enzymes than non-enzymes).
         - **StepSize_Max**: Maximal stepsize that was computed.
     """
-    log.debug("Performing clustering")
+    _log.debug("Performing clustering")
     final_step_size = 0
     continue_search = True  # flag if search should continue
     clusters = []  # array of cluster identifiers
@@ -1152,10 +1143,8 @@ def perform_clustering(
                 pl.col("index").alias("start"),
                 pl.col("Chromosome Name"),
                 pl.col("has_reaction"),
-                enzyme_count=pl.when(pl.col("has_reaction"))
-                .then(1)
-                .otherwise(0)
-                .sum()
+                enzyme_count=pl.col("has_reaction")
+                .sum()  # sum counts True as 1, False as 0
                 .rolling(index_column="index", period=f"{step_size}i"),
             )
             .filter(
@@ -1164,13 +1153,13 @@ def perform_clustering(
             )
         )
         cluster_starts_count = len(cluster_starts_df)
-        log.debug(
+        _log.debug(
             f"Found {cluster_starts_count} cluster starts for step size {step_size}"
         )
         for i, gene in enumerate(cluster_starts_df.iter_rows()):
             # gene has start index and start chromosome
             start, chrom_start, *_ = gene
-            log.debug(
+            _log.debug(
                 "Potential Gene Start %i (index: %i) of %i starts, %i genes (step size %i)",
                 i,
                 start,
@@ -1193,12 +1182,12 @@ def perform_clustering(
             stop_search_end = False
             while not stop_search_end:
                 if end is None:
-                    log.error("type of end is none")
+                    _log.error("type of end is none")
                     raise Exception("Cluster search end was type None")
                 end_s = end  # end search start
                 # stop search step size
                 end_e = min(end + step_size, len(vGeneLocation.data))
-                log.debug(
+                _log.debug(
                     f"Searching for enzyme cluster for index {start} from {end_s} to {
                         end_e
                     }"
@@ -1220,7 +1209,14 @@ def perform_clustering(
             if len(cluster_genes.filter(is_enzyme_criteria)) < vEnzMinForClusters:
                 # abolish cluster and continue search
                 continue
-            if not ld_is_not_a_problem(cluster_genes, start, end):
+            if (
+                cluster_genes.filter(pl.col("is_locally_duplicated"))
+                .select(pl.col("mcl_clusters"))
+                .unique()
+                .height
+                <= 1
+            ):
+                # if not ld_is_not_a_problem(cluster_genes, start, end):
                 # get rid of clusters that only have one local duplicate
                 # criteria for this is outlined in the ld_is_not_a_problem function
                 # abolish cluster and continue search
@@ -1251,7 +1247,7 @@ def perform_clustering(
 
         if len(clusters) > 0:
             clusters_df = pl.DataFrame(clusters)
-            log.debug(f"Head of clusters_df\n{clusters_df.head()}")
+            _log.debug(f"Head of clusters_df\n{clusters_df.head()}")
             # re-calculate clusters_background to test against criterion
             clusters_background = compute_background(
                 clusters_df, vGeneLocation, clusters_background
@@ -1266,7 +1262,7 @@ def perform_clustering(
                         .select(pl.col("enzyme_count"))
                         .sum()
                     )
-                    log.debug(
+                    _log.debug(
                         f"Number of enzymes - number of non-enzymes in clustered genes: {
                             enzymes_in_step_size
                         }",
@@ -1274,14 +1270,14 @@ def perform_clustering(
                     if step_size == vMaxStepSize:
                         continue_search = False
                         final_step_size = step_size
-                        log.warning(
+                        _log.warning(
                             "Maximal step size reached: %i. Consider increasing.",
                             vMaxStepSize,
                         )
                     elif (
                         clusters_df.filter(pl.col("step_size") == step_size).height == 0
                     ):
-                        log.warning("No clusters found for step size %i.", step_size)
+                        _log.warning("No clusters found for step size %i.", step_size)
                     elif (
                         clusters_df.filter(pl.col("step_size") == step_size).select(
                             (
@@ -1296,7 +1292,7 @@ def perform_clustering(
                         continue_search = False
                 case 2:
                     # stepsize 3 (because most organisms take this one)
-                    log.debug(
+                    _log.debug(
                         "Number of enzymes - number of non-enzymes (no hypos) - 2* number if hypos in clustered genes: %i - %i - %i",
                         clusters_df["enzyme_count"].count(),
                         -clusters_df["non_enzyme_gene_count"].count(),
@@ -1310,14 +1306,14 @@ def perform_clustering(
                     if step_size == vMaxStepSize:
                         continue_search = False
                         final_step_size = step_size
-                        log.warning(
+                        _log.warning(
                             "Maximal step size reached: %i. Consider increasing.",
                             vMaxStepSize,
                         )
                     elif (
                         clusters_df.filter(pl.col("step_size") == step_size).height == 0
                     ):
-                        log.warning("No clusters found for step size %i.", step_size)
+                        _log.warning("No clusters found for step size %i.", step_size)
                     elif (
                         clusters_df.filter(pl.col("step_size") == step_size).select(
                             (
@@ -1339,28 +1335,28 @@ def perform_clustering(
                 case 4:
                     # sum(count of clusters in stepsize n) > sum(count of clusters in stepsize n + 1)
                     if step_size != 0:
-                        log.debug(
+                        _log.debug(
                             "Number of clusters more than last stepsize %i",
                             clusters_df.filter(
                                 pl.col("step_size") > (step_size - 1)
                             ).height,
                         )
                     else:
-                        log.debug(
+                        _log.debug(
                             "Number of clusters Stopsize 0: %i",
                             clusters_df.filter(pl.col("step_size") == 0).height,
                         )
                     if step_size == vMaxStepSize:
                         continue_search = False
                         final_step_size = step_size
-                        log.warning(
+                        _log.warning(
                             "Maximal step size reached: %i. Consider increasing.",
                             vMaxStepSize,
                         )
                     elif (
                         clusters_df.filter(pl.col("step_size") == step_size).height == 0
                     ):
-                        log.warning("No clusters found for step size %i.", step_size)
+                        _log.warning("No clusters found for step size %i.", step_size)
                     elif (
                         clusters_df.filter(pl.col("step_size") == step_size - 1).height
                         > clusters_df.filter(pl.col("step_size") == step_size).height
@@ -1429,13 +1425,14 @@ def compute_background(
                             a windowsize of this size with at least as many
                             enzymes in the genome)
     """
-    # (for a given) window size
+    # (for a given) window size (number of total genes)
     # (for a given) number of enzymes
     # occurrence of window size in genome
-    # frequency of seeing window size with at least this many genes
-    log.debug("Computing background of clusters")
+    # frequency of seeing window size with _at least_ this many genes
+    _log.debug("Computing background of clusters")
 
     index_offset = len(gene_location)
+    # create chromosome offsets in index to avoid windows across chromosome boundaries
     chromosome_offsets = pl.DataFrame(
         [
             {
@@ -1454,25 +1451,30 @@ def compute_background(
         .sort(pl.col("idx"))
     )
     # "winzyme" is window x enzyme
-    max_step_size = clusters.select(pl.col("step_size").max())["step_size"][0]
-    log.debug(f"Max step size {max_step_size}")
-    if clusters_background.is_empty():
-        clusters_background = pl.DataFrame(
-            [],
-            schema=[
-                ("window_size", pl.Int64),
-                ("enzyme_count", pl.Int64),
-                ("winzyme_occurrence", pl.Int32),
-                ("window_occurrence", pl.Int32),
-                ("winzyme_frequency", pl.Float64),
-            ],
-        )
-        prev_max_step_size = 1
-    else:
-        prev_max_step_size = clusters_background.select(pl.max("window_size"))[
-            "window_size"
-        ][0]
-    for window_size in range(prev_max_step_size, max_step_size + 1):
+    max_window = clusters.select(
+        pl.sum_horizontal("enzyme_count", "non_enzyme_gene_count")
+        .max()
+        .alias("window_size_max")
+    )["window_size_max"][0]
+    _log.debug(f"Max Window {max_window}")
+    # if clusters_background.is_empty():
+    # re-calculating background for all windows
+    clusters_background = pl.DataFrame(
+        [],
+        schema=[
+            ("window_size", pl.Int64),
+            ("enzyme_count", pl.Int64),
+            ("winzyme_occurrence", pl.Int32),
+            ("window_occurrence", pl.Int32),
+            ("winzyme_frequency", pl.Float64),
+        ],
+    )
+    prev_max_window_size = 1
+    # else:
+    #    prev_max_window_size = clusters_background.select(pl.max("window_size"))[
+    #        "window_size"
+    #    ][0]
+    for window_size in range(prev_max_window_size, max_window + 1):
         background_df_win = (
             indexed_gene_location.select(
                 # The first (window_size-1) rows will not be window_size windows
@@ -1487,13 +1489,28 @@ def compute_background(
             .filter(pl.col("window_size") == window_size)
             .group_by("window_size", "enzyme_count")
             .agg(winzyme_occurrence=pl.sum("window_occurrence"))
+            .sort(pl.col("enzyme_count"))
+            .with_columns(
+                # get the number of winzymes with >= enzyme count
+                cumulative_winzyme=pl.col("winzyme_occurrence").cum_sum(reverse=True)
+            )
         )
-        total_window_occurrence = len(background_df_win)
+        # windows of size "window_size"
+        total_window_occurrence = background_df_win.select(
+            pl.sum("winzyme_occurrence").alias("total_window_occurrence")
+        )["total_window_occurrence"][0]
         clusters_background.extend(
             background_df_win.with_columns(
                 window_occurrence=total_window_occurrence,
-                winzyme_frequency=pl.col("winzyme_occurrence")
+                # frequency of windows with enzymes >= enzyme_count
+                winzyme_frequency=pl.col("cumulative_winzyme")
                 / total_window_occurrence,
+            ).select(
+                pl.col("window_size"),
+                pl.col("enzyme_count"),
+                pl.col("winzyme_occurrence"),
+                pl.col("window_occurrence"),
+                pl.col("winzyme_frequency"),
             )
         )
 
@@ -1583,19 +1600,18 @@ def write_gene_output(
     Returns:
         **None** (File is generated with the path of the first input argument)
     """
-    log.debug("Writing gene output")
+    _log.debug("Writing gene output")
     if output_type not in ["old", "simple", "verbose"]:
         raise Exception(
             "Output type not supported, options are 'old' 'simple' or 'verbose'"
         )
 
-    # TODO: write cluster data
-    gene_count = len(gene_location)
     gene_columns = gene_location.data.columns
-    log.debug(f"Columns for gene location data are {gene_columns}")
-    log.debug(f"Head for gene location data is {gene_location.data.head()}")
+    _log.debug(f"Columns for gene location data are {gene_columns}")
+    _log.debug(f"Head for gene location data is {gene_location.data.head()}")
     # FIXME: This can/should be one select() call (issue #36)
     gene_output = gene_location.data
+    # the first several columns are straight from gene_location
     gene_output_cols = [
         pl.col("Gene Name"),
         pl.col("Gene Start (bp)"),
@@ -1608,14 +1624,22 @@ def write_gene_output(
         pl.col("is_locally_duplicated").alias("Locally Duplicated"),
         pl.col("mcl_clusters")
         .list.eval(pl.element().cast(pl.String))  # noqa S307
+        # convert mcl_clusters from List[String] to comma-separated list
         .list.join(",")
         .alias("LD_ClusterIds"),
     ]
-    cluster_data = gene_location.data.join_where(
-        clusters.ClusterMeta.with_row_index("cluster_idx"),
-        (pl.col("start") <= pl.col("Gene Start (bp)"))
-        & (pl.col("Gene End (bp)") <= pl.col("end")),
-    ).group_by(pl.col("Gene Name"), pl.col("step_size"))
+    # Join Cluster data where cluster_start <= gene index <= cluster_end
+    cluster_data = (
+        gene_location.data.with_row_index("gene_idx")
+        .join_where(
+            clusters.ClusterMeta.with_row_index("cluster_idx"),
+            (pl.col("start").cast(pl.UInt32) <= pl.col("gene_idx"))
+            & (pl.col("gene_idx") <= pl.col("end").cast(pl.UInt32)),
+        )
+        .group_by(pl.col("Gene Name"), pl.col("step_size"))
+    )
+    _log.debug(f"Cluster data for gene output {cluster_data.head()}")
+    # different output columns depending on output type
     match output_type:
         case "old":
             for i in range(clusters.MaxStepSize):
@@ -1626,11 +1650,21 @@ def write_gene_output(
                         pl.col("cluster_idx")
                         .implode()
                         .alias(f"cluster_idx_stepsize{i}"),
-                    ).filter(pl.col("step_size") == pl.lit(i)),
+                        pl.col("top_percent_clusters").sum(),
+                    )
+                    .filter(pl.col("step_size") == pl.lit(i))
+                    .select(
+                        pl.col("Gene Name"),
+                        pl.col(f"cluster_idx_stepsize{i}"),
+                        pl.col("top_percent_clusters").alias(
+                            f"top_percent_clusters{i}"
+                        ),
+                    ),
                     "Gene Name",
+                    how="left",
                 )
                 gene_output_cols.append(
-                    pl.col("cluster_idx")
+                    pl.col(f"cluster_idx_stepsize{i}")
                     .list.len()
                     .alias(
                         f"{'CHOSEN ' if i == clusters.FinalStepSize else ''}Stepsize {
@@ -1639,7 +1673,9 @@ def write_gene_output(
                     )
                 )
                 gene_output_cols.append(
-                    pl.col("top_percent_clusters").alias(f"Top {top_percent_clusters}%")
+                    pl.col(f"top_percent_clusters{i}").alias(
+                        f"Top {top_percent_clusters}% {i}"
+                    )
                 )
         # FIXME: cluster IDs filter columns (vClusters 2 and 3)?
         case "verbose":
@@ -1651,22 +1687,33 @@ def write_gene_output(
                         pl.col("cluster_idx")
                         .implode()
                         .alias(f"cluster_idx_stepsize{i}"),
-                    ).filter(pl.col("step_size") == pl.lit(i)),
+                        pl.col("top_percent_clusters")
+                        .sum()
+                        .alias(f"top_percent_clusters{i}"),
+                    )
+                    .filter(pl.col("step_size") == pl.lit(i))
+                    .select(
+                        pl.col("Gene Name"),
+                        pl.col(f"cluster_idx_stepsize{i}"),
+                        pl.col(f"top_percent_clusters{i}"),
+                    ),
                     "Gene Name",
+                    how="left",
                 )
+                # FIXME: There is no reason I can see to have two loops
                 for j in range(clusters.MaxStepSize):
                     gene_output_cols.append(
-                        pl.col("cluster_idx")
+                        pl.col(f"cluster_idx_stepsize{i}")
                         .list.len()
                         .alias(
                             f"{
                                 'CHOSEN ' if i == clusters.FinalStepSize else ''
-                            }Stepsize {i}"
+                            }Stepsize {i},{j}"
                         )
                     )
                     gene_output_cols.append(
-                        pl.col("top_percent_clusters").alias(
-                            f"Top {top_percent_clusters}%"
+                        pl.col(f"top_percent_clusters{i}").alias(
+                            f"Top {top_percent_clusters}% {i},{j}"
                         )
                     )
         case "simple":
@@ -1677,37 +1724,40 @@ def write_gene_output(
                 .count()
                 .alias(f"Stepsize {clusters.FinalStepSize}"),
                 pl.col("top_percent_clusters")
-                .count()
+                .sum()
                 .alias(f"Top {top_percent_clusters}%"),
             ).filter(pl.col("step_size") == pl.lit(clusters.FinalStepSize))
-            gene_output = gene_output.join(
-                top_pct_cluster_idx,
-                "Gene Name",
-            )
+            gene_output = gene_output.join(top_pct_cluster_idx, "Gene Name", how="left")
 
     # describe metabolic domains to annotate for run
-    gene_output_cols.append(
-        pl.lit(",".join(metabolic_domains_to_annotate)).alias(
-            "Metabolic Domains to Annotate"
+    for md in metabolic_domains_to_annotate:
+        gene_output_cols.append(
+            pl.col("pgdb_reaction_id")  # for all reaction IDs in gene
+            .list.eval(  # noqa s307
+                pl.element()
+                # for all metabolic domains in gene
+                .replace_strict(vRpgdb_Rmd, default=[])
+                .list.contains(md)  # is md a metabolic domain?
+                .any()  # does md appear once?
+            )
+            .list.first()
+            .fill_null(False)  # convert list[bool] of size 1 to bool
+            .alias(md)
         )
-    )
 
     # add the enzyme classes and  if they are signature/tailoring
     gene_output_cols.extend(
         (
             pl.col("pgdb_reaction_id")
-            .list.eval(  # noqa s307
-                pl.element()
-                .replace_strict(reaction_labels.Rxn_STClasses)
-                .list.join("|")
+            .list.eval(  # noqa s307 -- these "eval" statements don't evaluate code in them
+                # get reaction class label for all reactions in gene
+                pl.element().replace_strict(reaction_labels.Rxn_STClasses, default=None)
             )
-            .list.join(",")
+            .list.join(",")  # convert from list[String] to String (for output)
             .alias("Signature Tailoring Enzyme Class"),
             pl.col("pgdb_reaction_id")
             .list.eval(  # noqa s307
-                pl.element()
-                .replace_strict(reaction_labels.Rxn_SigOrTail)
-                .list.join("|")
+                pl.element().replace_strict(reaction_labels.Rxn_SigOrTail, default=None)
             )
             .list.join(",")
             .alias("Signature or Tailoring"),
@@ -1715,153 +1765,15 @@ def write_gene_output(
     )
     # debug: see explain plan for each column
     for i, column in enumerate(gene_output_cols):
-        log.debug(f"Column {i} {column.meta.output_name()}")
+        _log.debug(f"Column {i} {column.meta.output_name()}")
         try:
-            log.debug(f" explain: {gene_output.select(column).schema}")
+            _log.debug(f" explain: {gene_output.select(column).schema}")
         except Exception as e:
-            log.warning(f" column {i} failed to explain {e}")
-    gene_output.select(gene_output_cols).write_csv(gene_output_file, separator="\t")
-
-    return
-    with gene_output_file.open(mode="w") as fio:
-        writer = csv.writer(fio, delimiter="\t")
-        # write header
-        header = gene_location.columns[0:5] + [
-            "Enzyme",
-            "EC-NUMBER",
-            "RXN",
-            "Locally Duplicated",
-            "LD_ClusterIds",
-        ]
-        match output_type:
-            case "old":
-                for i in range(clusters.MaxStepSize):
-                    header += [
-                        f"{'CHOSEN ' if i == clusters.FinalStepSize else ''}Stepsize {
-                            i
-                        }",
-                        f"{'CHOSEN ' if i == clusters.FinalStepSize else ''}Stepsize {
-                            i
-                        }"
-                        + f", Top {top_percent_clusters}%",
-                    ]
-            case "verbose":
-                for i in range(clusters.MaxStepSize):
-                    header += [
-                        f"Stepsize {i}",
-                        f"Stepsize {i}, Top {top_percent_clusters}%",
-                    ]
-            case "simple":
-                header += [
-                    f"Stepsize {clusters.FinalStepSize}, Top {top_percent_clusters}%"
-                ]
-        # metabolic domain info
-        header += metabolic_domains_to_annotate
-        header += ["Signature Tailoring Enzyme Class", "Signature or Tailoring"]
-
-        writer.writerow(header)
-
-        # iter_rows returns a tuple, not a dict.
-        for i, gene in enumerate(gene_location.data.iter_rows()):
-            if i % 1000 == 0:
-                log.debug("Writing gene %i of %i", i + 1, gene_count)
-            # Gene Location
-            row_data = list(gene[0:5])  # [gene_location.data.columns[0:5]]
-            # true if enzyme
-            row_data.append(gene[gene_columns.index("has_reaction")])
-            # "EC",
-            row_data.append(gene[gene_columns.index("EC-NUMBER")])
-            # "RXN",
-            row_data.append(gene[gene_columns.index("pgdb_reaction_id")])
-            # "Locally Duplicated",
-            row_data.append(gene[gene_columns.index("is_locally_duplicated")])
-            # "LD_ClusterIds",
-            row_data.append(gene[gene_columns.index("mcl_clusters")])
-            match output_type:
-                case "old":
-                    for i in range(clusters.MaxStepSize):
-                        # chosen stepsize x
-                        # top pct clusters
-                        for j in range(clusters.MaxStepSize):
-                            clustIDs = (
-                                clusters.ClusterMeta.filter(
-                                    (pl.col("step_size") == j)
-                                    & (pl.col("start") <= i)
-                                    & (i <= pl.col("end"))
-                                )
-                                .with_row_index("idx")["idx"]
-                                .to_list()
-                            )
-                            if len(clustIDs) > 0:
-                                row_data.append(len(clustIDs))
-                                row_data.append([clusters_top[x] for x in clustIDs])
-                            else:
-                                row_data.extend([None, None])
-                        pass
-                # FIXME: cluster IDs filter columns (vClusters 2 and 3)?
-                case "verbose":
-                    for j in range(clusters.MaxStepSize):
-                        # stepsize x
-                        # top pct clusters
-                        clustIDs = (
-                            clusters.ClusterMeta.filter(
-                                (pl.col("step_size") == j)
-                                & (pl.col("start") <= i)
-                                & (i <= pl.col("end"))
-                            )
-                            .with_row_index("idx")["idx"]
-                            .to_list()
-                        )
-                        if len(clustIDs) > 0:
-                            row_data.extend(
-                                [len(clustIDs), [clusters_top[x] for x in clustIDs]]
-                            )
-                        else:
-                            row_data.append([None, None])
-                case "simple":
-                    # stepsize x
-                    # top pct clusters
-                    clustIDs = (
-                        clusters.ClusterMeta.filter(
-                            (pl.col("step_size") == clusters.FinalStepSize)
-                            & (pl.col("start") <= i)
-                            & (i <= pl.col("end"))
-                        )
-                        .with_row_index("idx")["idx"]
-                        .to_list()
-                    )
-                    if len(clustIDs) > 0:
-                        if any(clusters_top[x] for x in clustIDs):
-                            row_data.append(len(clustIDs))
-                        else:
-                            row_data.append([None])
-                    else:
-                        row_data.append([None])
-            # metabolic domains from vMD_to_annotate
-            for md_value in metabolic_domains_to_annotate:
-                # FIXME: md_value if in gene?
-                row_data.append(md_value)
-
-            if gene[gene_columns.index("pgdb_reaction_id")] is not None:
-                enzyme_class = [
-                    reaction_labels.Rxn_STClasses.get(x)
-                    for x in gene[gene_columns.index("pgdb_reaction_id")]
-                ]
-            else:
-                enzyme_class = None
-            if gene[gene_columns.index("pgdb_reaction_id")] is not None:
-                sig_or_tail = [
-                    reaction_labels.Rxn_SigOrTail.get(x)
-                    for x in gene[gene_columns.index("pgdb_reaction_id")]
-                ]
-            else:
-                sig_or_tail = None
-
-                # "Signature Tailoring Enzyme Class"
-            row_data.append(enzyme_class)
-            # "Signature or Tailoring"
-            row_data.append(sig_or_tail)
-            writer.writerow(row_data)
+            _log.warning(f" column {i} failed to explain {e}")
+    gene_output = gene_output.select(gene_output_cols)
+    _log.info(f"Gene Output is {len(gene_output)} rows")
+    _log.debug(f"Gene Output head {gene_output.head()}")
+    gene_output.write_csv(gene_output_file, separator="\t")
 
 
 def write_cluster_output(
@@ -1901,13 +1813,14 @@ def write_cluster_output(
     Returns:
         **None** (File is generated with the path of the first input argument)
     """
-    log.debug("Writing cluster output")
+    _log.debug("Writing cluster output")
     if output_type not in ["old", "simple", "verbose"]:
         raise Exception("Output type not supported, options are 'simple' or 'verbose'")
+    indexed_clusters = clusters.ClusterMeta.with_row_index("cluster_id")
     cluster_genes = (
         gene_location.data.with_row_index("gene_idx")
         .join_where(
-            clusters.ClusterMeta.with_row_index("cluster_id"),
+            indexed_clusters,
             (pl.col("Chromosome Name") == pl.col("chromosome")),
             (pl.col("gene_idx") >= pl.col("start")),
             (pl.col("gene_idx") <= pl.col("end")),
@@ -1919,136 +1832,53 @@ def write_cluster_output(
             pl.col("Gene End (bp)").min().alias("end_bp"),
         )
     )
-    test_data = clusters.ClusterMeta.with_row_index("cluster_id").select(
+    test_data = indexed_clusters.select(
         pl.col("cluster_id"), pl.col("chromosome"), pl.col("start"), pl.col("end")
     )
-    log.debug(f"Clusters Data ID, chromosome, and start and end {test_data}")
-    log.debug(f"Cluster Genes Only {cluster_genes.head()}")
-    log.debug(f"Cluster Genes Rows {len(cluster_genes)}")
-    log.debug(f"Cluster Genes Columns {cluster_genes.columns}")
-    cluster_output = clusters.ClusterMeta.with_row_index("cluster_id").join(
-        cluster_genes, on="cluster_id"
-    )
+    _log.debug(f"Clusters Data ID, chromosome, and start and end {test_data}")
+    _log.debug(f"Cluster Genes Only {cluster_genes.head()}")
+    _log.debug(f"Cluster Genes Rows {len(cluster_genes)}")
+    _log.debug(f"Cluster Genes Columns {cluster_genes.columns}")
+    cluster_output = indexed_clusters.join(cluster_genes, on="cluster_id")
+    _log.debug(f"Cluster output length {len(cluster_output)}")
+    _log.debug(f"Cluster Step Sizes {cluster_output['step_size'].describe()}")
     cluster_output = (
         cluster_output.with_columns(
-            cluster_in_top_percent=pl.col("cluster_id").replace_strict(
-                {i: x for i, x in enumerate(clusters_in_top_percent)}, default=False
-            ),
             cluster_length=pl.col("end_bp") - pl.col("start_bp") + pl.lit(1),
             total_gene_count=pl.col("enzyme_count") + pl.col("non_enzyme_gene_count"),
         ).select(
             pl.col("step_size").alias("Stepsize"),
             pl.col("cluster_id").alias("ClusterID"),
-            pl.col("cluster_in_top_percent").alias("Top n% cluster"),
+            pl.col("top_percent_clusters").alias("Top n% cluster"),
             pl.col("chromosome").alias("Chromosome"),
             pl.col("start_bp").alias("Start bp"),
             pl.col("end_bp").alias("End bp"),
             pl.col("cluster_length").alias("Physical size bp"),
             pl.col("total_gene_count").alias("Number of genes"),
-            pl.col("hypothetical_gene_count").alias("Number of Hypothetical Genes"),
-            pl.col("enzyme_count").alias("Number of Enzymes"),
+            pl.col("hypothetical_gene_count").alias("Number of Hypothetical genes"),
+            pl.col("enzyme_count").alias(
+                "number of Enzymes"
+            ),  # TODO: capitalize number (changed to match MATLAB)
             pl.col("cluster_genes").list.first().alias("Start Gene"),
             pl.col("cluster_genes").list.last().alias("End Gene"),
-            # pl.col("cluster_genes").list.join(",").alias("Gene IDs"),
+            pl.col("cluster_genes").list.join(",").alias("Gene IDs"),
         )
     ).filter(
         (pl.lit(output_type) == pl.lit("old"))
-        & (
+        | (
             (pl.lit(output_type) == pl.lit("verbose"))
             & (pl.col("Stepsize") <= pl.lit(clusters.FinalStepSize))
         )
-        & (
+        | (
             (pl.lit(output_type) == pl.lit("simple"))
             & (pl.col("Stepsize") == pl.lit(clusters.FinalStepSize))
             & pl.col("Top n% cluster")
         )
     )
-    log.debug(f"Cluster output dtypes {cluster_output.dtypes}")
-    log.debug(f"Cluster output {cluster_output}")
+    _log.debug(f"Cluster output dtypes {cluster_output.dtypes}")
+    _log.debug(f"Cluster output {cluster_output}")
     cluster_output.write_csv(cluster_output_file, separator="\t")
     return  # early return to keep the old code
-
-    with cluster_output_file.open(mode="w") as fio:
-        writer = csv.writer(fio, delimiter="\t")
-        # write header
-        header = [
-            "Stepsize",
-            "ClusterID",
-            "Top n% cluster",
-            "Chromosome",
-            "Start bp",
-            "End bp",
-            "Physical size bp",
-            "Number of genes",
-            "Number of Hypothetical genes",
-            "Number of Enzymes",
-            "Start Gene",
-            "End Gene",
-            "Gene IDs",
-        ]
-        writer.writerow(header)
-
-        number_of_clusters = len(clusters.ClusterMeta)
-
-        # TODO: the output could be filtered at the dataframe level
-        for i, _cluster in enumerate(
-            clusters.ClusterMeta.with_row_index("cluster_id").iter_rows(),
-        ):
-            cluster = {
-                col: cval
-                for col, cval in zip(
-                    ["cluster_id"] + clusters.ClusterMeta.columns, _cluster
-                )
-            }
-            log.debug("Write cluster %d of %d?", i + 1, number_of_clusters)
-            log.debug(
-                f"Cluster step size {cluster['step_size']} == final step size {
-                    clusters.FinalStepSize
-                }"
-            )
-            top_pct_max_msg = (
-                repr(clusters_in_top_percent[i])
-                if i in clusters_in_top_percent
-                else f"Only {len(clusters_in_top_percent)} clusters, this is cluster {
-                    i
-                }"
-            )
-            log.debug(f"Cluster in top percent?{top_pct_max_msg}")
-            if (
-                output_type == "old"
-                or (
-                    output_type == "verbose"
-                    and cluster["step_size"] <= clusters.FinalStepSize
-                )
-                or (
-                    output_type == "simple"
-                    and cluster["step_size"] == clusters.FinalStepSize
-                    and clusters_in_top_percent[i]
-                )
-            ):
-                if i % 1000 == 0:
-                    log.debug(cluster)
-                cluster_genes = gene_location.data.filter(
-                    (pl.col("Chromosome Name") == cluster["chromosome"])
-                    & (pl.col("Gene Start (bp)") >= cluster["start"])
-                    & (pl.col("Gene End (bp)") <= cluster["end"])
-                )["Gene Name"].to_list()
-                row_data = (
-                    (cluster["step_size"]),
-                    (cluster["cluster_id"]),
-                    (clusters_in_top_percent[i]),
-                    (cluster["chromosome"]),
-                    (cluster["start"]),
-                    (cluster["end"]),
-                    (cluster["end"] - cluster["start"] + 1),
-                    (cluster["enzyme_count"] + cluster["non_enzyme_gene_count"]),
-                    (cluster["hypothetical_gene_count"]),
-                    (cluster["enzyme_count"]),
-                    (cluster_genes[0]),
-                    (cluster_genes[-1]),
-                    (", ".join(cluster_genes)),
-                )
-                writer.writerow(row_data)
 
 
 def analyze_plant_cluster_gap_file(

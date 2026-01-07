@@ -14,7 +14,7 @@ def test_init_genelocation():
         )
     )
 
-    assert 5 == len(gene_location.data.columns)
+    assert 6 == len(gene_location.data.columns)
     assert 9_629 == len(gene_location)
 
 
@@ -51,11 +51,12 @@ def test_remove_protein_transcript_info_from_genepositionfile(
         "Gene End (bp)",
         "Chromosome Name",
         "Strand",
+        "Hypothetical",
         "Transcript Name",  # added
         "Protein Name",  # added
     ]
     gene_location.remove_protein_transcript_info(conversion)
-    assert 7 == len(gene_location.columns)
+    assert 8 == len(gene_location.columns)
     assert expected_columns == gene_location.columns
     assert 9_629 == len(gene_location)
 
@@ -111,6 +112,7 @@ def test_map_genelocation_to_conversion_file(genelocation_obj):
         "Gene End (bp)",
         "Chromosome Name",
         "Strand",
+        "Hypothetical",
         "Transcript Name",  # added
         "Protein Name",  # added
     ]
@@ -206,6 +208,7 @@ def test_annotate_enzyme_info(genelocation_obj):
         "Gene End (bp)",
         "Chromosome Name",
         "Strand",
+        "Hypothetical",
         "Transcript Name",
         "Protein Name",
         "pgdb_gene_id",  # added
@@ -240,7 +243,7 @@ def test_introduce_hard_breaks(genelocation_obj):
 def test_insert_genes(genelocation_obj):
     print(genelocation_obj.data.head(10))
     test_genes = [
-        (f"TEST{i + 1:02}", 50 + 1000 * i, 50 + 1000 * i, "test_scaffold", "-1")
+        (f"TEST{i + 1:02}", 50 + 1000 * i, 50 + 1000 * i, "test_scaffold", "-1", True)
         for i in range(500)
     ]
     gene_location = genelocation_obj.model_copy()
@@ -271,8 +274,12 @@ def test_compute_local_duplication(genelocation_obj):
     )
     gene_location = genelocation_obj
     gene_location.remove_protein_transcript_info(conversion)
+    # find duplicates within 100kb and 10 genes of each gene (defaults)
     local_duplication = gene_location.compute_local_duplication(
-        mcl_cluster_data, {}, 10000, 5
+        mcl_cluster_data,
+        {},
+        100000,
+        10,
     )
     expected_columns = [
         "Gene Name",
@@ -280,13 +287,16 @@ def test_compute_local_duplication(genelocation_obj):
         "Gene End (bp)",
         "Chromosome Name",
         "Strand",
+        "Hypothetical",
         "Transcript Name",
         "Protein Name",
-        "neighbor_genes",
-        "mcl_genes",
+        # "neighbor_genes",
         "mcl_clusters",
         "is_locally_duplicated",
     ]
     print(local_duplication.columns)
+    print(local_duplication["mcl_clusters"].head())
+    print(local_duplication.filter(pl.col("mcl_clusters").list.len() > 1).height)
     assert expected_columns == local_duplication.columns
-    assert 848 == local_duplication.filter(pl.col("is_locally_duplicated")).height
+    assert 91 == local_duplication.filter(pl.col("is_locally_duplicated")).height
+    # old assert 848 == local_duplication.filter(pl.col("is_locally_duplicated")).height
