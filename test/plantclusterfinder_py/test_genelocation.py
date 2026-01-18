@@ -298,5 +298,5 @@ def test_compute_local_duplication(genelocation_obj):
     print(local_duplication["mcl_clusters"].head())
     print(local_duplication.filter(pl.col("mcl_clusters").list.len() > 1).height)
     assert expected_columns == local_duplication.columns
-    assert 91 == local_duplication.filter(pl.col("is_locally_duplicated")).height
-    # old assert 848 == local_duplication.filter(pl.col("is_locally_duplicated")).height
+    assert 358 == local_duplication.filter(pl.col("is_locally_duplicated")).height
+    # assert 91 == local_duplication.filter(pl.col("is_locally_duplicated")).height

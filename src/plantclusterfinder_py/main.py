@@ -1,3 +1,4 @@
+import argparse
 import logging
 import logging.handlers
 import math
@@ -578,45 +579,19 @@ def main() -> None:
          percent clusters of the chosen stepsize (default
          simple).""",
     )
+    parser.add_argument(
+        "--OutputGeneLocationParquet",
+        type=str,
+        help="""
+        The file location of the parquet file to store the GeneLocation data.
+         The file is only written if the argument is set.
+        """,
+    )
+    parser.add_argument(
+        "--NoRebuildBlastDB", action="store_false", help=argparse.SUPPRESS
+    )
+    parser.add_argument("--NoRerunBlastP", action="store_false", help=argparse.SUPPRESS)
     args = parser.parse_args()
-
-    """
-
-   #% Display parameters:
-   vc = 1
-   if ispc():
-       for vi = 1:size(varargin,2)
-           if vc == 1:
-               log.info('Parameter %i: %s\n', (vi-1)/2+1, varargin{1,vi})
-               vc = vc + 1
-           else
-               if ischar(varargin{1,vi}):
-                   log.info('Value: %s\n', varargin{1,vi})
-                   vc = 1
-               elseif isnumeric(varargin{1,vi})
-                   log.info('Value: %i\n', varargin{1,vi})
-                   vc = 1
-               else
-                   log.info('Value: can not be displayed\n')
-                   vc = 1
-               end
-           end
-       end
-   else
-       for vi = 1:size(varargin,2)
-           if vc == 1:
-               log.info('Parameter %i: %s\n', (vi-1)/2+1, varargin{1,vi})
-               vc = vc + 1
-           else
-               log.info('Value: %s\n', varargin{1,vi})
-               vc = 1
-           end
-       end
-   end
-
-   #% Initializing parameters
-  log.info('Initializing parameters and running PlantClusterFinder\n')
-    """
 
     verbose_level = args.Verbose
     target_handler = logging.StreamHandler(sys.stderr)
@@ -693,6 +668,14 @@ def main() -> None:
     vRunAfterPart = args.RunAfterPart
     vHypoAmount = args.HypoAmount
     vOutputType = args.OutputType
+    argsParquetFile = (
+        Path(args.OutputGeneLocationParquet)
+        if args.OutputGeneLocationParquet is not None
+        else None
+    )
+    # by default, these settings should not be set
+    vRebuildBlastDB = not args.NoRebuildBlastDB
+    vRerunBlastP = not args.NoRerunBlastP
 
     error_message: list[str] = []
     if not os.path.isdir(vPGDB_FlatFileFolder):
@@ -851,6 +834,8 @@ def main() -> None:
                 vOverwriteMCLClustering,
                 vRemoveNonProtLocations,
                 vParallelize=vPara,
+                rebuildBlastDB=vRebuildBlastDB,
+                rerunBlastP=vRerunBlastP,
             )
         else:
             log.info(
@@ -1112,6 +1097,8 @@ def main() -> None:
             vClusters_Top,
             vOutputType,
         )
+        if argsParquetFile is not None:
+            gene_location.write_parquet(argsParquetFile)
         vPartFinished = 19
         if vTempsaves == 1:
             vPartFinished = _tempsaves(locals())["vPartFinished"]

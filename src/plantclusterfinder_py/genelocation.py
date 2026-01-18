@@ -760,6 +760,9 @@ class GeneLoc(BaseModel):
 
         return self.data
 
+    def write_parquet(self, filename: Path) -> None:
+        self.data.write_parquet(filename)
+
 
 # Example usage
 if __name__ == "__main__":

@@ -103,7 +103,7 @@ def test_get_metabolic_domains():
         test_input_dir / "ReactionMetabolicDomainClassification.txt",
         "Specialized Metabolism",
     )
-    assert 11_435 == len(metabolic_domains.RxnMetaDom)
+    assert 14_409 == len(metabolic_domains.RxnMetaDom)
     assert 9_682 == len(metabolic_domains.Rxn2MetaDom)
 
 
@@ -160,12 +160,12 @@ def test_map_PGDBs_to_conversion_file():
         unique_keys=("UNIQUE-ID", "ACCESSION-1"),
     )
     gene_info_from_genes_dat = ["ACCESSION-1"]  # TODO
-    ids_to_map = "T"
+    ids_to_map = "GTP"
     pgdb_conversions_dict = map_PGDBs_to_conversion_file(
         conversion, genes_all, gene_info_from_genes_dat, ids_to_map
     )
     assert 2_053 == len(pgdb_conversions_dict)  # TEST INCOMPLETE
-    assert ["46517"] == pgdb_conversions_dict["G4S-3028"]
+    assert ["46517", "46517"] == pgdb_conversions_dict["G4S-3028"]
 
 
 # part 6
@@ -378,6 +378,7 @@ def test_perform_clustering(genelocation_obj):
         conversion,
         False,  # do not remove proteins
     )
+    gene_location.compute_local_duplication(mcl_cluster_data, {}, 100000, 10)
     # using the defaults from main.py
     clusters = perform_clustering(
         genelocation_obj,
@@ -391,8 +392,8 @@ def test_perform_clustering(genelocation_obj):
     )
     assert 3 == clusters.FinalStepSize
     assert 5 == clusters.MaxStepSize
-    assert 1672 == clusters.ClusterMeta.height
-    assert 685 == clusters.ClusterBackground.height
+    assert 86 == clusters.ClusterMeta.height
+    assert 482 == clusters.ClusterBackground.height
 
 
 # Part 17

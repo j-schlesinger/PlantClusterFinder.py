@@ -25,4 +25,8 @@ rye run python -m plantclusterfinder_py\
    '-cout' './Outputs/csubellipsoidea_Clust_v1_3.txt'\
    '--SeqGapSizesChromBreak' 10000 '--PGDBIdsToMap' 'GTP'\
    '--OutputType' 'simple'\
-   --Verbose 2
+   --Verbose 2\
+   "--OutputGeneLocationParquet" "./Outputs/csubellipsoidea_gene_loc.parquet"\
+   --NoRerunBlastP\
+   --NoRebuildBlastDB
+# the last 2 options should be removed for *real* testing

@@ -438,8 +438,16 @@ def read_MCL_clustering_file(
             mcl_id = f"MCL_{i}"
             prots_in_cluster = line.strip().split()
             # Convert Transcript ID to Gene Name
-            genes_in_cluster = [conversion.MapP_MapG[p][0] for p in prots_in_cluster]
+            genes_in_cluster = [conversion.MapP_MapG[p] for p in prots_in_cluster]
             _log.debug(f"{mcl_id}: {prots_in_cluster}")
+            if any([len(x) for x in genes_in_cluster]) == 0:
+                _log.error(f"Empty genes cluster in MCL {mcl_id}")
+                missing_genes = [
+                    p for p in prots_in_cluster if len(conversion.MapP_MapG[p])
+                ]
+                _log.error(conversion.MapP_MapG)
+                raise Exception(f"Genes are missing for proteins {missing_genes}")
+            genes_in_cluster = [x[0] for x in genes_in_cluster]
             mcl_cluster_data.append(
                 {
                     "ID": mcl_id,
@@ -468,6 +476,8 @@ def get_MCL_clustering(
     vOverwriteMCLClustering: bool,
     vRemoveNonProtLocations: bool,
     vParallelize: int = 0,
+    rebuildBlastDB: bool = True,
+    rerunBlastP: bool = True,
 ) -> MclClusterData:
     """
     ---------------------------------------------------------------------------
@@ -494,6 +504,8 @@ def get_MCL_clustering(
         vRemoveNonProtLocations,
         vParallelize: Defines if multiple cpus should be used for computation of parts
                of algorithm. Active if larger than 1.
+        rebuildBlastDB: If BlastDB exists, should it be rebuilt? (recommended)
+        rerunBlastP: if BlastP output exists, should it be rerun?
 
     Returns:
         MclClusterData object which provides mapping between
@@ -508,6 +520,7 @@ def get_MCL_clustering(
     apps = ["makeblastdb", "blastp", "cut", "mcxload", "mcl", "mcxdump"]
     missing_apps: List[str] = []
     app_path: Dict[str, Path] = dict()
+    # verify all apps are in $PATH, generate error if so
     for app in apps:
         output: subprocess.CompletedProcess = subprocess.run(
             ["which", app], capture_output=True
@@ -523,38 +536,46 @@ def get_MCL_clustering(
         )
 
     command_for: Dict[str, List[str]] = dict()
-    command_for["makeblastdb"] = [
-        "-in",
-        str(vProtein_sequence_FastaFile),
-        "-dbtype",
-        "prot",
-        "-out",
-        f"{vProtein_sequence_FastaFile}.blastDB",
-        "-hash_index",
-    ]
-    command_for["blastp"] = [
-        "-query",
-        str(vProtein_sequence_FastaFile),
-        "-db",
-        f"{vProtein_sequence_FastaFile}.blastDB",
-        "-evalue",
-        "1",
-        "-out",
-        f"{vProtein_sequence_FastaFile}.blastOUT",
-        "-outfmt",
-        "6 qseqid sseqid evalue bitscore length pident qstart qend sstart send",
-    ]
-    if vParallelize > 1:
-        command_for["blastp"].extend(["-num_threads", str(vParallelize)])
+    blastdb_file = f"{vProtein_sequence_FastaFile}.blastDB"
+    if not (rebuildBlastDB or os.path.isfile(blastdb_file)):
+        command_for["makeblastdb"] = [
+            "-in",
+            str(vProtein_sequence_FastaFile),
+            "-dbtype",
+            "prot",
+            "-out",
+            blastdb_file,
+            "-hash_index",
+        ]
+    else:
+        command_for["makeblastdb"] = ["-h"]
+    blastp_file = f"{vProtein_sequence_FastaFile}.blastOUT"
+    if not (rerunBlastP or os.path.isfile(blastp_file)):
+        command_for["blastp"] = [
+            "-query",
+            str(vProtein_sequence_FastaFile),
+            "-db",
+            blastdb_file,
+            "-evalue",
+            "1",
+            "-out",
+            blastp_file,
+            "-outfmt",
+            "6 qseqid sseqid evalue bitscore length pident qstart qend sstart send",
+        ]
+        if vParallelize > 1:
+            command_for["blastp"].extend(["-num_threads", str(vParallelize)])
+    else:
+        command_for["blastp"] = ["-h"]
     command_for["cut"] = [
         "-f",
         "1,2,3",
-        f"{vProtein_sequence_FastaFile}.blastOUT",
+        blastp_file,
     ]
     cut_output = f"{vProtein_sequence_FastaFile}.MCLIN"
     command_for["mcxload"] = [
         "-abc",
-        f"{vProtein_sequence_FastaFile}.MCLIN",
+        cut_output,
         "--stream-mirror",
         "--stream-neg-log10",
         "-stream-tf",
@@ -749,7 +770,8 @@ def map_pgdb_reactions_to_genes(
     _log.info("Match genes to to reactions")
     # initialize matrix the size of [G2_P, E_R2]
     # gene2rxn = (
-    gene_prot = G2_P.join(P_P, on="PROTIEN-ID", validate="1:1")
+    # gene_prot = G2_P.join(P_P, on="PROTIEN-ID", validate="1:1")
+    gene_prot = G2_P.join(P_P, on="PROTIEN-ID")
     gene_prot_enz = gene_prot.join(P_E, on="PROTIEN-ID")
     gene_prot_enz_reaction = gene_prot_enz.join(E2_R, on="ENZYME-ID")
     G2_R = gene_prot_enz_reaction.select(pl.col("GENE-ID"), pl.col("REACTION-ID"))
@@ -962,9 +984,12 @@ def map_PGDBs_to_conversion_file(
 
     gene_map = dict()
     if "G" in vPGDBIdsToMap:
+        vGenes_all_g = vGenes_all.select(
+            pl.col("UNIQUE-ID"), pl.col(vGenesDat_GeneInfo[0])
+        ).explode(pl.col(vGenesDat_GeneInfo[0]))
         gene_map = (
             Conversion.df.join(
-                vGenes_all, left_on="Gene Name", right_on=vGenesDat_GeneInfo[0]
+                vGenes_all_g, left_on="Gene Name", right_on=vGenesDat_GeneInfo[0]
             )
             .select(pl.col("Gene Name"), pl.col("UNIQUE-ID"))
             .rows_by_key(key="UNIQUE-ID")
@@ -972,9 +997,12 @@ def map_PGDBs_to_conversion_file(
 
     transcript_map = dict()
     if "T" in vPGDBIdsToMap:
+        vGenes_all_t = vGenes_all.select(
+            pl.col("UNIQUE-ID"), pl.col(vGenesDat_GeneInfo[0])
+        ).explode(pl.col(vGenesDat_GeneInfo[0]))
         transcript_map = (
             Conversion.df.join(
-                vGenes_all, left_on="Transcript Name", right_on=vGenesDat_GeneInfo[0]
+                vGenes_all_t, left_on="Transcript Name", right_on=vGenesDat_GeneInfo[0]
             )
             .select(pl.col("Transcript Name"), pl.col("UNIQUE-ID"))
             .rows_by_key(key="UNIQUE-ID")
@@ -982,9 +1010,12 @@ def map_PGDBs_to_conversion_file(
 
     protein_map = dict()
     if "P" in vPGDBIdsToMap:
+        vGenes_all_p = vGenes_all.select(
+            pl.col("UNIQUE-ID"), pl.col(vGenesDat_GeneInfo[0])
+        ).explode(pl.col(vGenesDat_GeneInfo[0]))
         protein_map = (
             Conversion.df.join(
-                vGenes_all, left_on="Protein Name", right_on=vGenesDat_GeneInfo[0]
+                vGenes_all_p, left_on="Protein Name", right_on=vGenesDat_GeneInfo[0]
             )
             .select(pl.col("Protein Name"), pl.col("UNIQUE-ID"))
             .rows_by_key(key="UNIQUE-ID")
@@ -1927,7 +1958,10 @@ def analyze_plant_cluster_gap_file(
 
 
 def read_in_pgdb_flat(
-    pgdb_filename: Path, attrib: tuple[str], unique_keys: tuple[str] = ("UNIQUE-ID",)
+    pgdb_filename: Path,
+    attrib: tuple[str],
+    unique_keys: tuple[str] = ("UNIQUE-ID",),
+    pgdb_encoding: str = "latin-1",
 ) -> pl.DataFrame:
     """
     ---------------------------------------------------------------------------
@@ -1955,22 +1989,43 @@ def read_in_pgdb_flat(
         fh: IO, attrib: Tuple[str], unique_keys: Tuple[str]
     ) -> Iterator[Dict[str, Any]]:
         """
-        Generate a row from the pgdb flat file
+        Generate a dict row from the pgdb flat file
         """
         y: Dict[str, Any] = {att: None for att in attrib}
+        prev_key = "COMMENT"
         for line in fh:
-            if line.startswith("#"):
+            # ignore comment rows, columns
+            if line.startswith("#") or line.startswith("COMMENT"):
+                if line.startswith("COMMENT - "):
+                    prev_key = "COMMENT"
                 continue
-            elif line.startswith("//"):
-                yield y
-                y = {att: None for att in attrib}
-                continue
+            # line continues or data row ends
+            elif line.startswith("/"):
+                # split lines and reset row
+                if line.startswith("//"):
+                    yield y
+                    y = {att: None for att in attrib}
+                    prev_key = "COMMENT"
+                    continue
+                # row ends, extend value from previous row
+                elif prev_key == "COMMENT":
+                    continue
+                else:
+                    if not isinstance(y[prev_key], list):
+                        y[prev_key] += line[1:]
+                        continue
+                    last_val = y[prev_key][-1]
+                    last_val += line[1:]
+                    y[prev_key][-1] = last_val
+
+            # get key, value pair from line
             elif " - " in line:
                 key, *value_arr = line.split(" - ")
+                prev_key = key
                 value: str = (" - ".join(value_arr)).strip()
                 if key in y:
                     if y[key] is None:
-                        if key in unique_keys:
+                        if key == unique_keys[0]:
                             y[key] = value
                         else:
                             y[key] = [value]
@@ -1979,7 +2034,10 @@ def read_in_pgdb_flat(
                     else:
                         y[key].append(value)
 
-    with open(pgdb_filename, "r") as f:
-        pgdb_data = pl.DataFrame(list(_row_gen(f, attrib, unique_keys)))
+    # The PGDB source data doesn't enforce encoding, but Arabiopsis
+    with open(pgdb_filename, "r", encoding=pgdb_encoding) as f:
+        pgdb_data = pl.from_dicts(
+            _row_gen(f, attrib, unique_keys), infer_schema_length=None
+        )
 
     return pgdb_data

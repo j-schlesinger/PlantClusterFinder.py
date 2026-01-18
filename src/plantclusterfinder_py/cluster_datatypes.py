@@ -147,12 +147,11 @@ class Conversion(BaseModel):
     @property
     def MapP_MapG(self) -> dict:
         """Mapping between MapG and MapP"""
-        if "MapP_MapG" in self._cache:
-            return self._cache["MapP_MapG"]
-        # TODO: Validate this is 1:1
-        self._cache["MapP_MapG"] = self.df.select(
-            pl.col("Gene Name"), pl.col("Protein Name")
-        ).rows_by_key(key="Protein Name")
+        if "MapP_MapG" not in self._cache:
+            # TODO: Validate this is 1:1
+            self._cache["MapP_MapG"] = self.df.select(
+                pl.col("Gene Name"), pl.col("Protein Name")
+            ).rows_by_key(key="Protein Name")
         return self._cache["MapP_MapG"]
 
 
