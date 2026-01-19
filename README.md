@@ -1,4 +1,5 @@
-# PlantClusterFinder.py (version 1.3)
+# PlantClusterFinder.py (version 2.0)
+## Installation and Usage
 
 ## Developing PlantClusterFinder.py
 The quickest and easiest way to get started is by using [rye](https://rye.astral.sh/).

@@ -71,6 +71,7 @@ def groupbyseq(input_list: list, output_path, amino_acid: str, chromosome: str) 
             incomplete.
         IOError: When the output_path cannot be written to.
     """
+    log.debug("Performing groupbyseq")
     if os.path.exists(output_path):
         append_write = "a"  # append if already exists
     else:
@@ -102,9 +103,11 @@ def get_positions_of_gap(
             if it does not exist, otherwise it will be appended to.
         parallelize: Paralellize processing of FASTA file (not implemented)
     """
+    log.debug("Performing get_positions_of_gap")
     if parallelize != 1:
         log.warning("Parallelization of get_positions_of_gap not implemented")
     with open(input_path, "r") as fp:
+        log.debug(f"Reading AA FASTA from {input_path}")
         for seq_name, seq_aa in read_fasta(fp):
             fasta_id = re.split(r"[\t\s|]", seq_name)[0].replace(">", "")
             indices = regex_search("N", seq_aa.upper())
@@ -114,6 +117,10 @@ def get_positions_of_gap(
 
 
 def main():
+    """
+    This used to be a standalone application, this main function exists
+    for testing and backward compatibility.
+    """
     parser = ArgumentParser("PCF_Groupby Seq")
     parser.add_argument(
         "-i",

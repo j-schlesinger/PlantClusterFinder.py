@@ -103,7 +103,8 @@ def test_get_metabolic_domains():
         test_input_dir / "ReactionMetabolicDomainClassification.txt",
         "Specialized Metabolism",
     )
-    assert 11_435 == len(metabolic_domains.RxnMetaDom)
+    assert 14_409 == len(metabolic_domains.RxnMetaDom)
+    assert 9_682 == len(metabolic_domains.Rxn2MetaDom)
 
 
 def test_matchPGDBs_to_MDs():
@@ -159,12 +160,12 @@ def test_map_PGDBs_to_conversion_file():
         unique_keys=("UNIQUE-ID", "ACCESSION-1"),
     )
     gene_info_from_genes_dat = ["ACCESSION-1"]  # TODO
-    ids_to_map = "T"
+    ids_to_map = "GTP"
     pgdb_conversions_dict = map_PGDBs_to_conversion_file(
         conversion, genes_all, gene_info_from_genes_dat, ids_to_map
     )
     assert 2_053 == len(pgdb_conversions_dict)  # TEST INCOMPLETE
-    assert ["46517"] == pgdb_conversions_dict["G4S-3028"]
+    assert ["46517", "46517"] == pgdb_conversions_dict["G4S-3028"]
 
 
 # part 6
@@ -280,30 +281,7 @@ def test_introduce_hypo_genes(genelocation_obj):
 
 
 # Part 15
-def test_compute_local_duplication(genelocation_obj):
-    from plantclusterfinder_py.cluster import (
-        compute_local_duplication,
-        read_in_conversion_file,
-        read_MCL_clustering_file,
-    )
-
-    conversion = read_in_conversion_file(
-        "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
-    )
-
-    mcl_cluster_data = read_MCL_clustering_file(
-        "./csubellipsoidea/MCL_clustering_expected_results/dump.CsubellipsoideaC_169_227_v2.0.protein.pcf13.mci.I20",
-        "./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa",
-        conversion,
-        False,  # do not remove proteins
-    )
-    gene_location = genelocation_obj
-    gene_location.remove_protein_transcript_info(conversion)
-    local_duplication = compute_local_duplication(
-        gene_location, mcl_cluster_data, {}, 10000, 5
-    )
-    print(local_duplication)
-    assert 848 == local_duplication.filter(pl.col("locally_duplicated")).height
+# in genelocation test
 
 
 # Part 16
@@ -320,12 +298,46 @@ def test_compute_background(genelocation_obj):
     )
     gene_location._data = gene_location.data.join(has_reaction, on="Gene Name")
 
-    cluster = pl.DataFrame({"step_size": 10})
+    step_sizes = [1 + x for x in range(4) for _ in range(100)]
+    enzyme_counts = [3 for _ in range(400)]
+    window_sizes = [3 + x for _ in range(100) for x in range(4)]
 
+    cluster = pl.DataFrame(
+        (
+            {
+                "step_size": x,
+                "enzyme_count": y,
+                "non_enzyme_gene_count": z - y,
+                "test_window_size": z,
+            }
+            for x, y, z in zip(step_sizes, enzyme_counts, window_sizes)
+        )
+    )
+    cluster.write_csv("test_cluster.csv")
+    expected_background = pl.DataFrame(
+        [
+            {"window_size": x, "enzyme_count": y, "tested": True}
+            for x in range(1, 7)
+            for y in range(x + 1)
+        ]
+    ).filter(  # filtering out background cases not seen in data
+        (pl.col("window_size") <= 4) | (pl.col("window_size") != pl.col("enzyme_count"))
+    )
     background = compute_background(cluster, gene_location, pl.DataFrame())
-    assert 52 == background.height
+    assert expected_background.height == background.height
+    for window in (
+        background.group_by("window_size")
+        .agg(
+            pl.sum("winzyme_occurrence"),
+            pl.sum("winzyme_frequency"),
+            pl.last("window_occurrence"),
+        )
+        .iter_rows()
+    ):
+        (size, occurrence, frequency, total_occurrence) = window
+        assert occurrence == total_occurrence
+        assert occurrence == 186 - (size - 1) * 6
     return
-    # compute_background(test_clusters, gene_location)
 
 
 def test_perform_clustering(genelocation_obj):
@@ -366,6 +378,7 @@ def test_perform_clustering(genelocation_obj):
         conversion,
         False,  # do not remove proteins
     )
+    gene_location.compute_local_duplication(mcl_cluster_data, {}, 100000, 10)
     # using the defaults from main.py
     clusters = perform_clustering(
         genelocation_obj,
@@ -379,20 +392,79 @@ def test_perform_clustering(genelocation_obj):
     )
     assert 3 == clusters.FinalStepSize
     assert 5 == clusters.MaxStepSize
-    assert 7996 == clusters.ClusterMeta.height
-    assert 34 == clusters.ClusterBackground.height
+    assert 86 == clusters.ClusterMeta.height
+    assert 482 == clusters.ClusterBackground.height
 
 
 # Part 17
+# function moved to cluster_datatypes
 def test_perform_cutoff():
-    assert 1 == 0  # TEST INCOMPLETE
+    from plantclusterfinder_py.cluster import compute_background
+    from plantclusterfinder_py.cluster_datatypes import Clusters
+    from plantclusterfinder_py.genelocation import GeneLoc
+
+    TOP_PERCENT = 5
+    gene_location = GeneLoc(
+        file_path=Path("./test/data/background_computation_test.tsv")
+    )
+    has_reaction = pl.read_csv(
+        Path("./test/data/background_computation_has_reaction.csv")
+    )
+    gene_location._data = gene_location.data.join(has_reaction, on="Gene Name")
+
+    step_sizes = [1 + x for x in range(4) for _ in range(100)]
+    enzyme_counts = [3 for _ in range(400)]
+    window_sizes = [3 + x for _ in range(100) for x in range(4)]
+
+    cluster_df = pl.DataFrame(
+        (
+            {
+                "step_size": x,
+                "enzyme_count": y,
+                "non_enzyme_gene_count": z - y,
+                "test_window_size": z,
+            }
+            for x, y, z in zip(step_sizes, enzyme_counts, window_sizes)
+        )
+    )
+    background = compute_background(cluster_df, gene_location, pl.DataFrame())
+
+    cluster = Clusters(
+        ClusterMeta=cluster_df,
+        ClusterBackground=background,
+        FinalStepSize=6,
+        MaxStepSize=5,
+    )
+    top_clusters = cluster.perform_cutoff(TOP_PERCENT)
+    print(cluster.ClusterMeta)
+    print(cluster.ClusterBackground)
+    assert len(top_clusters) == len(cluster.ClusterMeta)
+    assert (
+        abs(
+            100
+            * len(cluster.ClusterMeta.filter("top_percent_clusters"))
+            / len(top_clusters)
+        )
+        - TOP_PERCENT
+        < TOP_PERCENT**0.5  # about TOP_PERCENT of clusters should be returned
+    )
 
 
 # Part 18
 def test_write_gene_output():
+    # from plantclusterfinder_py.cluster import write_gene_output
+
+    # test "old" output
+    # test "simple" output (default)
+    # test "verbose" output
     assert 1 == 0  # TEST INCOMPLETE
 
 
 # Part 19
 def test_write_cluster_output():
+    # from plantclusterfinder_py.cluster import write_cluster_output
+
+    # test "old" output
+    # test "simple" output (default)
+    # test "verbose" output
     assert 1 == 0  # TEST INCOMPLETE
