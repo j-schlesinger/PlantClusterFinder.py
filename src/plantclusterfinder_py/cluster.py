@@ -116,17 +116,15 @@ def introduce_hypo_genes(
         sequencing_gaps.select(pl.col(["Chromosome Name", "Start", "End"]))
         .with_columns(seq_gaps_length=pl.col("End") - pl.col("Start"))
         .with_columns(
-            hypo_to_place=(
-                pl.lit(hypothetical_gene_amount)
-                if (
-                    hypothetical_gene_gap_length_minimum < 0
-                    or (
-                        pl.col("seq_gaps_length")
-                        >= pl.lit(hypothetical_gene_gap_length_minimum)
-                    )
+            hypo_to_place=pl.when(
+                (hypothetical_gene_gap_length_minimum < 0)
+                | (
+                    pl.col("seq_gaps_length")
+                    >= pl.lit(hypothetical_gene_gap_length_minimum)
                 )
-                else pl.lit(0)
             )
+            .then(pl.lit(hypothetical_gene_amount))
+            .otherwise(pl.lit(0))
         )
     )
 
@@ -177,7 +175,7 @@ def annotate_sequencing_gaps(
     nucleotide_fasta_filename: Path,
     intergenic_location: pl.DataFrame,
     unique_chromosome_names: List[str],
-    is_dna_unmasked: bool = True,
+    dna_unmasked_ok: bool = True,
     # parallelize: int = 1,
     overwrite_sequence_gap_info_file: bool = False,
     sequence_gap_sizes_chromosome_breaks: List[int] = [],
@@ -204,22 +202,22 @@ def annotate_sequencing_gaps(
         unique_chromosome_names: A list with unique entries of all chromosome and scaffold
                       names.
     Optional Args:
-        - **is_dna_unmasked**: Option to ignore the error if you use unmasked DNA files.
+        - **dna_unmasked_ok**: Option to ignore the error if you use unmasked DNA files.
         - **parallelize**: Number of parallel processes to run (deprecated).
         - **hypothetical_gene_gap_length_minimum**: If set to True, the code enforces masked nucleotide
                               analysis for finding sequencing gaps (default is
                               False, no enforcement).
-        - **vSeqGapSizesChromBreak**: A list of numbers. The masked nucleotides
+        - **sequence_gap_sizes_chromosome_breaks**: A list of numbers. The masked nucleotides
                                 sequences of these specific lengths are
                                 preventing cluster formation (Default is an
                                 empty list []). If this is given, then also
-                                vGeneLengthHypoMin has to be set. Will lead to
+                                hypothetical_gene_gap_length_minimum has to be set. Will lead to
                                 prescreening of the sequencing gaps.
-        - **vGeneLengthHypoMin**: A size that defines the minimal length of a
+        - **hypothetical_gene_gap_length_minimum**: A size that defines the minimal length of a
                             sequencing gap that should still be processed. If
                             this is bigger than 0, then all sequencing gaps
                             smaller than this are deleted, unless they are
-                            among the list of vSeqGapSizesChromBreak, which
+                            among the list of sequence_gap_sizes_chromosome_breaks, which
                             also needs to be set. Default is -1, not active.
     Returns:
         **DataFrame** containing the
@@ -250,7 +248,7 @@ def annotate_sequencing_gaps(
             nucleotide_fasta_filename,
             1,
             overwrite_sequence_gap_info_file,
-            is_dna_unmasked,
+            dna_unmasked_ok,
         )
     sequencing_gaps = (
         pl.read_csv(
@@ -313,10 +311,10 @@ def annotate_sequencing_gaps(
 
 
 def get_sequencing_gaps(
-    vFile: Path,
-    vParallelize: int,
-    vOverwriteSeqGapInfo: bool = False,
-    vUnmaskedDNA: bool = False,
+    sequence_fasta_filename: Path,
+    parallelize: int,
+    overwrite_sequence_gap_info_file: bool = False,
+    dna_unmasked_ok: bool = False,
 ) -> None:
     """
     ---------------------------------------------------------------------------
@@ -329,34 +327,41 @@ def get_sequencing_gaps(
 
     ---------------------------------------------------------------------------
     Args:
-        vFile: FASTA file of the masked genome nucleotide sequences.
-        vParallelize: Defines if multiple cpus should be used for computation of parts
+        sequence_fasta_filename: FASTA file of the masked genome nucleotide sequences.
+        parallelize: Defines if multiple cpus should be used for computation of parts
                of algorithm. Active if larger than 1.
-        vOverwriteSeqGapInfo: If set to True, the code enforces masked nucleotide
+        overwrite_sequence_gap_info_file: If set to True, the code enforces masked nucleotide
                               analysis for finding sequencing gaps (default is
                               False, no enforcement).
-        vUnmaskedDNA: Option to ignore the error if you use unmasked DNA files.
+        dna_unmasked_ok: Option to ignore the error if you use unmasked DNA files.
     Returns:
         None (File is generated with the path of the first input argument,
              modifying the gene name)
     Raises:
         IOError: if file cannot be generated.
     """
-    if vOverwriteSeqGapInfo:
-        if vFile.exists():
+    if overwrite_sequence_gap_info_file:
+        if sequence_fasta_filename.exists():
             _log.error("Cannot overwrite existing _GAPOutput with tag set")
             raise Exception("Overwrite Protection Enforcement of Existing Gap File")
-    _log.debug(f"Writing sequence gap file {vFile}")
+    _log.debug(f"Writing sequence gap file {sequence_fasta_filename}")
     get_positions_of_gap(
-        vFile, vFile.with_suffix(vFile.suffix + "_GAPOutput"), parallelize=vParallelize
+        sequence_fasta_filename,
+        sequence_fasta_filename.with_suffix(
+            sequence_fasta_filename.suffix + "_GAPOutput"
+        ),
+        parallelize=parallelize,
     )
     analyze_plant_cluster_gap_file(
-        vFile.with_suffix(vFile.suffix + "_GAPOutput"), vUnmaskedDNA
+        sequence_fasta_filename.with_suffix(
+            sequence_fasta_filename.suffix + "_GAPOutput"
+        ),
+        dna_unmasked_ok,
     )
 
 
 def get_metabolic_domains(
-    vGenesMetabolicDomains_File: Path, vMD_to_annotate: str
+    genes_metabolic_domains_filename: Path, metabolic_domains_to_annotate: str
 ) -> AnnotatedMetabolicDomains:
     """
     ---------------------------------------------------------------------------
@@ -364,16 +369,16 @@ def get_metabolic_domains(
       Function that reads in the metabolic domains of reactions
       and gives a mapping between reactions in these files and the metabolic
       domains that were asked to be annotated (usually a subset of all) by
-      vMD_to_annotate.
+      metabolic_domains_to_annotate.
 
     ---------------------------------------------------------------------------
 
     Args:
-        vGenesMetabolicDomains_File: TSV of the metabolic domains of reactions.
+        genes_metabolic_domains_filename: TSV of the metabolic domains of reactions.
                                      Check if file is outdated (needs to
                                      contain all reactions that are present in
                                      the PGDB that have genes annotated to).
-        vMD_to_annotate: A list of Metabolic domains that should be analyzed.
+        metabolic_domains_to_annotate: A list of Metabolic domains that should be analyzed.
                          For example {'Amines and Polyamines Metabolism'; ...
                          'Amino Acids Metabolism'
 
@@ -381,10 +386,12 @@ def get_metabolic_domains(
         AnnotatedMetabolicDomains object with all items stored in Metabolic domain file aw well as
             mappings for metabolic domains of interest described in `MD_to_annotate`.
     """
-    _log.debug(f"Getting metabolic domains from file {vGenesMetabolicDomains_File}")
+    _log.debug(
+        f"Getting metabolic domains from file {genes_metabolic_domains_filename}"
+    )
     # TODO: Why does this file have \r EOL char? (issue #29)
     rxn_meta_dom = (
-        pl.read_csv(vGenesMetabolicDomains_File, separator="\t", eol_char="\r")
+        pl.read_csv(genes_metabolic_domains_filename, separator="\t", eol_char="\r")
         .with_columns(pl.col("Reaction ID").str.strip_chars(" ").alias("Reaction ID"))
         .unpivot(
             [f"Class{n + 1}" for n in range(6)] + ["SM1A"],
@@ -401,10 +408,10 @@ def get_metabolic_domains(
 
 
 def read_MCL_clustering_file(
-    vFile: Path,
-    vProtein_sequence_FastaFile: Path,
+    mcl_cluster_filename: Path,
+    protein_sequence_fasta_filename: Path,
     conversion: Conversion,
-    vRemoveNonProtLocations: bool,
+    remove_non_protein_locations: bool,
 ) -> MclClusterData:
     """
     ---------------------------------------------------------------------------
@@ -416,10 +423,10 @@ def read_MCL_clustering_file(
     ---------------------------------------------------------------------------
 
     Args:
-        vFile: MCL-clustering output file (I20).
-        vProtein_sequence_FastaFile: The FASTA file of the protein sequences.
+        mcl_cluster_filename: MCL-clustering output file (I20).
+        protein_sequence_fasta_filename: The FASTA file of the protein sequences.
         conversion: Lists of gene, and protein IDs with mapping from conversion files.
-        vRemoveNonProteinLocations: True if protein-IDs should be stored
+        remove_non_protein_locations: True if protein-IDs should be stored
             in return value.
 
     Returns:
@@ -427,11 +434,11 @@ def read_MCL_clustering_file(
         genes in the conversion-ID file and the MCL-clustering file,
         as well as a list of protein-IDs stored in the fasta file.
     """
-    _log.debug(f"Reading in MCL Clustering File {vFile}")
-    if vRemoveNonProtLocations:
+    _log.debug(f"Reading in MCL Clustering File {mcl_cluster_filename}")
+    if remove_non_protein_locations:
         _protein_init = 300_000
     protein_ids = []
-    with open(vProtein_sequence_FastaFile, "r") as fasta_file:
+    with open(protein_sequence_fasta_filename, "r") as fasta_file:
         for line in fasta_file:
             if line.startswith(">"):
                 protein_ids.append(line[1:].strip())
@@ -441,7 +448,7 @@ def read_MCL_clustering_file(
     clusters_by_g: Dict[str, List[str]] = dict()
 
     # Read in MCL clusters, and assign ID based on index
-    with open(vFile, "r") as f:
+    with open(mcl_cluster_filename, "r") as f:
         for i, line in enumerate(f):
             # if i <= init_max:
             mcl_id = f"MCL_{i}"
@@ -480,13 +487,13 @@ def read_MCL_clustering_file(
 
 
 def get_MCL_clustering(
-    vProtein_sequence_FastaFile: Path,
+    protein_sequence_fasta_filename: Path,
     conversion: Conversion,
-    vOverwriteMCLClustering: bool,
-    vRemoveNonProtLocations: bool,
-    vParallelize: int = 0,
-    rebuildBlastDB: bool = True,
-    rerunBlastP: bool = True,
+    overwrite_mcl_clustering_file: bool,
+    remove_non_protein_locations: bool,
+    parallelize: int = 0,
+    rebuild_blast_db: bool = True,
+    rerun_blastp: bool = True,
 ) -> MclClusterData:
     """
     ---------------------------------------------------------------------------
@@ -502,19 +509,19 @@ def get_MCL_clustering(
     ---------------------------------------------------------------------------
 
     Args:
-        vProtein_sequence_FastaFile: Protein sequence file of the genome.
+        protein_sequence_fasta_filename: Protein sequence file of the genome.
                                      Should only contain Protein IDs as
                                      header e.g. >protein1-ID
         Conversion:
             vMapG: Unique list of gene IDs stored in the conversion file.
             vMapP: Unique list of protein IDs stored in the conversion file.
             vMapG_MapP: Mapping between vMapG and vMapP
-        vOverwriteMCLClustering: Whether or not to overwrite the MCL clustering file
-        vRemoveNonProtLocations,
-        vParallelize: Defines if multiple cpus should be used for computation of parts
+        overwrite_mcl_clustering_file: Whether or not to overwrite the MCL clustering file
+        remove_non_protein_locations,
+        parallelize: Defines if multiple cpus should be used for computation of parts
                of algorithm. Active if larger than 1.
-        rebuildBlastDB: If BlastDB exists, should it be rebuilt? (recommended)
-        rerunBlastP: if BlastP output exists, should it be rerun?
+        rebuild_blast_db: If BlastDB exists, should it be rebuilt? (recommended)
+        rerun_blastp: if BlastP output exists, should it be rerun?
 
     Returns:
         MclClusterData object which provides mapping between
@@ -523,8 +530,8 @@ def get_MCL_clustering(
     """
     _log.debug("Getting MCL clustering by running blastp and mcl")
     int_cpu_count: int = os.cpu_count() or 1
-    if vParallelize == 0:
-        vParallelize = max(1, int_cpu_count - 1)
+    if parallelize == 0:
+        parallelize = max(1, int_cpu_count - 1)
 
     apps = ["makeblastdb", "blastp", "cut", "mcxload", "mcl", "mcxdump"]
     missing_apps: List[str] = []
@@ -545,11 +552,11 @@ def get_MCL_clustering(
         )
 
     command_for: Dict[str, List[str]] = dict()
-    blastdb_file = f"{vProtein_sequence_FastaFile}.blastDB"
-    if not (rebuildBlastDB or os.path.isfile(blastdb_file)):
+    blastdb_file = f"{protein_sequence_fasta_filename}.blastDB"
+    if not (rebuild_blast_db or os.path.isfile(blastdb_file)):
         command_for["makeblastdb"] = [
             "-in",
-            str(vProtein_sequence_FastaFile),
+            str(protein_sequence_fasta_filename),
             "-dbtype",
             "prot",
             "-out",
@@ -558,11 +565,11 @@ def get_MCL_clustering(
         ]
     else:
         command_for["makeblastdb"] = ["-h"]
-    blastp_file = f"{vProtein_sequence_FastaFile}.blastOUT"
-    if not (rerunBlastP or os.path.isfile(blastp_file)):
+    blastp_file = f"{protein_sequence_fasta_filename}.blastOUT"
+    if not (rerun_blastp or os.path.isfile(blastp_file)):
         command_for["blastp"] = [
             "-query",
-            str(vProtein_sequence_FastaFile),
+            str(protein_sequence_fasta_filename),
             "-db",
             blastdb_file,
             "-evalue",
@@ -572,8 +579,8 @@ def get_MCL_clustering(
             "-outfmt",
             "6 qseqid sseqid evalue bitscore length pident qstart qend sstart send",
         ]
-        if vParallelize > 1:
-            command_for["blastp"].extend(["-num_threads", str(vParallelize)])
+        if parallelize > 1:
+            command_for["blastp"].extend(["-num_threads", str(parallelize)])
     else:
         command_for["blastp"] = ["-h"]
     command_for["cut"] = [
@@ -581,7 +588,7 @@ def get_MCL_clustering(
         "1,2,3",
         blastp_file,
     ]
-    cut_output = f"{vProtein_sequence_FastaFile}.MCLIN"
+    cut_output = f"{protein_sequence_fasta_filename}.MCLIN"
     command_for["mcxload"] = [
         "-abc",
         cut_output,
@@ -590,25 +597,27 @@ def get_MCL_clustering(
         "-stream-tf",
         "ceil(200)",
         "-o",
-        f"{vProtein_sequence_FastaFile}.MCLMATRIX",
+        f"{protein_sequence_fasta_filename}.MCLMATRIX",
         "-write-tab",
-        f"{vProtein_sequence_FastaFile}.MCLTAB",
+        f"{protein_sequence_fasta_filename}.MCLTAB",
     ]
     command_for["mcl"] = [
-        f"{vProtein_sequence_FastaFile}.MCLMATRIX",
+        f"{protein_sequence_fasta_filename}.MCLMATRIX",
         "-I",
         "2",
         "-o",
-        f"{vProtein_sequence_FastaFile}.MCLMATRIX.I20",
+        f"{protein_sequence_fasta_filename}.MCLMATRIX.I20",
     ]
-    overwrite_dump_workaround = "" if vOverwriteMCLClustering else f"{os.getpid()}."
+    overwrite_dump_workaround = (
+        "" if overwrite_mcl_clustering_file else f"{os.getpid()}."
+    )
     command_for["mcxdump"] = [
         "-icl",
-        f"{vProtein_sequence_FastaFile}.MCLMATRIX.I20",
+        f"{protein_sequence_fasta_filename}.MCLMATRIX.I20",
         "-tabr",
-        f"{vProtein_sequence_FastaFile}.MCLTAB",
+        f"{protein_sequence_fasta_filename}.MCLTAB",
         "-o",
-        f"{vProtein_sequence_FastaFile}.{overwrite_dump_workaround}MCLTAB.dump.I20",
+        f"{protein_sequence_fasta_filename}.{overwrite_dump_workaround}MCLTAB.dump.I20",
     ]
 
     for app in apps:
@@ -626,16 +635,16 @@ def get_MCL_clustering(
 
     return read_MCL_clustering_file(
         Path(
-            f"{vProtein_sequence_FastaFile}.{overwrite_dump_workaround}MCLTAB.dump.I20"
+            f"{protein_sequence_fasta_filename}.{overwrite_dump_workaround}MCLTAB.dump.I20"
         ),
-        vProtein_sequence_FastaFile,
+        protein_sequence_fasta_filename,
         conversion,
-        vRemoveNonProtLocations,
+        remove_non_protein_locations,
     )
 
 
 def map_pgdb_reactions_to_genes(
-    vPGDB_FlatFileFolder: Path, **kwargs
+    pgdb_flat_file_folder: Path, **kwargs
 ) -> GenesToReactions:
     """
     ---------------------------------------------------------------------------
@@ -647,7 +656,7 @@ def map_pgdb_reactions_to_genes(
     ---------------------------------------------------------------------------
 
     Args:
-        vPGDB_FlatFileFolder: Full path to the folder where the flatfiles of
+        pgdb_flat_file_folder: Full path to the folder where the flatfiles of
                               the species pgdb is stored.
     Optional Args:
         - **GenesAttributes** Attributes of genes.dat that should be read out.
@@ -727,21 +736,21 @@ def map_pgdb_reactions_to_genes(
     # Read in all attributes and store them
     _log.info("Reading in genes.dat")
     genes_all = read_in_pgdb_flat(
-        vPGDB_FlatFileFolder / "genes.dat",
+        pgdb_flat_file_folder / "genes.dat",
         genes_attributes,
         unique_keys=genes_attributes,
     )
     _log.info("Reading in proteins.dat")
     proteins_all = read_in_pgdb_flat(
-        vPGDB_FlatFileFolder / "proteins.dat", proteins_attributes
+        pgdb_flat_file_folder / "proteins.dat", proteins_attributes
     )
     _log.info("Reading in enzrxns.dat")
     enzrxns_all = read_in_pgdb_flat(
-        vPGDB_FlatFileFolder / "enzrxns.dat", enzrxns_attributes
+        pgdb_flat_file_folder / "enzrxns.dat", enzrxns_attributes
     )
     _log.info("Reading in reactions.dat")
     reactions_all = read_in_pgdb_flat(
-        vPGDB_FlatFileFolder / "reactions.dat", reactions_attributes
+        pgdb_flat_file_folder / "reactions.dat", reactions_attributes
     )
 
     # Match flat files to each other
@@ -794,7 +803,7 @@ def map_pgdb_reactions_to_genes(
 def match_pgdb_flat(
     flat1: pl.DataFrame,
     flat2: pl.DataFrame,
-    join_on: tuple[str, str],
+    join_on: Tuple[str, str],
     primary_id: str = "UNIQUE-ID",
     secondary_id: str = "UNIQUE-ID_right",
 ) -> pl.DataFrame:
@@ -857,8 +866,8 @@ def match_pgdb_flat(
 
 
 def read_in_conversion_file(
-    vGeneTranscriptProtein_mapping_File: Path,
-) -> Conversion:  # , vPara, varargin):
+    gene_transcript_protein_mapping_filename: Path,
+) -> Conversion:
     """
     ---------------------------------------------------------------------------
 
@@ -868,7 +877,7 @@ def read_in_conversion_file(
 
     ---------------------------------------------------------------------------
     Args:
-        vGeneTranscriptProtein_mapping_File: TSV file with a header describing
+        gene_transcript_protein_mapping_filename: TSV file with a header describing
                                              gene, transcript, and protein
                                              identifier and then for all the
                                              identfiers the listings (gene-ID,
@@ -878,9 +887,9 @@ def read_in_conversion_file(
         Conversion object containing the IDs from the conversion file
     Raises
     """
-    _log.debug(f"Reading in conversion file {vGeneTranscriptProtein_mapping_File}")
+    _log.debug(f"Reading in conversion file {gene_transcript_protein_mapping_filename}")
     conversion_data = pl.read_csv(
-        vGeneTranscriptProtein_mapping_File,
+        gene_transcript_protein_mapping_filename,
         separator="\t",
         schema_overrides={
             x: pl.String for x in ["Gene Name", "Transcript Name", "Protein Name"]
@@ -937,11 +946,11 @@ def match_PGDBs_to_MDs(
               Reactions_all
         annotated_metabolic_domains: Mapping between all Reactions stored in the Metabolic domain file
                and the metabolic domains that were identified to be of interest
-               in vMD_to_annotate.
+               in metabolic_domains_to_annotate.
                And DataFrame of all the items stored in the Metabolic domain file
 
     Returns:
-        vRpgdb_Rmd: A mapping between reactions stored in the pgdb and the
+        A mapping between reactions stored in the pgdb and the
                     reactions given in the metabolic domain file. Used by write_gene_output.
     """
     _log.debug("Matching PGDBs to annotated metabolic domains")
@@ -958,7 +967,7 @@ def match_PGDBs_to_MDs(
 
 
 def map_PGDBs_to_conversion_file(
-    Conversion: Conversion,
+    conversion: Conversion,
     all_genes_df: pl.DataFrame,
     genes_data_metadata: List[str],
     pgdb_ids_to_map: str,
@@ -971,14 +980,14 @@ def map_PGDBs_to_conversion_file(
 
     ---------------------------------------------------------------------------
     Args:
-        Conversion: Conversion object from conversion file
-        vGenes_all: DataFrame containing all the information
+        conversion: Conversion object from conversion file
+        all_genes_df: DataFrame containing all the information
                     (Attributes)that was searched for (described in
                     vGenesAttributes, default is {'UNIQUE-ID','PRODUCT', ...
                     'ACCESSION-1','ACCESSION-2'};) in genes.dat of the pgdb.
-        vGenesDat_GeneInfo: List of Attributes of genes.dat. Defines where gene
+        genes_data_metadata: List of Attributes of genes.dat. Defines where gene
                             information should be searched for.
-        vPGDBIdsToMap: A string that contains G and or T and or P and defines
+        pgdb_ids_to_map: A string that contains G and or T and or P and defines
                        if the entries represent Genes and or transcript ids and
                        or proteins ids of the conversion file.
 
@@ -997,7 +1006,7 @@ def map_PGDBs_to_conversion_file(
             pl.col("UNIQUE-ID"), pl.col(genes_data_metadata[0])
         ).explode(pl.col(genes_data_metadata[0]))
         gene_map = (
-            Conversion.df.join(
+            conversion.df.join(
                 all_genes_df_genes, left_on="Gene Name", right_on=genes_data_metadata[0]
             )
             .select(pl.col("Gene Name"), pl.col("UNIQUE-ID"))
@@ -1010,7 +1019,7 @@ def map_PGDBs_to_conversion_file(
             pl.col("UNIQUE-ID"), pl.col(genes_data_metadata[0])
         ).explode(pl.col(genes_data_metadata[0]))
         transcript_map = (
-            Conversion.df.join(
+            conversion.df.join(
                 all_genes_df_transcript,
                 left_on="Transcript Name",
                 right_on=genes_data_metadata[0],
@@ -1025,7 +1034,7 @@ def map_PGDBs_to_conversion_file(
             pl.col("UNIQUE-ID"), pl.col(genes_data_metadata[0])
         ).explode(pl.col(genes_data_metadata[0]))
         protein_map = (
-            Conversion.df.join(
+            conversion.df.join(
                 all_genes_df_proteins,
                 left_on="Protein Name",
                 right_on=genes_data_metadata[0],
@@ -1047,7 +1056,7 @@ def map_PGDBs_to_conversion_file(
 
 
 def perform_clustering(
-    vGeneLocation: GeneLoc,
+    gene_location: GeneLoc,
     mcl_cluster_data: MclClusterData,  # covered by genelocation
     vEnzMinForClusters: int,
     vKbRangeLD: int,
@@ -1178,11 +1187,11 @@ def perform_clustering(
             return True
         return False
 
-    gene_count = len(vGeneLocation)
+    gene_count = len(gene_location)
     # is there a way to make this search an expression?
     while step_size <= vMinStepSize or continue_search:  # for each valid step size
         cluster_starts_df = (
-            vGeneLocation.data.with_row_index("index")
+            gene_location.data.with_row_index("index")
             .select(
                 pl.col("index").alias("start"),
                 pl.col("Chromosome Name"),
@@ -1230,13 +1239,13 @@ def perform_clustering(
                     raise Exception("Cluster search end was type None")
                 end_s = end  # end search start
                 # stop search step size
-                end_e = min(end + step_size, len(vGeneLocation.data))
+                end_e = min(end + step_size, len(gene_location.data))
                 _log.debug(
                     f"Searching for enzyme cluster for index {start} from {end_s} to {
                         end_e
                     }"
                 )
-                end_df = vGeneLocation.data.with_row_index("index").filter(
+                end_df = gene_location.data.with_row_index("index").filter(
                     is_enzyme_criteria
                     & chromosome_criteria
                     & (pl.col("index") > end_s)
@@ -1248,7 +1257,7 @@ def perform_clustering(
                     stop_search_end = True
 
             # .filter( (pl.col("index") > start) & (pl.col("index") <= end))
-            cluster_genes = vGeneLocation.data.with_row_index("index")[start:end]
+            cluster_genes = gene_location.data.with_row_index("index")[start:end]
             # get rid of clusters that only have one reaction set
             if len(cluster_genes.filter(is_enzyme_criteria)) < vEnzMinForClusters:
                 # abolish cluster and continue search
@@ -1294,7 +1303,7 @@ def perform_clustering(
             _log.debug(f"Head of clusters_df\n{clusters_df.head()}")
             # re-calculate clusters_background to test against criterion
             clusters_background = compute_background(
-                clusters_df, vGeneLocation, clusters_background
+                clusters_df, gene_location, clusters_background
             )
             match vCriterion:
                 case 1:
@@ -1368,7 +1377,7 @@ def perform_clustering(
                                     + 1
                                 )
                                 - pl.col("enzyme_count").sum()
-                                - 2 * pl.col("hypoothetical_gene_count").sum()
+                                - 2 * pl.col("hypothetical_gene_count").sum()
                             ).alias("enz_less_genes")
                         )["enz_less_genes"][0]
                         < 0
@@ -1432,7 +1441,6 @@ def compute_background(
     clusters: pl.DataFrame,
     gene_location: GeneLoc,
     clusters_background: pl.DataFrame,
-    # vC_IDs: List[str],
 ) -> pl.DataFrame:
     """
     ---------------------------------------------------------------------------
@@ -1456,13 +1464,13 @@ def compute_background(
                 number of hypothetical genes)
         gene_location: DataFrame about the gene location information,
                 generated in PlantClusterFinder function.
-        clusters_background: DataFrame of backgrounds for up to vClusters
+        clusters_background: DataFrame of backgrounds for up to clusters
                 max_step_size - 1. (window_size, enzyme_count,
                                     window_occurrence, winzyme_occurrence, winzyme_frequency)
                 "Winzyme" is a window with enzyme_count enzymes in it.
 
     Returns:
-        - **vClusterBackground**: Density information about the genome (window size,
+        - **ClusterBackground**: Density information about the genome (window size,
                             number of enzymes, Occurrence of windowsize with
                             this many enzymes in the genome, occurrence of
                             this windowsize in the genome, Frequency of seeing
@@ -1567,25 +1575,25 @@ def write_gene_output(
     clusters: Clusters,
     top_percent_clusters: int,
     metabolic_domains_to_annotate: List[str],
-    Gene2Rxn: GenesToReactions,
-    vMapG_Gpgdb: Dict[Any, Any],
-    vBiomG_E: Dict[Any, Any],
-    clusters_top: List[bool],
-    annotated_metabolic_domains: AnnotatedMetabolicDomains,
-    vRpgdb_Rmd: Dict[Any, Any],
+    # Gene2Rxn: GenesToReactions,
+    # vMapG_Gpgdb: Dict[Any, Any],
+    # vBiomG_E: Dict[Any, Any],
+    # clusters_top: List[bool],
+    # annotated_metabolic_domains: AnnotatedMetabolicDomains,
+    pgdb_to_metabolic_domain_map: Dict[Any, Any],
     reaction_labels: ReactionLabels,
     output_type: str,
 ) -> None:
     """
     ---------------------------------------------------------------------------
 
-      Function that writes the genefile of PlantClusterFinder: TSV format,
+      Function that writes the gene file of PlantClusterFinder: TSV format,
       first it includes the information that was stored in the gene location
-      file that was provided to Plantclusterfinder (Gene IDs, Gene Start, Gene
+      file that was provided to PlantClusterFinder (Gene IDs, Gene Start, Gene
       end, Chromosome information, strand). Then it attaches Enzyme (1 or 0) EC
       information and Reaction information. Then whether the Gene is considered
       locally duplicated and if so, which LD-clusters it's proteins were
-      associated with. Then per stepsize that was investigated (intervening
+      associated with. Then per step size that was investigated (intervening
       gene size) the ClusterID where the gene is incorporated and the
       informatino whether the cluster was found to be in the top n% of
       clsuters. This is followed by the information about the metabolic
@@ -1599,7 +1607,7 @@ def write_gene_output(
                          first Results output file that will be generated.
         gene_location: Gene location information, generated in
                         PlantClusterFinder function.
-        clusters: Cluster Information (stepsize, chromosome id, gene start, gene end, number of enzymes)
+        clusters: Cluster Information (step size, chromosome id, gene start, gene end, number of enzymes)
         top_percent_clusters: Clusters are labeled as being in the top n% if
                              they are within this top n% of enzyme dense
                              clusters compared to the background (default is
@@ -1623,8 +1631,8 @@ def write_gene_output(
                        by the input argument vTopPercentClusters*100.
         annotated_metabolic_domains: Mapping between all Reactions stored in
                the Metabolic domain file and the metabolic domains that were
-               identified to be of interest in vMD_to_annotate.
-        vRpgdb_Rmd: A mapping between reactions stored in the pgdb and the
+               identified to be of interest in metabolic_domains_to_annotate.
+        pgdb_to_metabolic_domain_map: A mapping between reactions stored in the pgdb and the
                     reactions given in the metabolic domain file
         ReactionLabels: Is a data structure of signature and tailoring enzyme
                     classes.
@@ -1636,10 +1644,10 @@ def write_gene_output(
                       types of vSigOrTail.
         output_type: Defines which type of output is given:
                         "simple" (default setting) gives only top n% for the
-                           final stepsize.
-                        "verbose" gives all computed stepsize until the final
-                           stepsize.
-                        "old" gives at least 5 until the final stepsize.
+                           final step size.
+                        "verbose" gives all computed step size until the final
+                           step size.
+                        "old" gives at least 5 until the final step size.
 
     Returns:
         **None** (File is generated with the path of the first input argument)
@@ -1687,7 +1695,7 @@ def write_gene_output(
     match output_type:
         case "old":
             for i in range(clusters.MaxStepSize):
-                # chosen stepsize x
+                # chosen step size x
                 # top pct clusters
                 gene_output = gene_output.join(
                     cluster_data.agg(
@@ -1721,10 +1729,10 @@ def write_gene_output(
                         f"Top {top_percent_clusters}% {i}"
                     )
                 )
-        # FIXME: cluster IDs filter columns (vClusters 2 and 3)?
+        # FIXME: cluster IDs filter columns (clusters 2 and 3)?
         case "verbose":
             for i in range(clusters.MaxStepSize):
-                # chosen stepsize x
+                # chosen step size x
                 # top pct clusters
                 gene_output = gene_output.join(
                     cluster_data.agg(
@@ -1761,7 +1769,7 @@ def write_gene_output(
                         )
                     )
         case "simple":
-            # stepsize x
+            # step size x
             # top pct clusters
             top_pct_cluster_idx = cluster_data.agg(
                 pl.col("cluster_idx")
@@ -1780,7 +1788,7 @@ def write_gene_output(
             .list.eval(  # noqa s307
                 pl.element()
                 # for all metabolic domains in gene
-                .replace_strict(vRpgdb_Rmd, default=[])
+                .replace_strict(pgdb_to_metabolic_domain_map, default=[])
                 .list.contains(md)  # is md a metabolic domain?
                 .any()  # does md appear once?
             )
@@ -1830,10 +1838,10 @@ def write_cluster_output(
     """
     ---------------------------------------------------------------------------
 
-      Function that writes the clusterfile of PlantClusterFinder: TSV format,
-      first it includes the stepsize of the cluster (intervening genes), then
+      Function that writes the cluster file of PlantClusterFinder in TSV format:
+      first it includes the step size of the cluster (intervening genes), then
       cluster ID, chromosome/scaffold the cluster is located on, start bp, end
-      bp, physical size, start gene ID, end gene ID, and all the gene IDs
+      bp, physical size, start gene ID, end gene ID, and all the gene IDs.
 
     ---------------------------------------------------------------------------
 
@@ -1844,18 +1852,18 @@ def write_cluster_output(
                             generated.
         gene_location: DataFrame about the gene location information,
                         generated in PlantClusterFinder function.
-        clusters: Cluster Information (stepsize, chromosome id, gene start,
+        clusters: Cluster Information (step size, chromosome id, gene start,
                    gene end, number of enzymes)
         clusters_in_top_percent: List with size Number of Clusters x 1. It is zero if
                        the density of the cluster is above or the same as given
-                       by the input argument vTopPercentClusters*100.
+                       by the input argument top_percent_clusters*100.
         output_type: Defines which type of output is given: simple (default
                      setting) gives only top n% for the final stepsize. verbose
                      gives all computed stepsize until the final stepsize. old
                      gives at least 5 until the final stepsize.
 
     Returns:
-        **None** (File is generated with the path of the first input argument)
+        **None** (File is generated with the path of the first in/put argument)
     """
     _log.debug("Writing cluster output")
     if output_type not in ["old", "simple", "verbose"]:
@@ -1926,31 +1934,33 @@ def write_cluster_output(
 
 
 def analyze_plant_cluster_gap_file(
-    vFileIn: Path, vUnmaskedDNA: bool, file_output: bool = True
+    plant_cluster_gap_filename: Path, dna_unmasked_ok: bool, file_output: bool = True
 ) -> Optional[Tuple[str, Dict[Any, list[Any]]]]:
     """
     ---------------------------------------------------------------------------
 
       Function that analyzes the masked DNA sequences of a _GAPOutput file, and
-      counts the occurence of every size of gap.
+      counts the occurrence of every size of gap.
 
     ---------------------------------------------------------------------------
 
     Args:
-        vFileIn: Full path to the _GAPOutput file that whould be analyzed
+        plant_cluster_gap_filename: Full path to the _GAPOutput file that would be analyzed
                  (produced within PlantClusterFinder)
-        vUnmaskedDNA: Option to ignore the error if you use unmasked DNA files.
+        dna_unmasked_ok: Option to ignore the error if you use unmasked DNA files.
         file_output: Whether output is directed to file or to
 
     Returns:
         **Optional[str]** (File with list of sequencing gaps numbers is generated with
         ending _count.txt if file_output is set to True)
     """
-    if not vFileIn.is_file():
-        raise Exception(f"vFileIn {vFileIn} is not a file or does not exist")
+    if not plant_cluster_gap_filename.is_file():
+        raise Exception(
+            f"plant_cluster_gap_filename {plant_cluster_gap_filename} is not a file or does not exist"
+        )
     _gap_output = (
         pl.read_csv(
-            vFileIn,
+            plant_cluster_gap_filename,
             separator=" ",
             has_header=False,
             new_columns=["scaffold", "amino acid", "start index", "length"],
@@ -1960,7 +1970,9 @@ def analyze_plant_cluster_gap_file(
         .len()
         .rows_by_key(key="length")
     )
-    _f_out = vFileIn.with_suffix(vFileIn.suffix + "_count.txt")
+    _f_out = plant_cluster_gap_filename.with_suffix(
+        plant_cluster_gap_filename.suffix + "_count.txt"
+    )
     if not file_output:
         return (str(_f_out), _gap_output)
     with open(_f_out, "w") as f:
@@ -1972,15 +1984,15 @@ def analyze_plant_cluster_gap_file(
 
 def read_in_pgdb_flat(
     pgdb_filename: Path,
-    attrib: tuple[str],
-    unique_keys: tuple[str] = ("UNIQUE-ID",),
+    attrib: Tuple[str, ...],
+    unique_keys: Tuple[str, ...] = ("UNIQUE-ID",),
     pgdb_encoding: str = "latin-1",
 ) -> pl.DataFrame:
     """
     ---------------------------------------------------------------------------
 
       Function that reads in a pgdb flat file (e.g. genes.dat, proteins.dat,
-      enzrxns.dat, reactions.dat) saving Attributes given by vAttrib.
+      enzrxns.dat, reactions.dat) saving Attributes given by attrib.
 
     ---------------------------------------------------------------------------
 
@@ -1999,7 +2011,7 @@ def read_in_pgdb_flat(
     #  it opens up the door to potentially deferring reading
     #  or simplifying asynchronous reading
     def _row_gen(
-        fh: IO, attrib: Tuple[str], unique_keys: Tuple[str]
+        fh: IO, attrib: Tuple[str, ...], unique_keys: Tuple[str, ...]
     ) -> Iterator[Dict[str, Any]]:
         """
         Generate a dict row from the pgdb flat file

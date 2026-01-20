@@ -125,11 +125,16 @@ def test_matchPGDBs_to_MDs():
 
 # part 4
 def test_label_reactions_with_sig_and_tail():
-    from plantclusterfinder_py.cluster import label_reactions_with_sig_and_tail
+    from plantclusterfinder_py.cluster import (
+        label_reactions_with_sig_and_tail,
+        read_in_pgdb_flat,
+    )
 
-    reactions_dat = pgdb_dir / "reactions.dat"
     test_signature_enzymes_tsv = (
         test_input_dir / "scaffold-tailoring-reactions-05082016.tab"
+    )
+    reactions_dat = read_in_pgdb_flat(
+        pgdb_dir / "reactions.dat", ("UNIQUE-ID", "ENZYMATIC-REACTION", "EC-NUMBER")
     )
 
     labeled_reaction = label_reactions_with_sig_and_tail(
@@ -149,10 +154,10 @@ def test_map_PGDBs_to_conversion_file():
         read_in_pgdb_flat,
     )
 
-    # from plantclusterfinder_py.cluster_datatypes import Conversion
-
     conversion = read_in_conversion_file(
-        "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
+        Path(
+            "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
+        )
     )
     genes_all = read_in_pgdb_flat(
         pgdb_dir / "genes.dat",
@@ -176,15 +181,20 @@ def test_read_MCL_clustering_File():
     )
 
     conversion = read_in_conversion_file(
-        "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
+        Path(
+            "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
+        )
     )
     mcl_cluster_data = read_MCL_clustering_file(
-        "./csubellipsoidea/MCL_clustering_expected_results/dump.CsubellipsoideaC_169_227_v2.0.protein.pcf13.mci.I20",
-        "./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa",
+        Path(
+            "./csubellipsoidea/MCL_clustering_expected_results/dump.CsubellipsoideaC_169_227_v2.0.protein.pcf13.mci.I20"
+        ),
+        Path("./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa"),
         conversion,
         False,  # do not remove proteins
     )
-    assert 9627 == len(mcl_cluster_data.Gene2MCLClusters)  # TEST INCOMPLETE
+    assert 9_627 == len(mcl_cluster_data.Gene2MCLClusters)  # TEST INCOMPLETE
+    assert isinstance(mcl_cluster_data.Protein_IDs, list)
     assert 9_627 == len(mcl_cluster_data.Protein_IDs)  # TEST INCOMPLETE
 
 
@@ -195,10 +205,12 @@ def test_get_MCL_clustering():
     )
 
     conversion = read_in_conversion_file(
-        "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
+        Path(
+            "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
+        )
     )
     mcl_cluster = get_MCL_clustering(
-        "./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa",
+        Path("./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa"),
         conversion,
         True,  # overvrite MCL cluster file
         False,  # remove protein locations
@@ -220,11 +232,13 @@ def test_analyze_plant_cluster_gap_file():
     test_gap_output = Path(
         "./csubellipsoidea/Gapanalysis_expected_results/CsubellipsoideaC_169_227_v2.0.hardmasked.fa_GAPOutput"
     )
-    (filename, gap_output_count) = analyze_plant_cluster_gap_file(
+    plant_cluster_analysis = analyze_plant_cluster_gap_file(
         test_gap_output,
         False,
         file_output=False,
     )
+    assert plant_cluster_analysis is not None
+    (filename, gap_output_count) = plant_cluster_analysis
     assert 337 == len(gap_output_count)  # TEST INCOMPLETE
     assert str(test_gap_output) + "_count.txt" == filename  # TEST INCOMPLETE
 
@@ -253,7 +267,7 @@ def test_annotate_sequencing_gaps(genelocation_obj):
 
 
 # part 12
-# hard breaks -- gene location test
+# hard breaks moved to gene location test
 
 
 # part 13
@@ -277,15 +291,15 @@ def test_introduce_hypo_genes(genelocation_obj):
 
 
 # Part 14
-# gene location test
+# in gene location test
 
 
 # Part 15
-# in genelocation test
+# in gene location test
 
 
 # Part 16
-def test_compute_background(genelocation_obj):
+def test_compute_background():
     """Used by perform_clustering"""
     from plantclusterfinder_py.cluster import compute_background
     from plantclusterfinder_py.genelocation import GeneLoc
@@ -355,7 +369,9 @@ def test_perform_clustering(genelocation_obj):
     ids_to_map = "T"
 
     conversion = read_in_conversion_file(
-        "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
+        Path(
+            "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
+        )
     )
     gene_location = genelocation_obj
     # needs conversion data
@@ -373,8 +389,10 @@ def test_perform_clustering(genelocation_obj):
     gene_location.annotate_enzyme_info(pgdb_conversions_dict, gene2rxn)
     # needs mcl clusters
     mcl_cluster_data = read_MCL_clustering_file(
-        "./csubellipsoidea/MCL_clustering_expected_results/dump.CsubellipsoideaC_169_227_v2.0.protein.pcf13.mci.I20",
-        "./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa",
+        Path(
+            "./csubellipsoidea/MCL_clustering_expected_results/dump.CsubellipsoideaC_169_227_v2.0.protein.pcf13.mci.I20"
+        ),
+        Path("./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa"),
         conversion,
         False,  # do not remove proteins
     )
