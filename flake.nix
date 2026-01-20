@@ -1,40 +1,37 @@
 {
-  description = "DevShell for Python";
+  description = "A standard-compliant Python project using uv and Nix";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    # points to parent dev env repository
+    python-toolchain.url = "github:j-schlesinger/nix-templates?dir=development/python";
   };
 
-  outputs =
-    {
-      self,
-      nixpkgs,
-      flake-utils,
-      ...
-    }:
+  outputs = { self, nixpkgs, flake-utils, python-toolchain }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = nixpkgs.legacyPackages.${system};
+        pkgs = import nixpkgs { inherit system; };
+        mkPythonShell = python-toolchain.lib.${system}.mkPythonShell;
       in
-      rec {
-        devShells.default =
-          pkgs.mkShell {
-            buildInputs = with pkgs; [
-              #python-bin.beta.latest.default
-              llvmPackages.clang
-              llvmPackages.libclang
-              pkg-config
-              #(python-bin.selectLatestNightlyWith ( toolchain: toolchain.default.override { extensions = [ "python-analyzer" ]; } ))
-              blast
-            ];
+      {
+        devShells.default = mkPythonShell {
+          # Python version as specified by pyproject.toml
+          pythonPackage = pkgs.python312;
 
-            shellHook = ''
-              export LIBCLANG_PATH="{$pkgs.llvmPackages.libclang}/lib";
-              fish
-              set -x LIBCLANG_PATH "{$pkgs.llvmPackages.libclang}/lib";
-            '';
-          };
-      }
-    );
+          # any non-python packages needed as required by this project
+          extraPkgs = with pkgs; [
+            zlib
+          ];
+
+          # synchronize the environment on entry
+          extraShellHook = ''
+            # Ensure the .venv is up to date with pyproject.toml
+            if [ -f "pyproject.toml" ]; then
+              echo "Syncing Python dependencies with uv..."
+              uv sync
+            fi
+          '';
+        };
+      });
 }

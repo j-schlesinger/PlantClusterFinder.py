@@ -266,7 +266,7 @@ def test_introduce_hypo_genes(genelocation_obj):
     introduce_hypo_genes(
         gene_location,
         gene_location.find_intergenic_regions(),
-        vHypoAmount=1,
+        hypothetical_gene_amount=1,
     )
     non_hypo_count = gene_location.data.filter(
         pl.col("Gene Name").str.starts_with("Hypo").not_()

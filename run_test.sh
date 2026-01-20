@@ -2,7 +2,7 @@
 mkdir -p Outputs
 rm ./Outputs/csubellipsoidea_Clust_v1_3.txt 2>/dev/null
 rm ./Outputs/csubellipsoidea_Gene_v1_3.txt 2>/dev/null
-rye run python -m plantclusterfinder_py\
+uv run python -m plantclusterfinder_py\
    '--GenesDat_GeneInfo' 'ACCESSION-1'\
    '-md'\
    "Amines and Polyamines Metabolism" "Amino Acids Metabolism"\

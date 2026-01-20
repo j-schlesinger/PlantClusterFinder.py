@@ -1,16 +1,15 @@
 # Testing
-If you have rye installed, the easiest way to test your code is to run the following from the root directory of PlantClusterFinder.py
+If you have uv installed, the easiest way to test your code is to run the following from the root directory of PlantClusterFinder.py
 
 ```shell
-rye sync
-rye test
+uv sync
+uv run pytest
 ```
 
 ## Installing rye
-The [rye documentation](https://rye.astral.sh/guide/installation/#installing-rye) has a guide on installing rye,
-but in Linux, running the following command in your home directory should install rye and set up shims.
+The [uv documentation](https://docs.astral.sh/uv/#installation) has a guide on installing uv,
+but in Linux, running the following command in your home directory should install uv and set up shims.
 
 ```bash
-curl -sSf https://rye.astral.sh/get | bash
-echo 'source "$HOME/.rye/env"' >> ~/.profile
+curl -sSf https://astral.sh/uv/install.sh | bash
 ```

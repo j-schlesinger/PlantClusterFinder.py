@@ -34,8 +34,8 @@ Whether you're fixing a bug or implementing a feature, these are the guidelines 
 
 Your change should serve a single purpose, be tested and documented before your submit.
 ### Writing Your Code
-For style, `rye fmt` is used which relies on the linter `ruff` which can be helpful while you're coding.
-However, it can be easiest to just run `rye fmt` on your code before committing it.
+For style, `uv run ruff format` is used which relies on the linter `ruff` which can be helpful while you're coding.
+However, it can be easiest to just run `uv run ruff format` on your code before committing it.
 
 Docstrings are written using the [Google styleguide](https://github.com/google/styleguide/blob/gh-pages/pyguide.md#38-comments-and-docstrings) and
 rendered via Sphinx automatically.
@@ -52,21 +52,21 @@ If you haven't written a test before, it can be helpful to write the test for yo
 That way you think through exactly what your change is going to do.
 The test should validate that the function works, and returns a result that is expected.
 ## Building for Contribution
-To make things easy, [Rye](https://rye-up.com/guide/) handles package management, building and virtual environment management.
-Install Rye on your dev machine to get started.
+To make things easy, [uv](https://docs.astral.sh/uv/) handles package management, building and virtual environment management.
+Install uv on your dev machine to get started.
 
-Once you've forked and cloned the repository, run `rye sync` to download and install all necessary packages.
-Test using `rye run pytest` and build using `rye build`.
+Once you've forked and cloned the repository, run `uv sync` to download and install all necessary packages.
+Test using `uv run pytest` and build using `uv build`.
 ## Submitting a change
 Quick checklist before writing a PR:
 - [ ] The branch I'm submitting only has one change
 - [ ] My change is clearly documented using Google format docstrings
-- [ ] My code follows the style guide enforced by `rye fmt`
-- [ ] My code has no warnings flagged by `rye lint`
-- [ ] My code raises no errors from `rye run mypy`
-- [ ] My imports are ordered according to `rye run isort --check src test`
+- [ ] My code follows the style guide enforced by `uv run ruff format`
+- [ ] My code has no warnings flagged by `uv run ruff --check`
+- [ ] My code raises no errors from `uv run mypy`
+- [ ] My imports are ordered according to `uv run isort --check src test`
 - [ ] My change includes tests to verify it is working
-- [ ] All tests pass `rye test`
+- [ ] All tests pass `uv run pytest`
 
 It can be helpful to use [pre-commit](https://pre-commit.com/) hooks to automatically go through the checklist before committing a change.
 

@@ -3,7 +3,7 @@ import os
 import subprocess
 from collections import namedtuple
 from pathlib import Path
-from typing import IO, Any, Dict, Iterable, Iterator, List, Optional, Tuple
+from typing import IO, Any, Dict, Iterator, List, Optional, Tuple
 
 import polars as pl
 
@@ -22,34 +22,34 @@ _log = logging.getLogger(__name__)
 
 
 def label_reactions_with_sig_and_tail(
-    vReactions_all: pl.DataFrame, vSignatureTailorFile: Path
+    all_reactions_df: pl.DataFrame, signature_tailor_filename: Path
 ) -> ReactionLabels:
     """
     ---------------------------------------------------------------------------
 
-      Function identifying wether reactions found in the pgdb are of a certain
-      type of enyzme and if they are either signature or tailoring enzymes.
+      Function identifying whether reactions found in the pgdb are of a certain
+      type of enzyme and if they are either signature or tailoring enzymes.
       Note, there have to be signature enzymes identified as 'signature' in the
-      File vSignatureTailorFile.
+      File signature_tailor_filename.
 
     ---------------------------------------------------------------------------
     Args:
-        vReactions_all: DataFrame containing all the information
+        all_reactions_df: DataFrame containing all the information
                         (Attributes)that was searched for (described in
-                        vReactionsAttributes, default is {'UNIQUE-ID', ...
+                        reactions_attributes argument, default is {'UNIQUE-ID', ...
                         'ENZYMATIC-REACTION', 'EC-NUMBER'};) in reactions.dat
                         of the pgdb.
-        vSignatureTailorFile: TSV file describing the classes of enzymes that
+        signature_tailor_file: TSV file describing the classes of enzymes that
                               should be classified as signature or tailoring
                               enzymes to identify clusters containing such.
     Return:
         ReactionLabels object with the signature and tailoring enzyme classes,
             list of types of enzymes, and mapping between reactions and
-            enzyme classes as well as signature or tailoring enymes
+            enzyme classes as well as signature or tailoring enzymes
     """
-    _log.debug(f"Reading in the signature tailor file {vSignatureTailorFile}")
+    _log.debug(f"Reading in the signature tailor file {signature_tailor_filename}")
     stdata = pl.read_csv(
-        vSignatureTailorFile,
+        signature_tailor_filename,
         has_header=True,
         separator="\t",
         encoding="ISO-8859-1",
@@ -78,29 +78,28 @@ def label_reactions_with_sig_and_tail(
 def introduce_hypo_genes(
     gene_location: GeneLoc,
     sequencing_gaps: pl.DataFrame,
-    vHypoAmount: int = 0,
-    vGeneLengthHypoMin: int = -1,
+    hypothetical_gene_amount: int = 0,
+    hypothetical_gene_gap_length_minimum: int = -1,
 ) -> GeneLoc:
     """
     ---
 
       Function that introduces Hypothetical genes if a sequencing gap reached a
-      critical size vGeneLengthHypoMin.
+      critical size hypothetical_gene_gap_length_minimum.
     ---
     Args:
-        hard_breaks: Object with the gene location, chromosome regions, sequence gaps,
+        gene_location: Object with the gene location, chromosome regions, sequence gaps,
             and minimal length of bp of masked DNA that should be populated by two hypothetical
             genes
-        vBiomG_G: Mapping between the Gene location file and the gene-IDs in the
-                  conversion file.
-        vGeneLengthHypoMin: A size that defines the minimal length of a
+        sequence_gaps: DataFrame containing the location and size of sequence gaps.
+        hypothetical_gene_gap_length_minimum: A size that defines the minimal length of a
                             sequencing gap that should still be processed. If
                             this is bigger than 0, then all sequencing gaps
                             smaller than this are deleted, unless they are
-                            among the list of vSeqGapSizesChromBreak, which
+                            among the list of sequence_gaps, which
                             also needs to be set. Default is -1, not active.
     Optional Args:
-        **vHypoAmount**: integer describing the number of hypothetical genes
+        **hypothetical_gene_amount**: integer describing the number of hypothetical genes
             a sequencing gap that is not a physical break should be populated
             by artificial genes.
     Returns:
@@ -108,7 +107,7 @@ def introduce_hypo_genes(
             inter-chromosomal matrix, and the HypoAmount populated.
     """
     _log.debug("Introducing hypothetical genes into sequence")
-    # get the 5th and 7th columns of SeqGaps
+    # get the 5th and 7th columns of sequence_gaps
     if sequencing_gaps is None:
         raise Exception(
             "Sequencing Gaps must be populated to insert hypothetical genes"
@@ -118,20 +117,20 @@ def introduce_hypo_genes(
         .with_columns(seq_gaps_length=pl.col("End") - pl.col("Start"))
         .with_columns(
             hypo_to_place=(
-                pl.lit(vHypoAmount)
+                pl.lit(hypothetical_gene_amount)
                 if (
-                    vGeneLengthHypoMin < 0
-                    or (pl.col("seq_gaps_length") >= pl.lit(vGeneLengthHypoMin))
+                    hypothetical_gene_gap_length_minimum < 0
+                    or (
+                        pl.col("seq_gaps_length")
+                        >= pl.lit(hypothetical_gene_gap_length_minimum)
+                    )
                 )
                 else pl.lit(0)
             )
         )
     )
-    vBreakAfter = []
-    for pos in gap_positions.iter_rows():
-        vBreakAfter.append(gene_location.find_intergenic_regions())
 
-    # WARNING: This is a slow way to process dataframe
+    # WARNING: This is a slow way to process DataFrame
     ngaps = sequencing_gaps.height
     hypothetical_genes = []
     for i, row in enumerate(gap_positions.iter_rows()):
@@ -175,39 +174,39 @@ def introduce_hypo_genes(
 
 
 def annotate_sequencing_gaps(
-    vFile: Path,
-    vInterGeneLocation: pl.DataFrame,
-    vUniqueChrom: List[str],
-    vUnmaskedDNA: bool = True,
-    vParallelize: int = 1,
-    vOverwriteSeqGapInfo: bool = False,
-    vSeqGapSizesChromBreak: List[int] = [],
-    vGeneLengthHypoMin: int = -1,
+    nucleotide_fasta_filename: Path,
+    intergenic_location: pl.DataFrame,
+    unique_chromosome_names: List[str],
+    is_dna_unmasked: bool = True,
+    # parallelize: int = 1,
+    overwrite_sequence_gap_info_file: bool = False,
+    sequence_gap_sizes_chromosome_breaks: List[int] = [],
+    hypothetical_gene_gap_length_minimum: int = -1,
 ) -> pl.DataFrame:
     """
     ---------------------------------------------------------------------------
 
       Functions that uses the output of get_sequencing_gaps and reformulates
-      it such that it is clear in which intergenic region the sequening gap
+      it such that it is clear in which intergenic region the sequencing gap
       lies.
 
     ---------------------------------------------------------------------------
 
     Args:
-        vFile: Fasta file of the masked genome nucleotide sequences.
-        vInterGeneLocation: A DataFrame describing
+        nucleotide_fasta_filename: FASTA file of the masked genome nucleotide sequences.
+        intergenic_location: A DataFrame describing
                         - chromosome,
                         - start bp,
                         - end bp,
                         - gene before,
                         - and gene after
-                      a intergenic region.
-        vUniqueChrom: A list with unique entries of all chromosome and scaffold
+                      an intergenic region.
+        unique_chromosome_names: A list with unique entries of all chromosome and scaffold
                       names.
     Optional Args:
-        - **vUnmaskedDNA**: Option to ignore the error if you use unmasked DNA files.
-        - **vParallelize**: Number of parallel processes to run.
-        - **vOverwriteSeqGapInfo**: If set to True, the code enforces masked nucleotide
+        - **is_dna_unmasked**: Option to ignore the error if you use unmasked DNA files.
+        - **parallelize**: Number of parallel processes to run (deprecated).
+        - **hypothetical_gene_gap_length_minimum**: If set to True, the code enforces masked nucleotide
                               analysis for finding sequencing gaps (default is
                               False, no enforcement).
         - **vSeqGapSizesChromBreak**: A list of numbers. The masked nucleotides
@@ -233,16 +232,26 @@ def annotate_sequencing_gaps(
                   bp, corrected for maximal size (= intergenic region).
     """
 
-    if not (vGeneLengthHypoMin == -1 or vSeqGapSizesChromBreak == []):
+    if not (
+        hypothetical_gene_gap_length_minimum == -1
+        or sequence_gap_sizes_chromosome_breaks == []
+    ):
         _log.error(
             "annotate_sequencing_gaps needs both SeqGapSizesChromBreak and GeneLengthHypoMin to be set or to be unset."
         )
         raise Exception("Incompatable parameters in annotate_sequencing_gaps function")
     _log.debug("Annotating sequence gaps")
 
-    gap_output_file = vFile.with_suffix(vFile.suffix + "_GAPOutput")
-    if vOverwriteSeqGapInfo or not gap_output_file.exists():
-        get_sequencing_gaps(vFile, 1, vOverwriteSeqGapInfo, vUnmaskedDNA)
+    gap_output_file = nucleotide_fasta_filename.with_suffix(
+        nucleotide_fasta_filename.suffix + "_GAPOutput"
+    )
+    if overwrite_sequence_gap_info_file or not gap_output_file.exists():
+        get_sequencing_gaps(
+            nucleotide_fasta_filename,
+            1,
+            overwrite_sequence_gap_info_file,
+            is_dna_unmasked,
+        )
     sequencing_gaps = (
         pl.read_csv(
             gap_output_file,
@@ -258,23 +267,23 @@ def annotate_sequencing_gaps(
         )  # Do not process all non N sequences.
     )
     for bad_chromosome, *_ in (
-        sequencing_gaps.filter(pl.col("scaffold").is_in(vUniqueChrom).not_())
+        sequencing_gaps.filter(pl.col("scaffold").is_in(unique_chromosome_names).not_())
         .select(pl.col("scaffold").unique())
         .iter_rows()
     ):
         _log.warning(
             f"DNA Fasta file '{
-                vFile
+                nucleotide_fasta_filename
             }' contains chromosomes or scaffolds not covered with the "
             + f"gene position file: {bad_chromosome}"
         )
     sequencing_gaps = sequencing_gaps.filter(
-        pl.col("scaffold").is_in(vUniqueChrom)
+        pl.col("scaffold").is_in(unique_chromosome_names)
     )  # Do not process sequences that do not lie on a chromosome we want
     sequencing_gaps = (
         # All predicates of join_where() must be true for join to happen
         sequencing_gaps.join_where(
-            vInterGeneLocation,
+            intergenic_location,
             pl.col("Chromosome Name") == pl.col("scaffold"),
             pl.col("Start")  # intergenic region start
             # intergenic region starts before gap start
@@ -312,7 +321,7 @@ def get_sequencing_gaps(
     """
     ---------------------------------------------------------------------------
 
-      Function that screens a DNA FASTA file for masked streches of DNA
+      Function that screens a DNA FASTA file for masked stretches of DNA
       (masked by N).
 
       Creates a "..._GAPOutput" file from the FASTA file, then creates a
@@ -950,9 +959,9 @@ def match_PGDBs_to_MDs(
 
 def map_PGDBs_to_conversion_file(
     Conversion: Conversion,
-    vGenes_all: pl.DataFrame,
-    vGenesDat_GeneInfo: List[str],
-    vPGDBIdsToMap: str,
+    all_genes_df: pl.DataFrame,
+    genes_data_metadata: List[str],
+    pgdb_ids_to_map: str,
 ) -> dict:  # NOTE: this seems to be what creates MapG_Gpgdb
     """
     ---------------------------------------------------------------------------
@@ -978,44 +987,48 @@ def map_PGDBs_to_conversion_file(
                      stored in the pgdb genes.dat file.
     """
     _log.debug("Mapping PGDBs to conversion file")
-    if vPGDBIdsToMap not in "GTP":
+    if pgdb_ids_to_map not in "GTP":
         _log.error("Invalid PGDBIdsToMap mapping value, valid values are G, T, and P")
         raise Exception("Invalid Mapping Value")
 
     gene_map = dict()
-    if "G" in vPGDBIdsToMap:
-        vGenes_all_g = vGenes_all.select(
-            pl.col("UNIQUE-ID"), pl.col(vGenesDat_GeneInfo[0])
-        ).explode(pl.col(vGenesDat_GeneInfo[0]))
+    if "G" in pgdb_ids_to_map:
+        all_genes_df_genes = all_genes_df.select(
+            pl.col("UNIQUE-ID"), pl.col(genes_data_metadata[0])
+        ).explode(pl.col(genes_data_metadata[0]))
         gene_map = (
             Conversion.df.join(
-                vGenes_all_g, left_on="Gene Name", right_on=vGenesDat_GeneInfo[0]
+                all_genes_df_genes, left_on="Gene Name", right_on=genes_data_metadata[0]
             )
             .select(pl.col("Gene Name"), pl.col("UNIQUE-ID"))
             .rows_by_key(key="UNIQUE-ID")
         )
 
     transcript_map = dict()
-    if "T" in vPGDBIdsToMap:
-        vGenes_all_t = vGenes_all.select(
-            pl.col("UNIQUE-ID"), pl.col(vGenesDat_GeneInfo[0])
-        ).explode(pl.col(vGenesDat_GeneInfo[0]))
+    if "T" in pgdb_ids_to_map:
+        all_genes_df_transcript = all_genes_df.select(
+            pl.col("UNIQUE-ID"), pl.col(genes_data_metadata[0])
+        ).explode(pl.col(genes_data_metadata[0]))
         transcript_map = (
             Conversion.df.join(
-                vGenes_all_t, left_on="Transcript Name", right_on=vGenesDat_GeneInfo[0]
+                all_genes_df_transcript,
+                left_on="Transcript Name",
+                right_on=genes_data_metadata[0],
             )
             .select(pl.col("Transcript Name"), pl.col("UNIQUE-ID"))
             .rows_by_key(key="UNIQUE-ID")
         )
 
     protein_map = dict()
-    if "P" in vPGDBIdsToMap:
-        vGenes_all_p = vGenes_all.select(
-            pl.col("UNIQUE-ID"), pl.col(vGenesDat_GeneInfo[0])
-        ).explode(pl.col(vGenesDat_GeneInfo[0]))
+    if "P" in pgdb_ids_to_map:
+        all_genes_df_proteins = all_genes_df.select(
+            pl.col("UNIQUE-ID"), pl.col(genes_data_metadata[0])
+        ).explode(pl.col(genes_data_metadata[0]))
         protein_map = (
             Conversion.df.join(
-                vGenes_all_p, left_on="Protein Name", right_on=vGenesDat_GeneInfo[0]
+                all_genes_df_proteins,
+                left_on="Protein Name",
+                right_on=genes_data_metadata[0],
             )
             .select(pl.col("Protein Name"), pl.col("UNIQUE-ID"))
             .rows_by_key(key="UNIQUE-ID")
@@ -1914,7 +1927,7 @@ def write_cluster_output(
 
 def analyze_plant_cluster_gap_file(
     vFileIn: Path, vUnmaskedDNA: bool, file_output: bool = True
-) -> Optional[Tuple[str, Dict[Any, Iterable[Any]]]]:
+) -> Optional[Tuple[str, Dict[Any, list[Any]]]]:
     """
     ---------------------------------------------------------------------------
 

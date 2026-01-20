@@ -2,15 +2,20 @@
 ## Installation and Usage
 
 ## Developing PlantClusterFinder.py
-The quickest and easiest way to get started is by using [rye](https://rye.astral.sh/).
+The quickest and easiest way to get started is by using [uv](https://docs.astral.sh/uv/).
 - Clone the git repository
-- In PlantClusterFinder.py run `rye init`
+- In PlantClusterFinder.py run `uv sync`
+- install **blast** and **MCL** on your local system
 
-Rye will download the dependencies, dev dependencies, and set up a virtual environment for development.
+Uv will download the dependencies, dev dependencies, and set up a virtual environment for development.
 
-To run PCF, use `rye run python -m plantclusterfinder_py $ARGS` with whatever arguments you need.
+To run PlantClusterFinder.py, use `uv run python -m plantclusterfinder_py $ARGS` with whatever arguments you need.
 
-To generate the pydocs, use `rye run pdoc -d google src/plantclusterfinder_py` and pdoc will host the docs locally.
+To generate the pydocs, use `uv run pdoc -d google src/plantclusterfinder_py` and pdoc will host the docs locally.
+
+### Using Nix Flakes
+If you have nix installed, you can simply run `nix develop` in the repository to get everything set up.
+The flake installs LSPs as well as uv and required software, so you can start developing right away.
 
 ## Previous Versions
 
