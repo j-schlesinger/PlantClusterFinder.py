@@ -55,7 +55,13 @@ class AnnotatedMetabolicDomains(BaseModel):
 
     model_config = {"arbitrary_types_allowed": True}
     RxnMetaDom: pl.DataFrame
-    """DataFrame of all the items stored in the Metabolic Domain File"""
+    """
+    DataFrame of all the items stored in the Metabolic Domain File
+    Has the columns:
+    - Reaction ID (PGDB reactions.dat UNIQUE-ID)
+    - Pathway
+    - Metabolic Domain
+    """
     Rxn2MetaDom: dict
     """Mapping Between Reactions stored in Metabolic Domain file
     and metabolic domains of interest"""
@@ -234,4 +240,8 @@ class Clusters(BaseModel):
             cluster_meta_in_top, on="cluster_index", how="left"
         )
 
-        return cluster_meta_in_top["top_percent_clusters"].to_list()
+        top_clusters = cluster_meta_in_top["top_percent_clusters"].to_list()
+        _log.debug(
+            f"Found that {len(list(filter(lambda x: x, top_clusters)))} clusters out of {len(self.ClusterMeta)} are in top"
+        )
+        return top_clusters

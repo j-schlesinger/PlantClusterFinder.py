@@ -14,8 +14,8 @@ from plantclusterfinder_py.cluster import (
     get_metabolic_domains,
     introduce_hypo_genes,
     label_reactions_with_sig_and_tail,
+    map_pgdb_gene_ids_to_conversion_file,
     map_pgdb_reactions_to_genes,
-    map_PGDBs_to_conversion_file,
     match_PGDBs_to_MDs,
     perform_clustering,
     read_in_conversion_file,
@@ -23,9 +23,46 @@ from plantclusterfinder_py.cluster import (
     write_cluster_output,
     write_gene_output,
 )
+from plantclusterfinder_py.cluster_datatypes import Conversion
 from plantclusterfinder_py.genelocation import GeneLoc
 
 LOG_FORMAT = "{asctime} | {levelname:<8} | {name} : {message}"
+
+
+def generate_gene_location(
+    gene_location_filename: Path,
+    dna_unmasked_ok: bool,
+    conversion: Conversion,
+    remove_non_protein_locations: bool,
+    gene_to_mcl_map,
+) -> GeneLoc:
+    log = logging.getLogger(__name__)
+    gene_location = GeneLoc(file_path=gene_location_filename, unmasked=dna_unmasked_ok)
+    log.debug("Gene Location File Attributes:")
+    for i, attribute in enumerate(gene_location.columns):
+        log.debug("Attribute %i: %s", i, attribute)
+
+    # Remove protein or transcript information
+    log.debug("Remove transcript information")
+    gene_location.remove_protein_transcript_info(
+        conversion,
+    )
+    # Consolidate gene information (one entry per gene)
+    log.debug("Consolidate gene information")
+    _ = gene_location.consolidate_gene_info()
+    # Sort genes according to their physical position on the chromosomes
+    log.debug("Sort genes on the chromosomes")
+    gene_location.sort_genes()
+
+    # If chosen, remove gene position information about genes that are
+    # not present in the protein FASTA file.
+    if remove_non_protein_locations:
+        log.debug("Remove non-protein coding genes in gene locations.")
+        _ = gene_location.remove_non_protein_fasta_gene_locations(
+            conversion,
+            gene_to_mcl_map.Protein_IDs,
+        )
+    return gene_location
 
 
 def main() -> None:
@@ -534,12 +571,12 @@ def main() -> None:
     criterion_selection = args.Criterion
     # Change variable types into Boolean
     mcl_cluster_filename = args.MCLClusterFile
-    pre_screen_gaps = args.PreScreenGaps
+    # pre_screen_gaps = args.PreScreenGaps
     overwrite_sequence_gaps_information_file = args.OverwriteSeqGapInfo
     overwrite_mcl_clustering_file = args.OverwriteMCLClustering
     dna_unmasked_ok = args.UnmaskedDNA
-    create_tempsaves = args.Tempsaves
-    overwrite_temp_save_files = args.TempsavesOverwrite
+    # create_tempsaves = args.Tempsaves
+    # overwrite_temp_save_files = args.TempsavesOverwrite
     remove_non_protein_locations = args.RemoveNonProtLocations
     insert_hypothetical_genes = args.InsertHypos
 
@@ -549,7 +586,7 @@ def main() -> None:
     # TODO: validate if computer has `para` CPUs. -1 = auto?
     parallelize = args.para  # parallelize
     pgdb_ids_to_map = args.PGDBIdsToMap
-    run_after_part = args.RunAfterPart
+    # run_after_part = args.RunAfterPart
     hypothetical_gene_amount = args.HypoAmount
     output_type = args.OutputType
     gene_location_output_filename = (
@@ -584,7 +621,8 @@ def main() -> None:
             error_message.append(f"Could not find {err} at {filename}.")
             continue
         try:
-            with open(filename, "r") as f:
+            # Try to open a file for reading, but do nothing
+            with open(filename, "r") as _:
                 pass
         except FileNotFoundError:
             error_message.append(f"File {filename} is a file that could not be found.")
@@ -605,7 +643,8 @@ def main() -> None:
             )
             continue
         try:
-            with open(filename, "a") as f:
+            # try to open the file as append
+            with open(filename, "a") as _:
                 pass
         except FileNotFoundError:
             error_message.append(f"File {filename} is a file that could not be found.")
@@ -653,7 +692,7 @@ def main() -> None:
 
     # Part 5: Map PGDB genes to Maping genes
     log.info("PART START: Map pgdb genes to conversion file gene-IDs")
-    map_genes_to_pgdb_genes = map_PGDBs_to_conversion_file(
+    map_genes_to_pgdb_genes = map_pgdb_gene_ids_to_conversion_file(
         conversion,
         genes_to_reactions.GenesAll,
         genes_data_gene_info,
@@ -688,40 +727,18 @@ def main() -> None:
 
     # % Read in Gene Position File
     log.info("PART START: Read in gene position file")
-    gene_location = GeneLoc(file_path=gene_location_filename, unmasked=dna_unmasked_ok)
-    log.debug("Gene Location File Attributes:")
-    for i, attribute in enumerate(gene_location.columns):
-        log.debug("Attribute %i: %s", i, attribute)
-        # Remove protein or transcript information
-        log.debug("Remove transcript information")
-
-    gene_location.remove_protein_transcript_info(
+    gene_location = generate_gene_location(
+        gene_location_filename,
+        dna_unmasked_ok,
         conversion,
+        remove_non_protein_locations,
+        gene_to_mcl_map,
     )
-    # Consolidate gene information (one entry per gene)
-    log.debug("Consolidate gene information")
     unique_chromosome_names = gene_location.consolidate_gene_info()
-    # Sort genes according to their physical position on the chromosomes
-    log.debug("Sort genes on the chromosomes")
-    gene_location.sort_genes()
-
-    # % Map Biomart file to Gene Map
-    log.info("PART START: Map gene location to conversion gene-IDs")
-    vBiomG_G = gene_location.map_to_conversion_file(conversion.MapG)
-
-    # If chosen, remove gene position information about genes that are
-    # not present in the protein FASTA file.
-    if remove_non_protein_locations == 1:
-        log.debug("Remove non-protein coding genes in gene locations.")
-        vBiomG_G = gene_location.remove_non_protein_fasta_gene_locations(
-            conversion,
-            vBiomG_G,
-            gene_to_mcl_map.Protein_IDs,
-        )
 
     # % Get places on genome that do not have genes encoded:
     log.info("PART START: Find intergenic regions")
-    vInterChrom = gene_location.find_intergenic_regions()
+    intergenic_regions = gene_location.find_intergenic_regions()
 
     # % Calculate percentile of gene size that should yield hypo genes
     log.info(
@@ -734,28 +751,18 @@ def main() -> None:
         raise Exception(
             "Sequence gap calculation failed: quantile calculation returned None. Check HypoGenePercentile"
         )
-    vGeneLengthHypoMin = math.ceil(possibly_none_quantile)
+    gene_length_hypothetical_minimum = math.ceil(possibly_none_quantile)
 
     # % Get sequencing gaps
     log.info("PART START: Identify sequencing gaps (bases encoded by N)")
-    if vGeneLengthHypoMin > 0 and pre_screen_gaps == 1:
-        vSeqGaps = annotate_sequencing_gaps(
-            dna_fasta_filename,
-            vInterChrom,  # intergenic region
-            unique_chromosome_names,
-            dna_unmasked_ok,
-            parallelize,
-            overwrite_sequence_gaps_information_file,
-        )
-    else:
-        vSeqGaps = annotate_sequencing_gaps(
-            dna_fasta_filename,
-            vInterChrom,
-            unique_chromosome_names,
-            dna_unmasked_ok,
-            parallelize,
-            overwrite_sequence_gaps_information_file,
-        )
+    sequencing_gaps = annotate_sequencing_gaps(
+        dna_fasta_filename,
+        intergenic_regions,  # intergenic region
+        unique_chromosome_names,
+        dna_unmasked_ok,
+        parallelize,
+        overwrite_sequence_gaps_information_file,
+    )
 
     # % Introduce hardbreaks (split chromosomes)
     log.info("PART START: Introduce Hard Breaks")
@@ -766,10 +773,12 @@ def main() -> None:
         )
     if len(sequence_gap_sizes_chromosome_break) != 0:
         log.debug("SeqGapSizesChromBreak %s", sequence_gap_sizes_chromosome_break)
-        vNumbers = ", ".join([str(x) for x in sequence_gap_sizes_chromosome_break])
+        sequence_gap_sizes_str = ", ".join(
+            [str(x) for x in sequence_gap_sizes_chromosome_break]
+        )
         log.info(
             "Prevent clusters spanning sequencing gaps of length %sbp",
-            vNumbers,
+            sequence_gap_sizes_str,
         )
     if maximum_intergenic_distance is not None:
         log.info(
@@ -787,7 +796,7 @@ def main() -> None:
             maximum_inter_gene_distance_by_median,
         )
         gene_location.introduce_hard_breaks(
-            vSeqGaps,
+            sequencing_gaps,
             maximum_sequence_gap_size,
             maximum_intergenic_distance,
             percentile_for_max_inter_gene_distance,
@@ -798,50 +807,42 @@ def main() -> None:
     # % Populate Hypothetical genes
     log.info(
         "PART START: Introduce Hypothetical genes for gaps longer than %i bp",
-        vGeneLengthHypoMin,
+        gene_length_hypothetical_minimum,
     )
     if insert_hypothetical_genes:
-        if "vHypoAmount" not in locals():
-            # This should be impossible as long as args were parsed
-            log.error("vHypoAmount does not exist. Needs to be set as an Argument.")
-        else:
-            hard_breaks = introduce_hypo_genes(
-                gene_location,
-                gene_location.find_intergenic_regions(),
-                insert_hypothetical_genes,
-                hypothetical_gene_amount,
-            )
+        # hard_breaks =
+        _ = introduce_hypo_genes(
+            gene_location,
+            gene_location.find_intergenic_regions(),
+            insert_hypothetical_genes,
+            hypothetical_gene_amount,
+        )
 
     # % Annotate Biomartfile with Enzymes (use Gene-protein mapping)
     log.info("PART START: Annotate gene location file with enzyme information")
-    vBiomG_E = gene_location.annotate_enzyme_info(
+    map_pgdb_genes_to_enzymes = gene_location.annotate_enzyme_info(
         map_genes_to_pgdb_genes,
         genes_to_reactions,
     )
     log.debug(
         "Number of genes in location file identified as enzymes: %i",
-        sum(vBiomG_E.values()),
+        sum(map_pgdb_genes_to_enzymes.values()),
     )
 
     # % Compute LD information
     log.info("PART START: Compute local gene duplication per gene location")
-    # (vG_LD, vG_LD_ClustIDs) =
     gene_location.compute_local_duplication(
         gene_to_mcl_map,
-        vBiomG_G,
         local_duplication_range_kilobase,
         local_duplication_range_genes,
     )
 
     # % Perform clustering
     log.info("PART START: Perform clustering")
-    # ( vClusters, vClusterBackground, vFinalStepsize, vStepSize_Max,)
     clusters = perform_clustering(
         gene_location,
         gene_to_mcl_map,
         enzyme_minimum_for_clusters,
-        local_duplication_range_kilobase,
-        local_duplication_range_genes,
         criterion_selection,
         minimum_step_size,
         maximum_step_size,
@@ -849,7 +850,9 @@ def main() -> None:
 
     # % Perform cutoff
     log.info("PART START: Perform cuttof at %i%%", top_percent_clusters)
-    top_clusters = clusters.perform_cutoff(top_percent_clusters)
+    _ = clusters.perform_cutoff(
+        top_percent_clusters
+    )  # returns top_clusters, but now stored in clusters object
 
     # % Produce Gene Output file
     log.info("PART START: Produce GeneOutputFile")
@@ -859,11 +862,6 @@ def main() -> None:
         clusters,
         top_percent_clusters,  # from args
         list_of_MD_to_annotate,  # from args
-        # genes_to_reactions,
-        # map_genes_to_pgdb_genes,
-        # vBiomG_E,
-        # vClusters_Top,
-        # annotated_metabolic_domains,
         pgdb_to_metabolic_domain_map,
         reaction_labels,
         output_type,  # from args
@@ -875,7 +873,6 @@ def main() -> None:
         cluster_output_filename,
         gene_location,
         clusters,
-        top_clusters,
         output_type,
     )
     if gene_location_output_filename is not None:

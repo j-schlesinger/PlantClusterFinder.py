@@ -17,6 +17,7 @@ requires-python = ">= 3.12"
 
 [project.scripts]
 hello = "plantclusterfinder_py:hello"
+plantclusterfinder = "plantclusterfinder_py:main.main"
 
 [build-system]
 requires = ["hatchling"]
@@ -42,6 +43,7 @@ dev = [
     "wily>=1.25.0",
     "refurb>=2.2.0",
     "radon>=5.1",
+    "pytest-pyright>=0.0.6",
 ]
 
 [tool.ruff]
@@ -69,3 +71,6 @@ packages = ["src/plantclusterfinder_py"]
 venvPath = "."
 venv = ".venv"
 # typeCheckingMode = "basic" # Prevents it from being too noisy
+
+[tool.pytest.ini_options]
+adopts = "--pyright"

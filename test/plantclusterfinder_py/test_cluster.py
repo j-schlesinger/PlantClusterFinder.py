@@ -1,4 +1,6 @@
+import logging
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 import polars as pl
 import pytest
@@ -6,19 +8,11 @@ import pytest
 # globals
 pgdb_dir = Path("./csubellipsoidea/pgdb/csubellipsoideacyc/1.0/data")
 test_input_dir = Path("./Inputs")
+_log = logging.getLogger(__name__)
 
-
-@pytest.fixture
-def genelocation_obj():
-    from plantclusterfinder_py.genelocation import GeneLoc
-
-    return GeneLoc(
-        file_path=Path(
-            "csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt"
-        )
-    )
-
-
+TOP_PERCENT = 5
+GENE_COUNT = 9_629
+PGDB_GENE_COUNT = 2053
 # Part 1
 
 
@@ -33,9 +27,9 @@ def test_read_in_conversion_file():
             "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
         )
     )
-    assert len(conversion.MapG) == 9629
-    assert len(conversion.MapT) == 9629
-    assert len(conversion.MapP) == 9629
+    assert len(conversion.MapG) == GENE_COUNT
+    assert len(conversion.MapT) == GENE_COUNT
+    assert len(conversion.MapP) == GENE_COUNT
 
 
 # Part 2
@@ -48,7 +42,7 @@ def test_read_in_pgdb_flat():
         pgdb_dir / "genes.dat", ("UNIQUE-ID", "PRODUCT", "ACCESSION-1")
     )
     assert isinstance(gene_df, pl.DataFrame)
-    assert len(gene_df) == 2053
+    assert len(gene_df) == PGDB_GENE_COUNT
     g4s_3028 = gene_df.filter(pl.col("PRODUCT") == ["G4S-3028-MONOMER"])
     assert len(g4s_3028) == 1
 
@@ -79,8 +73,8 @@ def test_match_pgdb_flat():
     integration_matched = match_pgdb_flat(
         integration_flat1, integration_flat2, ("PRODUCT", "UNIQUE-ID")
     )
-    assert 2_053 == len(integration_matched)  # TEST INCOMPLETE
-    assert 2_053 == len(genes_flat)
+    assert PGDB_GENE_COUNT == len(integration_matched)  # TEST INCOMPLETE
+    assert PGDB_GENE_COUNT == len(genes_flat)
     assert 2_054 == len(proteins_flat)
     assert 3_015 == len(enzrxns_all)
     assert len(reaction_flat) > 0
@@ -91,8 +85,8 @@ def test_map_pgdb_reactions_to_genes():
 
     mapping_G2R = map_pgdb_reactions_to_genes(pgdb_dir)
     assert 2195 == len(mapping_G2R.ReactionsAll)
-    assert 2053 == len(mapping_G2R.GenesAll)
-    assert 2053 == len(mapping_G2R.Gene2Rxn)
+    assert PGDB_GENE_COUNT == len(mapping_G2R.GenesAll)
+    assert PGDB_GENE_COUNT == len(mapping_G2R.Gene2Rxn)
 
 
 # Part 3
@@ -149,7 +143,7 @@ def test_label_reactions_with_sig_and_tail():
 # part 5
 def test_map_PGDBs_to_conversion_file():
     from plantclusterfinder_py.cluster import (
-        map_PGDBs_to_conversion_file,
+        map_pgdb_gene_ids_to_conversion_file,
         read_in_conversion_file,
         read_in_pgdb_flat,
     )
@@ -166,11 +160,13 @@ def test_map_PGDBs_to_conversion_file():
     )
     gene_info_from_genes_dat = ["ACCESSION-1"]  # TODO
     ids_to_map = "GTP"
-    pgdb_conversions_dict = map_PGDBs_to_conversion_file(
+    pgdb_conversions_df = map_pgdb_gene_ids_to_conversion_file(
         conversion, genes_all, gene_info_from_genes_dat, ids_to_map
     )
-    assert 2_053 == len(pgdb_conversions_dict)  # TEST INCOMPLETE
-    assert ["46517", "46517"] == pgdb_conversions_dict["G4S-3028"]
+    assert PGDB_GENE_COUNT == len(pgdb_conversions_df)
+    g4s_3028_row = pgdb_conversions_df.filter(pl.col("pgdb_gene_id") == "G4S-3028")
+    assert "46517" == g4s_3028_row["Protein Name"][0]
+    assert "46517" == g4s_3028_row["Transcript Name"][0]
 
 
 # part 6
@@ -218,10 +214,7 @@ def test_get_MCL_clustering():
     assert 9_627 == len(mcl_cluster.Gene2MCLClusters)
 
 
-# part 7
-
-
-# Part 10: No Cluster Functions
+# Part 7 through Part 10: No Cluster Functions
 
 
 # part 11
@@ -354,40 +347,19 @@ def test_compute_background():
     return
 
 
-def test_perform_clustering(genelocation_obj):
+def test_perform_clustering(genelocation_transformed_obj):
     from plantclusterfinder_py.cluster import (
-        map_pgdb_reactions_to_genes,
-        map_PGDBs_to_conversion_file,
         perform_clustering,
         read_in_conversion_file,
-        read_in_pgdb_flat,
         read_MCL_clustering_file,
     )
-
-    pgdb_dir = Path("./csubellipsoidea/pgdb/csubellipsoideacyc/1.0/data")
-    gene_info_from_genes_dat = ["ACCESSION-1"]  # TODO what is this?
-    ids_to_map = "T"
 
     conversion = read_in_conversion_file(
         Path(
             "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
         )
     )
-    gene_location = genelocation_obj
-    # needs conversion data
-    gene_location.remove_protein_transcript_info(conversion)
-    gene2rxn = map_pgdb_reactions_to_genes(pgdb_dir)
-    genes_all = read_in_pgdb_flat(
-        pgdb_dir / "genes.dat",
-        ("UNIQUE-ID", "ACCESSION-1"),
-        unique_keys=("UNIQUE-ID", "ACCESSION-1"),
-    )
-    pgdb_conversions_dict = map_PGDBs_to_conversion_file(
-        conversion, genes_all, gene_info_from_genes_dat, ids_to_map
-    )
-    # needs enzyme info
-    gene_location.annotate_enzyme_info(pgdb_conversions_dict, gene2rxn)
-    # needs mcl clusters
+    gene_location = genelocation_transformed_obj
     mcl_cluster_data = read_MCL_clustering_file(
         Path(
             "./csubellipsoidea/MCL_clustering_expected_results/dump.CsubellipsoideaC_169_227_v2.0.protein.pcf13.mci.I20"
@@ -396,32 +368,197 @@ def test_perform_clustering(genelocation_obj):
         conversion,
         False,  # do not remove proteins
     )
-    gene_location.compute_local_duplication(mcl_cluster_data, {}, 100000, 10)
-    # using the defaults from main.py
+
+    _log.debug(f"Gene Location before clustering: {gene_location}")
     clusters = perform_clustering(
-        genelocation_obj,
+        gene_location,
         mcl_cluster_data,
         3,  # enzymes min for clusters
-        100000,  # kb for ld
-        10,  # genes for ld
         2,  # criterion
         5,  # min step size
         20,  # max step size
     )
+    clusters.perform_cutoff(TOP_PERCENT)
+    print(clusters)
     assert 3 == clusters.FinalStepSize
     assert 5 == clusters.MaxStepSize
-    assert 86 == clusters.ClusterMeta.height
-    assert 482 == clusters.ClusterBackground.height
+    # assert 86 == clusters.ClusterMeta.height # This was the old test value
+    # assert 482 == clusters.ClusterBackground.height
+    assert 1192 == clusters.ClusterMeta.height
+    assert 830 == clusters.ClusterBackground.height
+
+
+def test_evaluate_criterion():
+    from collections import namedtuple
+
+    from plantclusterfinder_py.cluster import evaluate_criterion
+
+    # named tuple to simplify creation of clusterdf
+    cluster_tuple = namedtuple(
+        "cluster_tuple",
+        [
+            "chromosome",
+            "step_size",
+            "start",
+            "end",
+            "enzyme_count",
+            "non_enzyme_gene_count",  # includes hypotheticals
+            "hypothetical_gene_count",
+        ],
+    )
+
+    # Evaluate 1:
+    #   calculated as enzymes / (non enzymes) > 0.5
+    #   AKA: keep searching as long as there are more enzymes than 2x non-enzymes in clusters.
+    #   Continue search case: More enzymes than non-enzymes.
+    case_one_continue_clusters = pl.DataFrame(
+        [
+            cluster_tuple(
+                "TEST",
+                3,
+                x * 50,
+                (x + 1) * 50 + 12,
+                6,  # 6 enzymes per cluster
+                12,  # 12 non-enzyme
+                0,  # 0 hypothetical gene
+            )
+            for x in range(10)
+        ]
+    )
+    case_one_continue = evaluate_criterion(1, case_one_continue_clusters, 3, 24, 3)
+    #   Stop search case: Enzymes are fewer than or equal to the number of non-enzymes.
+    case_one_stop_clusters = pl.DataFrame(
+        [
+            cluster_tuple(
+                "TEST",
+                3,
+                x * 50,
+                (x + 1) * 50 + 12,
+                6,  # 6 enzymes per cluster
+                13,  # 13 non-enzymes
+                0,  # of which 0 are hypothetical
+            )
+            for x in range(10)
+        ]
+    )
+    case_one_stop = evaluate_criterion(1, case_one_stop_clusters, 3, 24, 3)
+    assert (2, True) == case_one_continue
+    assert (2, False) == case_one_stop
+    # Evaluate 2: continue search until step_size is 3
+    empty_clusters = pl.DataFrame([cluster_tuple("TEST", 0, 0, 0, 0, 0, 0)])
+    #    Continue search: step size less than 3
+    case_two_continue = evaluate_criterion(2, empty_clusters, 2, 24, 3)
+    #    Stop search: step size 3 or greater
+    case_two_stop = evaluate_criterion(2, empty_clusters, 3, 24, 3)
+    assert (1, True) == case_two_continue
+    assert (3, False) == case_two_stop
+    # Evaluate 3:
+    #    Continue Search: enzymes > non-enzymes + 2*hypos
+    case_three_continue_clusters = pl.DataFrame(
+        [
+            cluster_tuple(
+                "TEST",
+                3,
+                x * 50,
+                (x + 1) * 50 + 12,
+                12,  # 12 enzymes per cluster
+                9,  # 9 non-enzymes
+                3,  # of which 3 are hypothetical
+            )
+            for x in range(10)
+        ]
+    )
+    case_three_continue = evaluate_criterion(3, case_three_continue_clusters, 3, 24, 3)
+    #    Stop Search: enzymes <= non-enzymes + 2*hypos
+    case_three_stop_clusters = pl.DataFrame(
+        [
+            cluster_tuple(
+                "TEST",
+                3,
+                x * 50,
+                (x + 1) * 50 + 12,
+                12,  # 12 enzymes per cluster
+                10,  # 10 non-enzyme
+                3,  # of which 3 are hypothetical
+            )
+            for x in range(10)
+        ]
+    )
+    case_three_stop = evaluate_criterion(3, case_three_stop_clusters, 3, 24, 3)
+    assert (2, True) == case_three_continue
+    assert (2, False) == case_three_stop
+    # Evaluate 4:
+    #    Continue case: there are more clusters for step size 3 than 2
+    case_four_continue_clusters = pl.DataFrame(
+        [
+            cluster_tuple(
+                "TEST",
+                3,
+                x * 50,
+                (x + 1) * 50 + 12,
+                12,  # 12 enzymes per cluster
+                6,  # 1 non-enzyme
+                3,  # 1 hypothetical gene
+            )
+            for x in range(10)
+        ]
+        + [
+            cluster_tuple(
+                "TEST",
+                2,
+                x * 50,
+                (x + 1) * 50 + 12,
+                12,  # 12 enzymes per cluster
+                6,  # 1 non-enzyme
+                3,  # 1 hypothetical gene
+            )
+            for x in range(9)
+        ]
+    )
+    case_four_continue = evaluate_criterion(4, case_four_continue_clusters, 3, 24, 3)
+    case_four_stop_clusters = pl.DataFrame(
+        [
+            cluster_tuple(
+                "TEST",
+                3,
+                x * 50,
+                (x + 1) * 50 + 12,
+                12,  # 12 enzymes per cluster
+                6,  # 1 non-enzyme
+                3,  # 1 hypothetical gene
+            )
+            for x in range(9)
+        ]
+        + [
+            cluster_tuple(
+                "TEST",
+                2,
+                x * 50,
+                (x + 1) * 50 + 12,
+                12,  # 12 enzymes per cluster
+                6,  # 1 non-enzyme
+                3,  # 1 hypothetical gene
+            )
+            for x in range(10)
+        ]
+    )
+    case_four_stop = evaluate_criterion(4, case_four_stop_clusters, 3, 24, 3)
+    assert (2, True) == case_four_continue
+    assert (2, False) == case_four_stop
+    # Test invalid criterion:
+    with pytest.raises(Exception) as exception_info:
+        evaluate_criterion(5, pl.DataFrame(), 1, 1, 1)
+        assert "valid options are" in str(exception_info.value)
 
 
 # Part 17
 # function moved to cluster_datatypes
+# test is here
 def test_perform_cutoff():
     from plantclusterfinder_py.cluster import compute_background
     from plantclusterfinder_py.cluster_datatypes import Clusters
     from plantclusterfinder_py.genelocation import GeneLoc
 
-    TOP_PERCENT = 5
     gene_location = GeneLoc(
         file_path=Path("./test/data/background_computation_test.tsv")
     )
@@ -454,8 +591,6 @@ def test_perform_cutoff():
         MaxStepSize=5,
     )
     top_clusters = cluster.perform_cutoff(TOP_PERCENT)
-    print(cluster.ClusterMeta)
-    print(cluster.ClusterBackground)
     assert len(top_clusters) == len(cluster.ClusterMeta)
     assert (
         abs(
@@ -469,20 +604,146 @@ def test_perform_cutoff():
 
 
 # Part 18
-def test_write_gene_output():
-    # from plantclusterfinder_py.cluster import write_gene_output
+def test_write_gene_output(genelocation_transformed_obj):
+    from plantclusterfinder_py.cluster import (
+        get_metabolic_domains,
+        label_reactions_with_sig_and_tail,
+        map_pgdb_reactions_to_genes,
+        match_PGDBs_to_MDs,
+        perform_clustering,
+        read_in_conversion_file,
+        read_in_pgdb_flat,
+        read_MCL_clustering_file,
+        write_gene_output,
+    )
 
+    top_percent_clusters = 5
+    list_of_MD_to_annotate = [
+        "Amines and Polyamines Metabolism",
+        "Amino Acids Metabolism",
+        "Carbohydrates Metabolism",
+        "Cofactors Metabolism",
+        "Detoxification Metabolism",
+        "Energy Metabolism",
+        "Fatty Acids and Lipids Metabolism",
+        "Hormones Metabolism",
+        "Inorganic Nutrients Metabolism",
+        "Nitrogen-Containing Compounds",
+        "Nucleotides Metabolism",
+        "Phenylpropanoid Derivatives",
+        "Polyketides",
+        "Primary-Specialized Interface Metabolism",
+        "Redox Metabolism",
+        "Specialized Metabolism",
+        "Sugar Derivatives",
+        "Terpenoids",
+    ]
+    metabolc_domain_reactions_filename = Path(
+        "./Inputs/ReactionMetabolicDomainClassification.txt"
+    )
+
+    conversion = read_in_conversion_file(
+        Path(
+            "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
+        )
+    )
+    gene_location = genelocation_transformed_obj
+    # needs mcl clusters
+    mcl_cluster_data = read_MCL_clustering_file(
+        Path(
+            "./csubellipsoidea/MCL_clustering_expected_results/dump.CsubellipsoideaC_169_227_v2.0.protein.pcf13.mci.I20"
+        ),
+        Path("./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa"),
+        conversion,
+        False,  # do not remove proteins
+    )
+
+    clusters = perform_clustering(
+        gene_location,
+        mcl_cluster_data,
+        3,  # enzymes min for clusters
+        2,  # criterion
+        5,  # min step size
+        20,  # max step size
+    )
+    clusters.perform_cutoff(TOP_PERCENT)
+    genes_to_reactions = map_pgdb_reactions_to_genes(pgdb_dir)
+    pgdb_to_metabolic_domain_map = match_PGDBs_to_MDs(
+        genes_to_reactions,
+        get_metabolic_domains(
+            metabolc_domain_reactions_filename, ",".join(list_of_MD_to_annotate)
+        ),
+    )
+    test_signature_enzymes_tsv = (
+        test_input_dir / "scaffold-tailoring-reactions-05082016.tab"
+    )
+    reactions_dat = read_in_pgdb_flat(
+        pgdb_dir / "reactions.dat", ("UNIQUE-ID", "ENZYMATIC-REACTION", "EC-NUMBER")
+    )
+
+    reaction_labels = label_reactions_with_sig_and_tail(
+        reactions_dat, test_signature_enzymes_tsv
+    )
     # test "old" output
     # test "simple" output (default)
+    simple_gene_output = NamedTemporaryFile()
+    write_gene_output(
+        Path(simple_gene_output.name),
+        gene_location,
+        clusters,
+        top_percent_clusters,
+        list_of_MD_to_annotate,
+        pgdb_to_metabolic_domain_map,
+        reaction_labels,
+        "simple",
+    )
+    simple_gene_df = pl.read_csv(simple_gene_output.name, separator="\t")
+    assert GENE_COUNT == simple_gene_df.height
     # test "verbose" output
-    assert 1 == 0  # TEST INCOMPLETE
 
 
 # Part 19
-def test_write_cluster_output():
-    # from plantclusterfinder_py.cluster import write_cluster_output
+def test_write_cluster_output(genelocation_transformed_obj):
+    from plantclusterfinder_py.cluster import (
+        perform_clustering,
+        read_in_conversion_file,
+        read_MCL_clustering_file,
+        write_cluster_output,
+    )
+
+    conversion = read_in_conversion_file(
+        Path(
+            "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
+        )
+    )
+    gene_location = genelocation_transformed_obj
+    # needs mcl clusters
+    mcl_cluster_data = read_MCL_clustering_file(
+        Path(
+            "./csubellipsoidea/MCL_clustering_expected_results/dump.CsubellipsoideaC_169_227_v2.0.protein.pcf13.mci.I20"
+        ),
+        Path("./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa"),
+        conversion,
+        False,  # do not remove proteins
+    )
+    # using the defaults from main.py
+    clusters = perform_clustering(
+        gene_location,
+        mcl_cluster_data,
+        3,  # minimum enzymes for clusters
+        2,  # criterion
+        5,  # min step size
+        20,  # max step size
+    )
+    clusters.perform_cutoff(TOP_PERCENT)
 
     # test "old" output
     # test "simple" output (default)
+    simple_cluster_file = NamedTemporaryFile()
+    write_cluster_output(
+        Path(simple_cluster_file.name), gene_location, clusters, "simple"
+    )
+    # verify file was written
+    simple_cluster_df = pl.read_csv(simple_cluster_file.name, separator="\t")
+    assert 109 == simple_cluster_df.height
     # test "verbose" output
-    assert 1 == 0  # TEST INCOMPLETE

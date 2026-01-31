@@ -36,7 +36,41 @@
         "type": "github"
       }
     },
+    "mcl-repo": {
+      "inputs": {
+        "nixpkgs": "nixpkgs"
+      },
+      "locked": {
+        "lastModified": 1769311401,
+        "narHash": "sha256-yKup4ePeqOikVQrDsLDf7eQdgeicli+D6OLnbpxjqss=",
+        "owner": "j-schlesinger",
+        "repo": "mcl_flake",
+        "rev": "d88373d443c2a48d8dc270418cc2b7975afa84f2",
+        "type": "github"
+      },
+      "original": {
+        "owner": "j-schlesinger",
+        "repo": "mcl_flake",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
+      "locked": {
+        "lastModified": 1768886240,
+        "narHash": "sha256-C2TjvwYZ2VDxYWeqvvJ5XPPp6U7H66zeJlRaErJKoEM=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "80e4adbcf8992d3fd27ad4964fbb84907f9478b0",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs_2": {
       "locked": {
         "lastModified": 1768564909,
         "narHash": "sha256-Kell/SpJYVkHWMvnhqJz/8DqQg2b6PguxVWOuadbHCc=",
@@ -52,7 +86,7 @@
         "type": "github"
       }
     },
-    "nixpkgs_2": {
+    "nixpkgs_3": {
       "locked": {
         "lastModified": 1768564909,
         "narHash": "sha256-Kell/SpJYVkHWMvnhqJz/8DqQg2b6PguxVWOuadbHCc=",
@@ -71,7 +105,7 @@
     "python-toolchain": {
       "inputs": {
         "flake-utils": "flake-utils_2",
-        "nixpkgs": "nixpkgs_2"
+        "nixpkgs": "nixpkgs_3"
       },
       "locked": {
         "dir": "development/python",
@@ -92,7 +126,8 @@
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
-        "nixpkgs": "nixpkgs",
+        "mcl-repo": "mcl-repo",
+        "nixpkgs": "nixpkgs_2",
         "python-toolchain": "python-toolchain"
       }
     },
