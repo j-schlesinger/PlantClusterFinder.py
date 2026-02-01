@@ -14,7 +14,7 @@ jobs:
       uses: astral-sh/setup-uv@v7
     - name: Install dependencies
       run: |
-        uv sync --no-lock
+        uv sync
     - name: Install Blast and MCT
       uses: awalsh128/cache-apt-pkgs-action@latest
       with:
@@ -28,10 +28,10 @@ jobs:
         uv run mypy src test
         echo "start isort"
         uv run isort --version
-        uv run isort --profile black --filter-files --check src test || uv run isort --profile-black --filter-files --check src test -v
+        uv run isort --profile black --filter-files --check src test || uv run isort --profile black --filter-files --check src test -v
         echo "start fmt"
         uv run ruff -V
         uv run ruff check
-        uv run ruff --check -q || uv run ruff --check -- --diff
+        uv run ruff check -q || uv run ruff check --diff
         echo "start pytest"
         uv run pytest

@@ -6,8 +6,6 @@ authors = [
     { name = "Jason Schlesinger", email = "jschlesi@nig.ac.jp" }
 ]
 dependencies = [
-    "scipy>=1.12.0",
-    "pythoncyc>=2.0.2",
     "pydantic>=2.6.3",
     "polars>=1.14.0",
     "pyarrow>=17.0.0",
@@ -73,4 +71,4 @@ venv = ".venv"
 # typeCheckingMode = "basic" # Prevents it from being too noisy
 
 [tool.pytest.ini_options]
-adopts = "--pyright"
+addopts = "--pyright-dir=src"
