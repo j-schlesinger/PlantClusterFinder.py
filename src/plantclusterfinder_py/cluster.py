@@ -558,7 +558,7 @@ def get_MCL_clustering(
 
     command_for: Dict[str, List[str]] = dict()
     blastdb_file = f"{protein_sequence_fasta_filename}.blastDB"
-    if not (rebuild_blast_db or os.path.isfile(blastdb_file)):
+    if rebuild_blast_db or not os.path.isfile(blastdb_file):
         command_for["makeblastdb"] = [
             "-in",
             str(protein_sequence_fasta_filename),
@@ -569,10 +569,10 @@ def get_MCL_clustering(
             "-hash_index",
         ]
     else:
+        _log.warning("Skipping execution of makeblastdb: output file exists")
         skip_make_blastdb = True
-        command_for["makeblastdb"] = ["-h"]
     blastp_file = f"{protein_sequence_fasta_filename}.blastOUT"
-    if not (rerun_blastp or os.path.isfile(blastp_file)):
+    if rerun_blastp or not os.path.isfile(blastp_file):
         command_for["blastp"] = [
             "-query",
             str(protein_sequence_fasta_filename),
@@ -588,8 +588,8 @@ def get_MCL_clustering(
         if parallelize > 1:
             command_for["blastp"].extend(["-num_threads", str(parallelize)])
     else:
+        _log.warning("Skipping execution of blastp: output file exists")
         skip_blastp = True
-        command_for["blastp"] = ["-h"]
     command_for["cut"] = [
         "-f",
         "1,2,3",
