@@ -179,7 +179,6 @@ def annotate_sequencing_gaps(
     intergenic_location: pl.DataFrame,
     unique_chromosome_names: List[str],
     dna_unmasked_ok: bool = True,
-    # parallelize: int = 1,
     overwrite_sequence_gap_info_file: bool = False,
     sequence_gap_sizes_chromosome_breaks: List[int] = [],
     hypothetical_gene_gap_length_minimum: int = -1,
@@ -497,6 +496,7 @@ def get_MCL_clustering(
     parallelize: int = 0,
     rebuild_blast_db: bool = True,
     rerun_blastp: bool = True,
+    use_diamond: bool = True,
 ) -> MclClusterData:
     """
     ---------------------------------------------------------------------------
@@ -525,6 +525,7 @@ def get_MCL_clustering(
                of algorithm. Active if larger than 1.
         rebuild_blast_db: If BlastDB exists, should it be rebuilt? (recommended)
         rerun_blastp: if BlastP output exists, should it be rerun?
+        use_diamond: Use Diamond instead of NCBI-BLAST for db and blastp steps
 
     Returns:
         MclClusterData object which provides mapping between
@@ -535,10 +536,11 @@ def get_MCL_clustering(
     int_cpu_count: int = os.cpu_count() or 1
     if parallelize == 0:
         parallelize = max(1, int_cpu_count - 1)
-    skip_make_blastdb = False
-    skip_blastp = False
 
     apps = ["makeblastdb", "blastp", "cut", "mcxload", "mcl", "mcxdump"]
+    if use_diamond:
+        _ = apps.pop(0)
+        apps[0] = "diamond"
     missing_apps: List[str] = []
     app_path: Dict[str, Path] = dict()
     # verify all apps are in $PATH, generate error if so
@@ -558,35 +560,77 @@ def get_MCL_clustering(
 
     command_for: Dict[str, List[str]] = dict()
     blastdb_file = f"{protein_sequence_fasta_filename}.blastDB"
+    if use_diamond:
+        blastdb_file = f"{protein_sequence_fasta_filename}.diamondDB"
     if rebuild_blast_db or not os.path.isfile(blastdb_file):
-        command_for["makeblastdb"] = [
-            "-in",
-            str(protein_sequence_fasta_filename),
-            "-dbtype",
-            "prot",
-            "-out",
-            blastdb_file,
-            "-hash_index",
-        ]
+        skip_make_blastdb = False
+        if use_diamond:
+            command_for["diamond1"] = [
+                "makedb",
+                "--in",
+                str(protein_sequence_fasta_filename),
+                "--db",
+                blastdb_file,
+            ]
+            if parallelize > 1:
+                command_for["diamond1"].extend(["--threads", str(parallelize)])
+        else:
+            command_for["makeblastdb"] = [
+                "-in",
+                str(protein_sequence_fasta_filename),
+                "-dbtype",
+                "prot",
+                "-out",
+                blastdb_file,
+                "-hash_index",
+            ]
     else:
-        _log.warning("Skipping execution of makeblastdb: output file exists")
+        _log.warning("Skipping execution of make blast db: output file exists")
         skip_make_blastdb = True
     blastp_file = f"{protein_sequence_fasta_filename}.blastOUT"
     if rerun_blastp or not os.path.isfile(blastp_file):
-        command_for["blastp"] = [
-            "-query",
-            str(protein_sequence_fasta_filename),
-            "-db",
-            blastdb_file,
-            "-evalue",
-            "1",
-            "-out",
-            blastp_file,
-            "-outfmt",
-            "6 qseqid sseqid evalue bitscore length pident qstart qend sstart send",
-        ]
-        if parallelize > 1:
-            command_for["blastp"].extend(["-num_threads", str(parallelize)])
+        skip_blastp = False
+        if use_diamond:
+            command_for["diamond2"] = [
+                "blastp",
+                "--query",
+                str(protein_sequence_fasta_filename),
+                "--db",
+                blastdb_file,
+                "--evalue",
+                "1",
+                "--out",
+                blastp_file,
+                "--outfmt",
+                "6",
+                "qseqid",
+                "sseqid",
+                "evalue",
+                "bitscore",
+                "length",
+                "pident",
+                "qstart",
+                "qend",
+                "sstart",
+                "send",
+            ]
+            if parallelize > 1:
+                command_for["diamond2"].extend(["--threads", str(parallelize)])
+        else:
+            command_for["blastp"] = [
+                "-query",
+                str(protein_sequence_fasta_filename),
+                "-db",
+                blastdb_file,
+                "-evalue",
+                "1",
+                "-out",
+                blastp_file,
+                "-outfmt",
+                "6 qseqid sseqid evalue bitscore length pident qstart qend sstart send",
+            ]
+            if parallelize > 1:
+                command_for["blastp"].extend(["-num_threads", str(parallelize)])
     else:
         _log.warning("Skipping execution of blastp: output file exists")
         skip_blastp = True
@@ -632,13 +676,25 @@ def get_MCL_clustering(
     if skip_blastp:
         apps.remove("blastp")
     for app in apps:
-        _log.info(f"{app_path[app]} {' '.join(command_for[app])}")
         if app == "cut":
+            _log.info(f"executing: {app_path[app]} {' '.join(command_for[app])}")
             with open(cut_output, "w") as f:
                 subprocess.run(
                     [str(app_path[app])] + command_for[app], check=True, stdout=f
                 )
+        elif app == "diamond":
+            _log.info(f"executing: {app_path[app]} {' '.join(command_for[app + '1'])}")
+            subprocess.run(
+                [str(app_path[app])] + command_for[app + "1"],
+                check=True,
+            )
+            _log.info(f"executing: {app_path[app]} {' '.join(command_for[app + '2'])}")
+            subprocess.run(
+                [str(app_path[app])] + command_for[app + "2"],
+                check=True,
+            )
         else:
+            _log.info(f"executing: {app_path[app]} {' '.join(command_for[app])}")
             subprocess.run(
                 [str(app_path[app])] + command_for[app],
                 check=True,

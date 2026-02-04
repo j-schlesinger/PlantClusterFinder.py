@@ -22,9 +22,9 @@
 
           # any non-python packages needed as required by this project
           extraPkgs = with pkgs; [
-            zlib
-            blast-bin
-            mcl-repo.packages.${system}.default
+            mcl-repo.packages.${system}.default # requires mcl support
+            blast-bin # support for blast required
+            diamond # optional diamond support -- faster blaster
           ];
 
           # synchronize the environment on entry
