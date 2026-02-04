@@ -15,10 +15,10 @@ jobs:
     - name: Install dependencies
       run: |
         uv sync
-    - name: Install Blast and MCT
+    - name: Install Blast, Diamond, and MCT
       uses: awalsh128/cache-apt-pkgs-action@latest
       with:
-        packages: ncbi-blast+ mcl
+        packages: ncbi-blast+ mcl diamond-aligner
         version: 1.0
     - name: Performing linting with ruff and tests using pytest
       run: |

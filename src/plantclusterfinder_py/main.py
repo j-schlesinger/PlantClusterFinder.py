@@ -106,12 +106,6 @@ def main() -> None:
     )
     # Mandatory inputs: all files need full path, order does not matter.
     parser.add_argument(
-        "-pgdb",
-        required=True,
-        type=str,
-        help="Give full path of PGDB flat file folder, where the flat files of the species pgdb is stored.",
-    )
-    parser.add_argument(
         "-rmdf",
         required=True,
         type=str,
@@ -122,14 +116,19 @@ def main() -> None:
          annotated to.""",
     )
     parser.add_argument(
-        "-md",
+        "-sitf",
         required=True,
-        action="extend",
-        nargs="+",
         type=str,
         help="""
-         A list of Metabolic domains that should be analyzed.
-          For example {'Amines and Polyamines Metabolism'; 'Amino Acids '}""",
+        Signature and tailoring reactions TSV file describing the classes
+         of enzymes that should be classified as signature or tailoring
+         enzymes to identify clusters containing such.""",
+    )
+    parser.add_argument(
+        "-pgdb",
+        required=True,
+        type=str,
+        help="Give full path of PGDB flat file folder, where the flat files of the species pgdb is stored.",
     )
     parser.add_argument(
         "-psf",
@@ -170,13 +169,14 @@ def main() -> None:
         Fasta file of the HARDMASKED genome nucleotide sequences.""",
     )
     parser.add_argument(
-        "-sitf",
+        "-md",
         required=True,
+        action="extend",
+        nargs="+",
         type=str,
         help="""
-        Signature and tailoring reactions TSV file describing the classes
-         of enzymes that should be classified as signature or tailoring
-         enzymes to identify clusters containing such.""",
+         A list of Metabolic domains that should be analyzed.
+          For example {'Amines and Polyamines Metabolism'; 'Amino Acids '}""",
     )
     parser.add_argument(
         "-gout",
@@ -204,23 +204,20 @@ def main() -> None:
         type=str,
         help="""
         Needs to be followed by a list of Attributes in
-         genes.dat. Defines where gene ID information
-         should be searched for.
-         Default is "UNIQUE-ID, ACCESSION-1, ACCESSION-2" """,
+         PGDB genes.dat. Defines where gene ID
+         information should be searched for.
+         (Default is "UNIQUE-ID, ACCESSION-1, ACCESSION-2") """,
     )
     parser.add_argument(
-        "--MCLClusterFile",
-        type=int,
-        choices=[0, 1],
-        default=0,
+        "--ComputedMCLClusterFile",
+        action="store_true",
         help="""
-        Needs to be followed by either 1 or 0. With a default
-         of 0. 1 indicates that the input file is not a
+         Indicates that the input file is not a
          protein fasta file, but a precomputed MCL
-         clustering file (precomputing can be usefull for
-         speed). If such a file is used, then nothing but
-         gene IDs and tabs and new lines are allowed in this
-         file.""",
+         clustering file (precomputing can be useful for
+         speed).
+         This file can only contain Gene Names, tabs,
+         and newline characters.""",
     )
     parser.add_argument(
         "--HypoGenePercentile",
@@ -296,43 +293,31 @@ def main() -> None:
          formation (Default is an empty list: []).""",
     )
     parser.add_argument(
-        "--PreScreenGaps",
-        type=int,
-        choices=[0, 1],
-        default=0,
-        help="""
-        Needs to be followed by either 1 or zero. Defines if
-         sequencing gaps should be prescreened to delete them
-         if they are anyway too small to matter. (default is 0)""",
-    )
-    parser.add_argument(
         "--OverwriteSeqGapInfo",
-        type=int,
-        choices=[0, 1],
-        default=0,
+        action="store_true",
         help="""
-        Needs to be followed by either 1 or 0. Forces
-         masked nucleotide analysis for finding
-         sequencing gaps (default is 0, no enforcement).""",
+        Force masked nucleotide analysis for
+        finding sequencing gaps (Default False)
+        """,
     )
     parser.add_argument(
         "--OverwriteMCLClustering",
-        type=int,
-        choices=[0, 1],
-        default=0,
+        action="store_true",
         help="""
-        Needs to be followed by either 1 or 0.
-         Forces (if set to 1) that the MCL
+         Forces (if set) that the MCL
          clustering is redone even if the result
-         files are already present (default is 0).""",
+         files are already present (Default False).""",
     )
     parser.add_argument(
         "--Verbose",
+        "-v",
         type=int,
         default=0,
         help="""
-        Needs to be followed by a number (0 is default, 1 gives
-         more screen-output, 2 gives exhaustive screen-output).""",
+        Needs to be followed by a number
+        (0 only logs warnings and errors,
+         1 logs info-level information
+         2 logs debug information)""",
     )
     parser.add_argument(
         "--EnzMinForClusters",
@@ -414,13 +399,12 @@ def main() -> None:
     )
     parser.add_argument(
         "--UnmaskedDNA",
-        type=int,
-        default=0,
+        action="store_true",
         help="""
-        Needs to be followed by a number. Defines if plant
-         Cluster finder should continue despite a non-masked
-         genome sequence file was used (default is 0, not
-         continue).""",
+        Defines if PlantClusterFinder should continue,
+        despite a non-masked genome sequence file being used.
+        (Default False)
+        """,
     )
     parser.add_argument(
         "--PGDBIdsToMap",
@@ -434,39 +418,15 @@ def main() -> None:
          The default value is 'G'.""",
     )
     parser.add_argument(
-        "--RunAfterPart",
-        type=int,
-        default=0,
-        help="""
-        Needs to be followed by a number. Sets the parts of
-         the algorithm that should be recomputed. (default is 0)""",
-    )
-    parser.add_argument(
-        "--Tempsaves",
-        type=int,
-        default=0,
-        choices=[0, 1],
-        help="""Defines if Temporary saves should be made. (default is 0)""",
-    )
-    parser.add_argument(
-        "--TempsavesOverwrite",
-        type=int,
-        default=0,
-        choices=[0, 1],
-        help="""Defines if Temporary saves should be overwritten. (Default is 0).""",
-    )
-    parser.add_argument(
         "--RemoveNonProtLocations",
-        type=int,
-        default=0,
-        choices=[0, 1],
+        action="store_true",
         help="""
         Defines if the protein-fasta file should be
          used to clean out the gene position file
          from sequences that do not show up on the
          protein fasta file, and thus do not have
          had a chance to be predicted to be an
-         enzyme. (Default 0)""",
+         enzyme. (Default False)""",
     )
     parser.add_argument(
         "--InsertHypos",
@@ -512,6 +472,11 @@ def main() -> None:
         "--NoRebuildBlastDB", action="store_false", help=argparse.SUPPRESS
     )
     parser.add_argument("--NoRerunBlastP", action="store_false", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--use_ncbi_blast",
+        action="store_true",
+        help="Use NCBI Blast rather than Diamond for BlastP (Default False)",
+    )
     args = parser.parse_args()
 
     verbose_level = args.Verbose
@@ -570,23 +535,31 @@ def main() -> None:
     maximum_step_size = args.MaxStepSize
     criterion_selection = args.Criterion
     # Change variable types into Boolean
-    mcl_cluster_filename = args.MCLClusterFile
-    # pre_screen_gaps = args.PreScreenGaps
+    precomputed_mcl_cluster_file = args.ComputedMCLClusterFile
     overwrite_sequence_gaps_information_file = args.OverwriteSeqGapInfo
     overwrite_mcl_clustering_file = args.OverwriteMCLClustering
     dna_unmasked_ok = args.UnmaskedDNA
-    # create_tempsaves = args.Tempsaves
-    # overwrite_temp_save_files = args.TempsavesOverwrite
     remove_non_protein_locations = args.RemoveNonProtLocations
     insert_hypothetical_genes = args.InsertHypos
 
     local_duplication_range_kilobase = args.KbRangeLD
     local_duplication_range_genes = args.GeneRangeLD
     enzyme_minimum_for_clusters = args.EnzMinForClusters
-    # TODO: validate if computer has `para` CPUs. -1 = auto?
     parallelize = args.para  # parallelize
+    cpu_count = os.cpu_count()
+    if cpu_count is None and parallelize > 1:
+        log.warning(
+            "Cannot determind CPU count, trusting user's setting of -para argument."
+        )
+    elif parallelize > os.cpu_count():
+        log.error(
+            f"Parallelize argument {parallelize} exceeds CPU count {os.cpu_count()}"
+        )
+        raise Exception("Cannot parallelize beyond CPU count")
+    elif parallelize <= 0:
+        int_cpu_count: int = os.cpu_count() or 1
+        parallelize = max(1, int_cpu_count - 1)
     pgdb_ids_to_map = args.PGDBIdsToMap
-    # run_after_part = args.RunAfterPart
     hypothetical_gene_amount = args.HypoAmount
     output_type = args.OutputType
     gene_location_output_filename = (
@@ -597,6 +570,7 @@ def main() -> None:
     # by default, these settings should not be set
     rebuild_blast_db = not args.NoRebuildBlastDB
     rerun_blastp = not args.NoRerunBlastP
+    use_diamond = not args.use_ncbi_blast
 
     error_message: list[str] = []
     if not os.path.isdir(pgdb_flat_file_folder):
@@ -611,16 +585,13 @@ def main() -> None:
         dna_fasta_filename: "DNA FASTA File (-dnaf)",
         signature_tailoring_filename: "Signature & Tailoring File (-sitf)",
     }
-    test_writable_file = {
-        gene_output_filename: "Gene Output file (-gout)",
-        cluster_output_filename: "Cluster Output file (-cout)",
-    }
-    log.info("Check files for reading and writing")
+    log.info("Checking to see if files can be read from/written to")
     for filename, err in test_file.items():
         if not os.path.isfile(filename):
             error_message.append(f"Could not find {err} at {filename}.")
             continue
         try:
+            log.debug(f"Testing {filename} is readable")
             # Try to open a file for reading, but do nothing
             with open(filename, "r") as _:
                 pass
@@ -643,6 +614,7 @@ def main() -> None:
             )
             continue
         try:
+            log.debug(f"Testing {filename} is writable (appendable)")
             # try to open the file as append
             with open(filename, "a") as _:
                 pass
@@ -658,9 +630,15 @@ def main() -> None:
                 "Cannot write to " + f"{err} {filename} because of {e}."
             )
     if len(error_message) != 0:
+        import time
+
         for message in error_message:
             log.error(message)
+
+        time.sleep(1)
         exit(1)
+    else:
+        log.debug("No errors found in writing/reading files")
 
     # Part1 Read in Gene-Transcript-Protein File
     log.info(
@@ -700,7 +678,7 @@ def main() -> None:
     )
 
     # Part 6: Create MCL clustering mapped to mapping genes
-    if mcl_cluster_filename == 0:
+    if not precomputed_mcl_cluster_file:
         log.info(
             "PART START: Create MCL clustering based on protein file"
             + " and map cluster IDs to conversion gene-IDs"
@@ -713,6 +691,7 @@ def main() -> None:
             parallelize=parallelize,
             rebuild_blast_db=rebuild_blast_db,
             rerun_blastp=rerun_blastp,
+            use_diamond=use_diamond,
         )
     else:
         log.info(
@@ -760,7 +739,6 @@ def main() -> None:
         intergenic_regions,  # intergenic region
         unique_chromosome_names,
         dna_unmasked_ok,
-        parallelize,
         overwrite_sequence_gaps_information_file,
     )
 

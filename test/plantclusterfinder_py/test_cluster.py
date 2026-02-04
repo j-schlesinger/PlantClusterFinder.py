@@ -189,15 +189,16 @@ def test_read_MCL_clustering_File():
         conversion,
         False,  # do not remove proteins
     )
-    assert 9_627 == len(mcl_cluster_data.Gene2MCLClusters)  # TEST INCOMPLETE
+    assert GENE_COUNT - 2 == len(mcl_cluster_data.Gene2MCLClusters)
     assert isinstance(mcl_cluster_data.Protein_IDs, list)
-    assert 9_627 == len(mcl_cluster_data.Protein_IDs)  # TEST INCOMPLETE
+    assert GENE_COUNT - 2 == len(mcl_cluster_data.Protein_IDs)
 
 
 def test_get_MCL_clustering():
     from plantclusterfinder_py.cluster import (
         get_MCL_clustering,
         read_in_conversion_file,
+        read_MCL_clustering_file,
     )
 
     conversion = read_in_conversion_file(
@@ -205,13 +206,41 @@ def test_get_MCL_clustering():
             "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
         )
     )
-    mcl_cluster = get_MCL_clustering(
+    mcl_cluster_diamond = get_MCL_clustering(
         Path("./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa"),
         conversion,
         True,  # overvrite MCL cluster file
         False,  # remove protein locations
+        rebuild_blast_db=True,
+        rerun_blastp=True,
+        use_diamond=True,
     )
-    assert 9_627 == len(mcl_cluster.Gene2MCLClusters)
+    mcl_cluster_blast = get_MCL_clustering(
+        Path("./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa"),
+        conversion,
+        True,  # overvrite MCL cluster file
+        False,  # remove protein locations
+        rebuild_blast_db=True,
+        rerun_blastp=True,
+        use_diamond=False,
+    )
+    expected_mcl_cluster_data = read_MCL_clustering_file(
+        Path(
+            "./csubellipsoidea/MCL_clustering_expected_results/dump.CsubellipsoideaC_169_227_v2.0.protein.pcf13.mci.I20"
+        ),
+        Path("./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa"),
+        conversion,
+        False,  # do not remove proteins
+    )
+    assert GENE_COUNT - 1 == len(mcl_cluster_diamond.Gene2MCLClusters)
+    assert (
+        len(expected_mcl_cluster_data.Gene2MCLClusters)
+        == len(mcl_cluster_diamond.Gene2MCLClusters) - 1
+    )
+    assert GENE_COUNT - 2 == len(mcl_cluster_blast.Gene2MCLClusters)
+    assert len(expected_mcl_cluster_data.Gene2MCLClusters) == len(
+        mcl_cluster_blast.Gene2MCLClusters
+    )
 
 
 # Part 7 through Part 10: No Cluster Functions
