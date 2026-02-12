@@ -9,13 +9,17 @@ dependencies = [
     "pydantic>=2.6.3",
     "polars==1.26.0",
     "pyarrow>=17.0.0",
+    "biopython>=1.86",
+    "bcbio-gff>=0.7.1",
+    "numpy>=2.2.4",
+    "gffutils>=0.13",
 ]
 readme = "README.md"
 requires-python = ">= 3.12"
 
 [project.scripts]
-hello = "plantclusterfinder_py:hello"
 plantclusterfinder = "plantclusterfinder_py:main.main"
+get_positions_of_gap = "plantclusterfinder_py:get_positions_of_gap.main"
 
 [build-system]
 requires = ["hatchling"]
@@ -43,6 +47,8 @@ dev = [
     "radon>=5.1",
     "pytest-pyright>=0.0.6",
     "gff3tool>=2.1.0",
+    "pytest-cov>=7.0.0",
+    "py-spy>=0.4.1",
 ]
 
 [tool.ruff]
@@ -55,7 +61,35 @@ exclude = [
     ".venv",
     ".pytest_cache"
 ]
+line-length = 101
 
+[tool.ruff.lint]
+select = [
+    "E", "W", # pycodestyle
+    "I", # isort
+    "N", # Naming
+    "C4", # comprehensions linting
+    "UP", # pyupgrade - stop doing things the old way
+    "B", # bugbear - auto-catch common bugs
+    "S", # bandit - security testing (not necessary here, but good idea)
+    "PT", # pytest style
+    "RET", # return - prevent unpredictable returns
+    "SIM", # simplify - when there's an easier way
+    "PTH", # enforce the use of pathlib over os.path
+    #"DOC",
+    "D", # docstring style enforcement
+    "FIX", "TD", # check todo statements
+]
+
+ignore = [
+    "S101", # assert, needed for pytest
+    "S603", # subprocess calls, used to call blast, etc.
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py"=["D100","D101","D102","D103","D104"]
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.hatch.metadata]
 allow-direct-references = true
@@ -72,4 +106,23 @@ venv = ".venv"
 # typeCheckingMode = "basic" # Prevents it from being too noisy
 
 [tool.pytest.ini_options]
-addopts = "--pyright-dir=src"
+# This section configures the pytest plugin options
+# pytest-pyright and pytest-cov perform static type checking and coverage respectively
+addopts = "--pyright-dir=src --cov=src"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+# This section configures the underlying coverage.py engine
+source = ["src"]
+branch = true
+
+[tool.coverage.report]
+# Fail the build if total coverage is below this percentage
+fail_under = 74
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError"
+]
