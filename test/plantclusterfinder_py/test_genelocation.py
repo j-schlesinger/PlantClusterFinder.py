@@ -18,24 +18,6 @@ def test_init_genelocation():
     assert 9_629 == len(gene_location)
 
 
-@pytest.fixture
-def genelocation_obj():
-    from plantclusterfinder_py.genelocation import GeneLoc
-
-    return GeneLoc(
-        file_path=Path(
-            "csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt"
-        )
-    )
-
-
-@pytest.fixture
-def t_gene_loc():
-    from plantclusterfinder_py.genelocation import GeneLoc
-
-    return GeneLoc(file_path=Path("test/data/gene_location_test.tsv"))
-
-
 def test_remove_protein_transcript_info_from_genepositionfile(
     genelocation_obj, t_gene_loc
 ):
@@ -43,7 +25,9 @@ def test_remove_protein_transcript_info_from_genepositionfile(
 
     gene_location = genelocation_obj
     conversion = read_in_conversion_file(
-        "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
+        Path(
+            "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
+        )
     )
     expected_columns = [
         "Gene Name",
@@ -61,7 +45,7 @@ def test_remove_protein_transcript_info_from_genepositionfile(
     assert 9_629 == len(gene_location)
 
     test_gene_location = t_gene_loc
-    bad_conversion = read_in_conversion_file("./test/data/bad_conversion.tsv")
+    bad_conversion = read_in_conversion_file(Path("./test/data/bad_conversion.tsv"))
     with pytest.raises(Exception) as exception_info:
         test_gene_location.remove_protein_transcript_info(bad_conversion)
         assert "more than one" in str(exception_info.value)
@@ -98,7 +82,7 @@ def test_sort_genes(genelocation_obj, t_gene_loc):
 
 
 def test_map_genelocation_to_conversion_file(genelocation_obj):
-    # GeneLocation Test, possibly redundant (mapping takes place in remove_protein_transcript_info)
+    # Gene Location Test, possibly redundant (mapping takes place in remove_protein_transcript_info)
     from plantclusterfinder_py.cluster import read_in_conversion_file
 
     conversion = read_in_conversion_file(
@@ -118,7 +102,7 @@ def test_map_genelocation_to_conversion_file(genelocation_obj):
     ]
     gene_location = genelocation_obj
     genelocation_obj.remove_protein_transcript_info(conversion)
-    BiomG_G = gene_location.map_to_conversion_file(conversion.MapG)
+    BiomG_G = gene_location.map_to_conversion_file()
     assert expected_columns == gene_location.data.columns
     assert 9629 == len(BiomG_G)
 
@@ -133,30 +117,28 @@ def test_remove_non_protein_fasta_gene_locations(genelocation_obj):
     )
     gene_location = genelocation_obj
     gene_location.remove_protein_transcript_info(conversion)
-    BiomG_G = gene_location.map_to_conversion_file(conversion.MapG)
+    BiomG_G = gene_location.map_to_conversion_file()
     ok_prot = list(BiomG_G.keys())
     random.shuffle(ok_prot)
     protein_ids = ok_prot[0:100]
     cleaned_gene_location = gene_location.remove_non_protein_fasta_gene_locations(
-        conversion, BiomG_G, protein_ids
+        conversion, protein_ids
     )
     unclean_gene_location = gene_location.remove_non_protein_fasta_gene_locations(
-        conversion, BiomG_G, []
+        conversion, []
     )
     assert len(gene_location) == len(unclean_gene_location)
-    assert 100 == len(cleaned_gene_location)  # TEST INCOMPLETE
+    assert 100 == len(cleaned_gene_location)
 
 
 # Part 9
 def test_find_intergenic_regions(genelocation_obj, t_gene_loc):
     import polars as pl
 
-    # GeneLocation test
+    # Gene Location test
     gene_location = genelocation_obj
     intergenic_regions = gene_location.find_intergenic_regions()
-    #    gene_location.data.select_seq(3).unique().to_list()
-    # )
-    assert 9413 == len(intergenic_regions)  # TEST INCOMPLETE
+    assert 9413 == len(intergenic_regions)
 
     intergenic_regions_2 = t_gene_loc.find_intergenic_regions()
     t_gene_result_expected = pl.DataFrame(
@@ -175,8 +157,8 @@ def test_find_intergenic_regions(genelocation_obj, t_gene_loc):
 def test_annotate_enzyme_info(genelocation_obj):
     pgdb_dir = Path("./csubellipsoidea/pgdb/csubellipsoideacyc/1.0/data")
     from plantclusterfinder_py.cluster import (
+        map_pgdb_gene_ids_to_conversion_file,
         map_pgdb_reactions_to_genes,
-        map_PGDBs_to_conversion_file,
         read_in_conversion_file,
         read_in_pgdb_flat,
     )
@@ -192,15 +174,17 @@ def test_annotate_enzyme_info(genelocation_obj):
         unique_keys=("UNIQUE-ID", "ACCESSION-1"),
     )
     gene_info_from_genes_dat = ["ACCESSION-1"]  # TODO
-    ids_to_map = "T"
-    pgdb_conversions_dict = map_PGDBs_to_conversion_file(
+    ids_to_map = "TP"
+    pgdb_conversions_df = map_pgdb_gene_ids_to_conversion_file(
         conversion, genes_all, gene_info_from_genes_dat, ids_to_map
     )
+    print("PGDB Conversions DataFrame")
+    print(pgdb_conversions_df)
     gene_location = genelocation_obj
     gene_location.remove_protein_transcript_info(conversion)
     gene2rxn = map_pgdb_reactions_to_genes(pgdb_dir)
     genes_with_reactions = gene_location.annotate_enzyme_info(
-        pgdb_conversions_dict, gene2rxn
+        pgdb_conversions_df, gene2rxn
     )
     expected_columns = [
         "Gene Name",
@@ -212,8 +196,8 @@ def test_annotate_enzyme_info(genelocation_obj):
         "Transcript Name",
         "Protein Name",
         "pgdb_gene_id",  # added
-        "has_reaction",  # added
         "pgdb_reaction_id",  # added
+        "has_reaction",  # added
         "EC-NUMBER",  # added
     ]
     assert expected_columns == gene_location.data.columns
@@ -235,7 +219,9 @@ def test_introduce_hard_breaks(genelocation_obj):
         sequencing_gaps_file, gene_location.find_intergenic_regions(), uniq_chr
     )
     gene_location.introduce_hard_breaks(
-        sequencing_gaps, vMaxSeqGapSize=int(4e4), vPercentileForMaxInterGeneDist=80
+        sequencing_gaps,
+        max_sequence_gap_size=int(4e4),
+        percentile_for_max_inter_gene_distance=80,
     )
     assert 45 == gene_location.data.select(pl.col("Chromosome Name").unique()).height
 
@@ -263,21 +249,24 @@ def test_compute_local_duplication(genelocation_obj):
     )
 
     conversion = read_in_conversion_file(
-        "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
+        Path(
+            "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
+        )
     )
 
     mcl_cluster_data = read_MCL_clustering_file(
-        "./csubellipsoidea/MCL_clustering_expected_results/dump.CsubellipsoideaC_169_227_v2.0.protein.pcf13.mci.I20",
-        "./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa",
+        Path(
+            "./csubellipsoidea/MCL_clustering_expected_results/dump.CsubellipsoideaC_169_227_v2.0.protein.pcf13.mci.I20"
+        ),
+        Path("./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa"),
         conversion,
         False,  # do not remove proteins
     )
     gene_location = genelocation_obj
     gene_location.remove_protein_transcript_info(conversion)
-    # find duplicates within 100kb and 10 genes of each gene (defaults)
+    # find duplicates within 100KB and 10 genes of each gene (defaults)
     local_duplication = gene_location.compute_local_duplication(
         mcl_cluster_data,
-        {},
         100000,
         10,
     )

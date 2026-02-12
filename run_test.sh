@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 mkdir -p Outputs
-rm ./Outputs/csubellipsoidea_Clust_v1_3.txt 2>/dev/null
-rm ./Outputs/csubellipsoidea_Gene_v1_3.txt 2>/dev/null
-rye run python -m plantclusterfinder_py\
+rm ./Outputs/csubellipsoidea_Clust_v2_0.txt 2>/dev/null
+rm ./Outputs/csubellipsoidea_Gene_v2_0.txt 2>/dev/null
+uv run python -m plantclusterfinder_py\
    '--GenesDat_GeneInfo' 'ACCESSION-1'\
    '-md'\
    "Amines and Polyamines Metabolism" "Amino Acids Metabolism"\
@@ -21,8 +21,8 @@ rye run python -m plantclusterfinder_py\
    '-pgdb' './csubellipsoidea/pgdb/csubellipsoideacyc/1.0/data/'\
    '-sitf' './Inputs/scaffold-tailoring-reactions-05082016.tab'\
    '-rmdf' './Inputs/ReactionMetabolicDomainClassification.txt'\
-   '-gout' './Outputs/csubellipsoidea_Gene_v1_3.txt'\
-   '-cout' './Outputs/csubellipsoidea_Clust_v1_3.txt'\
+   '-gout' './Outputs/csubellipsoidea_Gene_v2_0.txt'\
+   '-cout' './Outputs/csubellipsoidea_Clust_v2_0.txt'\
    '--SeqGapSizesChromBreak' 10000 '--PGDBIdsToMap' 'GTP'\
    '--OutputType' 'simple'\
    --Verbose 2\

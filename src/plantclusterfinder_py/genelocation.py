@@ -54,12 +54,14 @@ class GeneLoc(BaseModel):
     """The file path to the genomic data CSV file."""
     unmasked: bool = True
     """Option to ignore the error if you used unmasked FASTA"""
-    _converted: bool = False
+    is_converted: bool = False
     """Indicates if the Conversion file columns have been added."""
-    _sorted: bool = False
+    is_sorted: bool = False
     """Indicates if genes have been sorted by chromosome location."""
-    _annotated: bool = False
+    is_annotated: bool = False
     """Indicates if reactions have been annotated."""
+    has_hard_breaks: bool = False
+    """Indicates if hard breaks have been added"""
     _data: pl.DataFrame
     """The Polars DataFrame that stores the genomic data."""
     _cache: dict = dict()
@@ -92,7 +94,7 @@ class GeneLoc(BaseModel):
             separator="\t",
             schema_overrides={"Strand": pl.datatypes.String},
         )
-        if self._data.columns != [
+        if self.data.columns != [
             "Gene Name",
             "Gene Start (bp)",
             "Gene End (bp)",
@@ -110,11 +112,11 @@ class GeneLoc(BaseModel):
             )
         self._data = self.data.with_columns(Hypothetical=pl.lit(False))
 
-        _log.debug(f"Read {self._data.height} genes from Gene Location file")
+        _log.debug(f"Read {self.data.height} genes from Gene Location file")
 
     def __len__(self):
         """Return the length of the DataFrame."""
-        return self._data.height
+        return self.data.height
 
     @property
     def data(self) -> pl.DataFrame:
@@ -124,12 +126,12 @@ class GeneLoc(BaseModel):
     @property
     def columns(self):
         """Get access to columns of DataFrame without needing to pull it directly"""
-        return self._data.columns
+        return self.data.columns
 
     def sort_genes(self) -> None:
         """Sort the DataFrame by chromosome index and then conditionally by start or end based on strand."""
         _log.debug("Sorting GeneLoc")
-        if self._sorted:
+        if self.is_sorted:
             _log.debug("GeneLoc is already sorted, returning early")
             return
         self._data = self.data.sort(
@@ -141,7 +143,7 @@ class GeneLoc(BaseModel):
                 .otherwise(pl.col("Gene Start (bp)")),
             ]
         )
-        self._sorted = True
+        self.is_sorted = True
 
     def map_to(self, conversion: Conversion, mapping_type: str) -> None:
         """
@@ -160,7 +162,7 @@ class GeneLoc(BaseModel):
             "GeneLoc.map_to() is not stable and may be deprecated in a future release."
         )
 
-        if not self._converted:
+        if not self.is_converted:
             _log.warning("Adding Conversion to Gene Location")
             self.remove_protein_transcript_info(conversion)
 
@@ -223,7 +225,7 @@ class GeneLoc(BaseModel):
         Args:
             conversion: Conversion object constructed from conversion file
         """
-        if self._converted:
+        if self.is_converted:
             _log.debug("Gene Location already mapped to Conversion, returning early")
             return
         gene_location = self.data.join(conversion.df, on="Gene Name")
@@ -246,11 +248,11 @@ class GeneLoc(BaseModel):
                 } in your input files.\n",
             )
         self._data = gene_location
-        self._converted = True
+        self.is_converted = True
 
     def __repr__(self) -> str:
         """Return a string representation of the DataFrame."""
-        return self._data.__repr__()
+        return self.data.__repr__()
 
     def consolidate_gene_info(self) -> List[str]:
         """
@@ -264,7 +266,7 @@ class GeneLoc(BaseModel):
         ---------------------------------------------------------------------------
 
         Returns:
-            - **vUniqueChrom**: A list with unique entries of all chromosome and scaffold
+            - **Chromosomes**: A list with unique entries of all chromosome and scaffold
                         names.
         """
         if (
@@ -284,23 +286,21 @@ class GeneLoc(BaseModel):
             self.data.select(pl.col("Chromosome Name").unique()).to_series(0).to_list()
         )
 
-    def map_to_conversion_file(self, vMapG: set[str]) -> dict:
+    def map_to_conversion_file(self) -> dict:
         """
         ---------------------------------------------------------------------------
 
-        function that maps genes in the gene location file to the genes in the id
+        Function that maps genes in the gene location file to the genes in the id
         conversion file.
 
         ---------------------------------------------------------------------------
-        Args:
-            vMapG: unique list of gene ids stored in the conversion file.
 
         Returns:
-            **vBiomG_G**: mapping between the gene location file and the gene-ids
+            Mapping between the gene location file and the gene-ids
                     in the conversion file.
         """
 
-        if not self._converted:
+        if not self.is_converted:
             raise Exception("Cannot map to gene locations before conversion file added")
         _log.debug("Finding the protein names associated with each gene name")
         return self.data.select(pl.col(["Gene Name", "Protein Name"])).rows_by_key(
@@ -310,8 +310,7 @@ class GeneLoc(BaseModel):
     def remove_non_protein_fasta_gene_locations(
         self,
         conversion: Conversion,
-        vBiomG_G: Dict[Any, Any],
-        vProtein_IDs: Optional[List[str]],
+        protein_ids: Optional[List[str]],
     ) -> Dict[Any, Any]:
         """
         ---------------------------------------------------------------------------
@@ -326,30 +325,24 @@ class GeneLoc(BaseModel):
             GeneLocation: DataFrame about the gene location information,
                             generated in PlantClusterFinder function.
             conversion: Conversion object between genes, transcripts, and proteins
-            BiomG_G: Mapping between the Gene location file and the gene-IDs in the
-                    conversion file.
-            Protein_IDs: A cell array of all protein-IDs that are stored in the
-                        protein fasta file. only active if
-                        vRemoveNonProtLocations is 1. Else the array has no rows.
+            protein_ids: A cell array of all protein-IDs that are stored in the
+                        protein fasta file.
 
         Returns:
-            Tuple containing the following values
-            - **GeneLocation2**: DataFrame about the gene location information,
-                            generated in PlantClusterFinder function.
-            - **BiomG_G**: Mapping between the Gene location file and the gene-IDs in the
+            Mapping between the Gene location file and the gene-IDs in the
                     conversion file.
         """
 
-        if not self._converted:
+        if not self.is_converted:
             _log.warning("Implicitly requested adding conversion to Gene Location")
             self.remove_protein_transcript_info(conversion)
 
-        original_gene_count = self._data.height
-        if vProtein_IDs is None or len(vProtein_IDs) == 0:
+        original_gene_count = self.data.height
+        if protein_ids is None or len(protein_ids) == 0:
             _log.info("No protein IDs provided to remove, returning early.")
             return self.BiomG_G
-        protein_ids = pl.DataFrame({"Gene Name": vProtein_IDs})
-        self._data = self._data.join(protein_ids, on="Gene Name")
+        protein_ids_df = pl.DataFrame({"Gene Name": protein_ids})
+        self._data = self.data.join(protein_ids_df, on="Gene Name")
         _log.debug(
             f"Gene Location data filtered from {original_gene_count} to {
                 self._data.height
@@ -382,7 +375,7 @@ class GeneLoc(BaseModel):
                 - gene after a intergenic region.
         """
 
-        if not self._sorted:
+        if not self.is_sorted:
             _log.warning("Implicitly Requested Gene Sorting")
             self.sort_genes()
 
@@ -396,7 +389,7 @@ class GeneLoc(BaseModel):
         # 1. if they overlap, the next gene becomes the furthest out gene
         # 2. if they don't overlap, an intergenic region is stored
         # TODO: This is a very slow and expensive way of doing this
-        for chromosome, gene_start, gene_end, gene_name, strand in self._data.select(
+        for chromosome, gene_start, gene_end, gene_name, strand in self.data.select(
             pl.col(
                 [
                     "Chromosome Name",
@@ -429,7 +422,7 @@ class GeneLoc(BaseModel):
 
     def annotate_enzyme_info(
         self,
-        MapG_Gpgdb: Dict[str, List[str]],
+        MapG_Gpgdb: pl.DataFrame,  # Dict[str, List[str]],
         Gene2Rxn: GenesToReactions,
     ) -> Dict[str, bool]:
         """
@@ -450,39 +443,40 @@ class GeneLoc(BaseModel):
             A dict describing which genes have at least one reaction
                     annotated in the pgdb (True if at least one reaction)
         """
-        if not self._converted:
+        if not self.is_converted:
             raise Exception("Conversion data not loaded into gene locations")
 
-        genes_with_reactions = [
-            MapG_Gpgdb[x[0]][0] for x in Gene2Rxn.Gene2Rxn.items() if len(x[1]) > 0
-        ]
-        if not self._annotated:
+        if not self.is_annotated:
+            genes_with_reactions = MapG_Gpgdb.with_columns(
+                pgdb_reaction_id=pl.col("pgdb_gene_id")
+                .replace_strict(Gene2Rxn.Gene2Rxn, default=None)
+                .flatten()
+            )
             _log.debug(
                 f"Mapping {len(genes_with_reactions)} genes with reactions to {
-                    len(self._data)
+                    len(self.data)
                 } genes"
             )
             # get gene IDs for PGDB data
-            self._data = self._data.with_columns(
-                pgdb_gene_id=pl.col("Protein Name").replace_strict(
-                    {x[1].pop(0): x[0] for x in MapG_Gpgdb.items()},
-                    default=None,
-                )
+            self._data = self._data.join(
+                MapG_Gpgdb.select(pl.col("Protein Name"), pl.col("pgdb_gene_id")),
+                on="Protein Name",
+                how="left",
             )
             # ID genes with any reactions
-            self._data = self._data.with_columns(
-                has_reaction=pl.col("Protein Name").is_in(genes_with_reactions)
-            )
-            # Get reaction ID(s) for genes
-            self._data = self._data.with_columns(
-                pgdb_reaction_id=pl.col("pgdb_gene_id").replace_strict(
-                    Gene2Rxn.Gene2Rxn, default=None
-                )
+            self._data = self.data.join(
+                genes_with_reactions.select(
+                    pl.col("pgdb_gene_id"), pl.col("pgdb_reaction_id")
+                ),
+                on="pgdb_gene_id",
+                how="left",
+            ).with_columns(
+                has_reaction=pl.col("pgdb_reaction_id").list.first().is_not_null()
             )
             rxn_2_gene = []
             for gene, reactions in Gene2Rxn.Gene2Rxn.items():
                 for rxn in reactions:
-                    rxn_2_gene.append({"Reaction": rxn, "Gene": gene})
+                    rxn_2_gene.append({"Reaction": rxn[0], "Gene": gene})
             rxn_2_gene_df = pl.DataFrame(rxn_2_gene)
             rxn_2_gene_df = rxn_2_gene_df.join(
                 Gene2Rxn.ReactionsAll,
@@ -490,31 +484,38 @@ class GeneLoc(BaseModel):
                 right_on="UNIQUE-ID",
                 how="left",
             )
-            gene_2_EC = rxn_2_gene_df.group_by("Gene").agg(
-                pl.col("EC-NUMBER").flatten()
+            gene_2_EC = (
+                rxn_2_gene_df.group_by("Gene")
+                .agg(pl.col("EC-NUMBER").flatten())
+                .with_columns(
+                    pl.when(pl.col("EC-NUMBER").list.first().is_null())
+                    .then(None)
+                    .otherwise(pl.col("EC-NUMBER"))
+                    .alias("EC-NUMBER")
+                )
             )
-            self._data = self._data.join(
+            self._data = self.data.join(
                 gene_2_EC,
                 left_on="pgdb_gene_id",
                 right_on="Gene",
                 how="left",
             )
-            self._annotated = True
+            self.is_annotated = True
         return {
             k: list(v)[0]
             for k, v in self._data.select(pl.col(["Gene Name", "has_reaction"]))
-            .rows_by_key("Gene Name")
+            .rows_by_key("Gene Name", unique=True)
             .items()
         }
 
     def introduce_hard_breaks(
         self,
-        vSeqGaps: pl.DataFrame,  # from annotate_sequencing_gaps()
-        vMaxSeqGapSize: int = -1,  # from args
-        vMaxInterGeneDist: int = -1,  # from args
-        vPercentileForMaxInterGeneDist: Optional[float] = None,  # from args
-        vMaxInterGeneDistByMedian: int = -1,  # from args
-        vHardBreakGaps: List[
+        sequence_gaps: pl.DataFrame,  # from annotate_sequencing_gaps()
+        max_sequence_gap_size: int = -1,  # from args
+        max_inter_gene_distance: int = -1,  # from args
+        percentile_for_max_inter_gene_distance: Optional[float] = None,  # from args
+        max_inter_gene_distance_by_median: int = -1,  # from args
+        hard_break_gaps: List[
             int
         ] = [],  # from args - specific lengths of gaps that indicate hard breaks
     ) -> None:
@@ -522,13 +523,16 @@ class GeneLoc(BaseModel):
         ---------------------------------------------------------------------------
 
         Function that prevents formation of clusters Sequencing gaps that
-        exceed vMaxSeqGapSize or that are defined not to be crossed by
-        vHardBreakGaps.
+        exceed max_sequence_gap_size or that are defined not to be crossed by
+        hard_break_gaps.
+
+        Creates a set of pseudochromosomes in the GeneLoc data which breaks the
+        sequence across hard breaks given the gap size criteria.
 
         ---------------------------------------------------------------------------
 
         Args:
-            vSeqGaps: A string array (cell) DataFrame containing the
+            sequence_gaps: A DataFrame containing the
                     - chromosome/scaffold,
                     - the identification if it is coding (A) or masked (N) DNA
                     - start bp and
@@ -536,67 +540,72 @@ class GeneLoc(BaseModel):
                     In addition there is the information stored in with
                     intergenic region the gap is encoded and its start and end
                     bp, corrected for maximal size (= intergenic region).
-            vMaxSeqGapSize: Maximal masked nucleotide region (in bp) that a cluster
+            max_sequence_gap_size: Maximal masked nucleotide region (in bp) that a cluster
                             is allowed to bridge (-1 or None is inactive).
-            vMaxInterGeneDist: Maximal intergenic distance that still can be
+            max_inter_gene_distance: Maximal intergenic distance that still can be
                             gene cluster.
-            vPercentileForMaxInterGeneDist: Prevents clusters to be spanned over
+            percentile_for_max_inter_gene_distance: Prevents clusters to be spanned over
                                             the top n% of intergenic distances.
                                             (-1 or None is inactive)
-            vMaxInterGeneDistByMedian: Maximal intergenic distance that still can
+            max_inter_gene_distance_by_median: Maximal intergenic distance that still can
                                     be spanned by a gene cluster: this number
                                     times the median of the gene sizes.
-            vHardBreakGaps: A list of numbers. The masked nucleotides sequences of
+            hard_break_gaps: A list of numbers. The masked nucleotides sequences of
                             these specific lengths are preventing cluster formation
                             (Default is an empty list []).
         """
-        self = self
+        if self.has_hard_breaks:
+            return
 
         # this holds the SeqGaps_Hard data
-        vSeqGaps = vSeqGaps.with_columns(
-            hard_gap=pl.col("seq_gaps_length").is_in(vHardBreakGaps)
+        sequence_gaps = sequence_gaps.with_columns(
+            hard_gap=pl.col("seq_gaps_length").is_in(hard_break_gaps)
             | pl.col("seq_gaps_length")
-            > vMaxSeqGapSize
+            > max_sequence_gap_size
         )
         if (
-            vPercentileForMaxInterGeneDist is not None
-            and vPercentileForMaxInterGeneDist != 1
+            percentile_for_max_inter_gene_distance is not None
+            and percentile_for_max_inter_gene_distance != 1
         ):
-            vMaxInterGeneDist_temp = (
+            temporary_max_intergenic_distance = (
                 self.find_intergenic_regions()
                 .select(len=pl.col("End") - pl.col("Start") + 1)
-                .quantile(vPercentileForMaxInterGeneDist / 100)
+                .quantile(percentile_for_max_inter_gene_distance / 100)
             )["len"][0]
             _log.info(
                 "Percentile used for intergenic distance: %ibp",
-                vPercentileForMaxInterGeneDist,
+                percentile_for_max_inter_gene_distance,
             )
             _log.info(
                 "Clusters broken when spanning distance larger: %ibp.\n",
-                vMaxInterGeneDist_temp,
+                temporary_max_intergenic_distance,
             )
-            vMaxInterGeneDist = (
-                vMaxInterGeneDist_temp
-                if vMaxInterGeneDist is None or vMaxInterGeneDist == -1
-                else min(vMaxInterGeneDist, vMaxInterGeneDist_temp)
+            max_inter_gene_distance = (
+                temporary_max_intergenic_distance
+                if max_inter_gene_distance is None or max_inter_gene_distance == -1
+                else min(max_inter_gene_distance, temporary_max_intergenic_distance)
             )
-        if vMaxInterGeneDistByMedian is None or vMaxInterGeneDistByMedian != -1:
-            vMaxInterGeneDist_temp = self.data.select(
+        if (
+            max_inter_gene_distance_by_median is None
+            or max_inter_gene_distance_by_median != -1
+        ):
+            temporary_max_intergenic_distance = self.data.select(
                 len=pl.col("Gene End (bp)") - pl.col("Gene Start (bp)")
             ).quantile(0.50)["len"][0]
-            vMaxInterGeneDist = (
-                vMaxInterGeneDist_temp * vMaxInterGeneDistByMedian
-                if vMaxInterGeneDist is None or vMaxInterGeneDist == -1
+            max_inter_gene_distance = (
+                temporary_max_intergenic_distance * max_inter_gene_distance_by_median
+                if max_inter_gene_distance is None or max_inter_gene_distance == -1
                 else min(
-                    vMaxInterGeneDist,
-                    vMaxInterGeneDist_temp * vMaxInterGeneDistByMedian,
+                    max_inter_gene_distance,
+                    temporary_max_intergenic_distance
+                    * max_inter_gene_distance_by_median,
                 )
             )
 
         hard_breaks = (
             self.find_intergenic_regions()
             .join_where(  # using join_where as a cheeky filter
-                vSeqGaps,
+                sequence_gaps,
                 pl.col("Start").is_between(
                     pl.col("start index"),
                     pl.col("end index"),
@@ -621,8 +630,7 @@ class GeneLoc(BaseModel):
                 )
                 prev_end = h_break[2]
             pseudochrom_df = pl.DataFrame(pseudochromosome)
-            # FIXME: Where does "Start Location (bp)" come from?
-            self._data = self._data.join_where(
+            self._data = self.data.join_where(
                 pseudochrom_df,
                 pl.col("Start Location (bp)") >= pl.col("break_start"),
                 pl.col("End Location (bp)") < pl.col("break_end"),
@@ -630,6 +638,7 @@ class GeneLoc(BaseModel):
                 pl.col("pchromosome name").alias("Chromosome Name"),
                 chromosome_name_old=pl.col("Chromosome Name"),
             )
+        self.has_hard_breaks = True
 
     def insert_genes(self, other_genes: pl.DataFrame) -> None:
         """
@@ -649,9 +658,8 @@ class GeneLoc(BaseModel):
     def compute_local_duplication(
         self,
         mcl_cluster_data: MclClusterData,
-        vBiomG_G: Dict[Any, Any],
-        vKbRangeLD: int,
-        vGeneRangeLD: int,
+        local_duplication_kb_range: int,
+        local_duplication_gene_range: int,
     ) -> pl.DataFrame:
         """
         ---------------------------------------------------------------------------
@@ -662,60 +670,52 @@ class GeneLoc(BaseModel):
         ---------------------------------------------------------------------------
 
         Args:
-            gene_location: DataFrame about the gene location information,
-                            generated in PlantClusterFinder function.
             mcl_cluster_data : Mapping between the genes in the conversion-ID file and the
                     MCL-clustering file.
-            vBiomG_G: Mapping between the Gene location file and the gene-IDs in the
-                    conversion file.
-            vKbRangeLD: Genes that are encoded more than this bp apart, are not
+            local_duplication_kb_range: Genes that are encoded more than this bp apart, are not
                         called local duplicates.
-            vGeneRangeLD: Genes that have more than this many intervening genes
-                        between themare not called local duplicates.
+            local_duplication_gene_range: Number of genes that space two genes from each other.
+                        Genes that have more than this many intervening genes
+                        between them are not called local duplicates.
 
         Returns:
             DataFrame with the columns:
 
             - GeneID: "Gene Name" in GeneLocation
-            - is_locally_duplicated: A vector of length of the number of Genes in vGeneLocation2,
+            - is_locally_duplicated: A vector of length of the number of Genes in GeneLoc object,
                 being True if the gene was considered to be locally duplicated (a
-                gene was within vKbRangeLD bp distance and not spaced more than
-                with vGeneRangeLD genes from another gene with the same MCL
+                gene was within given bp distance and not spaced more than
+                with given number of genes from another gene with the same MCL
                 clustering given by mcl_cluster_data).
             - ClusterIds: The MCL clusters of the gene (list)
         """
         _log.debug("Computing local duplication")
 
-        print("MCL Cluster Data")
-        print(mcl_cluster_data.MCL_Clusters)
+        if "is_locally_duplicated" in self.data.columns:
+            _log.warning("Local duplication already exists, replacing with new inputs")
+            self._data.drop("is_locally_duplicated")
+            self._data.drop("mcl_clusters")
         # For all clusters, select only those with multiple genes
         possible_ld_clusters = mcl_cluster_data.MCL_Clusters.filter(
             pl.col("Cluster_Size") > 1
         )
-        print("Possible LD clusters")
-        print(possible_ld_clusters)
-        print(possible_ld_clusters.describe())
-        print(possible_ld_clusters.select(pl.col("Cluster_Size").sum()))
         # Explode on Gene Name, and select just cluster ID and gene name
         possible_ld_g_w_clust = possible_ld_clusters.explode("Gene_Names").select(
             pl.col("ID").alias("mcl_cluster_id"),
-            pl.col("Gene_Names").alias("Gene Name"),
+            pl.col("Gene_Names")
+            .list.first()
+            .alias("Gene Name"),  # should only have one value because we exploded
         )
-        print("Possible LD Genes w/ cluster data")
-        print(possible_ld_g_w_clust)
-        print(possible_ld_g_w_clust.describe())
         # Join on GeneLocation data to get gene start and end point
         possible_ld_genes = possible_ld_g_w_clust.join(
             self.data.with_row_index("gene_index"), on="Gene Name"
         )
-        print("Possible LD Genes w/ all data")
-        print(possible_ld_genes)
         # self-join with cluster criteria
         #  - same mcl_cluster_id
         #  - same Chromosome Name
         #  - different Gene Name
-        #  - gene index <= vGeneRangeLD apart
-        #  - gene position <= vKbRangeLD apart
+        #  - gene index <= gene duplication range apart
+        #  - gene position <= kb duplication range apart
         ld_genes = (
             possible_ld_genes.join_where(
                 possible_ld_genes,
@@ -734,8 +734,8 @@ class GeneLoc(BaseModel):
                 ),
             )
             .filter(
-                pl.col("intervening_genes") <= vGeneRangeLD,
-                pl.col("kb_between_genes") <= vKbRangeLD,
+                pl.col("intervening_genes") <= local_duplication_gene_range,
+                pl.col("kb_between_genes") <= local_duplication_kb_range,
             )
             .group_by("Gene Name")
             .agg(
@@ -746,7 +746,7 @@ class GeneLoc(BaseModel):
         # Get is_locally_duplicated from join, and use replace_strict to get clusters per gene
         mcl_df = pl.from_dicts(
             [
-                {"Gene Name": k, "mcl_clusters": v}
+                {"Gene Name": k[0], "mcl_clusters": v}
                 for k, v in mcl_cluster_data.Gene2MCLClusters.items()
             ]
         )

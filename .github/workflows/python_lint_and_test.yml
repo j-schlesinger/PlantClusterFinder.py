@@ -10,35 +10,28 @@ jobs:
         python-version: ["3.12"]
     steps:
     - uses: actions/checkout@v4
-    - name: Set up Rye
-      uses: eifinger/setup-rye@v2
-      with:
-        enable-cache: true
-        cache-prefix: ${{ matrix.python-version }}
-    - name: Pin python-version ${{ matrix.python-version }}
-      if: steps.setup-rye.outputs.cache-hit != 'true'
-      run: rye pin ${{ matrix.python-version }}
+    - name: Set up UV
+      uses: astral-sh/setup-uv@v7
     - name: Install dependencies
-      if: steps.setup-rye.outputs.cache-hit != 'true'
       run: |
-        rye sync --no-lock
-    - name: Install Blast and MCT
+        uv sync
+    - name: Install Blast, Diamond, and MCT
       uses: awalsh128/cache-apt-pkgs-action@latest
       with:
-        packages: ncbi-blast+ mcl
+        packages: ncbi-blast+ mcl diamond-aligner
         version: 1.0
     - name: Performing linting with ruff and tests using pytest
       run: |
-        rye --version
-        rye lint
+        uv --version
         echo "start mypy"
-        rye run mypy --version
-        rye run mypy src test
+        uv run mypy --version
+        uv run mypy src test
         echo "start isort"
-        rye run isort --version
-        rye run isort --profile black --filter-files --check src test || rye run isort --profile-black --filter-files --check src test -v
+        uv run isort --version
+        uv run isort --profile black --filter-files --check src test || uv run isort --profile black --filter-files --check src test -v
         echo "start fmt"
-        rye run ruff -V
-        rye fmt --check -q || rye fmt --check -- --diff
+        uv run ruff -V
+        uv run ruff check
+        uv run ruff check -q || uv run ruff check --diff
         echo "start pytest"
-        rye run pytest
+        uv run pytest

@@ -55,7 +55,13 @@ class AnnotatedMetabolicDomains(BaseModel):
 
     model_config = {"arbitrary_types_allowed": True}
     RxnMetaDom: pl.DataFrame
-    """DataFrame of all the items stored in the Metabolic Domain File"""
+    """
+    DataFrame of all the items stored in the Metabolic Domain File
+    Has the columns:
+    - Reaction ID (PGDB reactions.dat UNIQUE-ID)
+    - Pathway
+    - Metabolic Domain
+    """
     Rxn2MetaDom: dict
     """Mapping Between Reactions stored in Metabolic Domain file
     and metabolic domains of interest"""
@@ -68,7 +74,7 @@ class MclClusterData(BaseModel):
     Gene2MCLClusters: dict
     """ Mapping between genes in conversion-ID file and MCL-clustering file. """
     Protein_IDs: Optional[list[str]]
-    """ List of protein-IDs stored in protein fasta file. """
+    """ List of protein-IDs stored in protein FASTA file. """
     MCL_Clusters: pl.DataFrame
     """ DataFrame containing the MCL_ID, protein IDs, and Gene Names for each MCL cluster """
 
@@ -79,13 +85,13 @@ class GenesToReactions(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
     GenesAll: pl.DataFrame
     """DataFrame containing all the information
-        (Attributes)that was searched for (described in
-        vGenesAttributes, default is {'UNIQUE-ID','PRODUCT', ...
+        (Attributes)that were searched for (described in
+        genes_attributes, default is {'UNIQUE-ID','PRODUCT', ...
         'ACCESSION-1','ACCESSION-2'}) in genes.dat of the pgdb."""
     ReactionsAll: pl.DataFrame
     """DataFrame containing all the information
         (Attributes) that was searched for (described in
-        vReactionsAttributes, default is {'UNIQUE-ID', ...
+        reactions_attributes, default is {'UNIQUE-ID', ...
         'ENZYMATIC-REACTION', 'EC-NUMBER'}) in reactions.dat
                         of the pgdb."""
     Gene2Rxn: dict
@@ -181,7 +187,7 @@ class Clusters(BaseModel):
     MaxStepSize: int
     """maximal step size computed"""
 
-    def perform_cutoff(self, vTopPercentClusters: int) -> List[bool]:
+    def perform_cutoff(self, top_clusters_percent: int) -> List[bool]:
         """
         ---------------------------------------------------------------------------
 
@@ -200,16 +206,16 @@ class Clusters(BaseModel):
                     this windowsize in the genome, Frequency of seeing
                     a windowsize of this size with at least as many
                     enzymes in the genome)
-            vTopPercentClusters: Clusters are labeled as being in the top n% if
+            top_clusters_percent: Clusters are labeled as being in the top n% if
                                 they are within this top n% of enzyme dense
                                 clusters compared to the background.
 
         Returns:
             List with size Number of Clusters. It is zero if
                 the density of the cluster is above or the same as given
-                by the input argument vTopPercentClusters*100.
+                by the input argument top_clusters_percent*100.
         """
-        _log.debug(f"Perform cutoff for clusters in the top {vTopPercentClusters}%")
+        _log.debug(f"Perform cutoff for clusters in the top {top_clusters_percent}%")
         cluster_meta_in_top = (
             self.ClusterMeta.with_row_index("cluster_index")
             .with_columns(
@@ -223,7 +229,7 @@ class Clusters(BaseModel):
             .select(
                 pl.col("cluster_index"),
                 top_percent_clusters=pl.col("winzyme_frequency").fill_null(0)
-                < vTopPercentClusters / 100,
+                < top_clusters_percent / 100,
             )
         )
         _log.debug(f"cluster meta in top {cluster_meta_in_top.head()}")
@@ -234,4 +240,8 @@ class Clusters(BaseModel):
             cluster_meta_in_top, on="cluster_index", how="left"
         )
 
-        return cluster_meta_in_top["top_percent_clusters"].to_list()
+        top_clusters = cluster_meta_in_top["top_percent_clusters"].to_list()
+        _log.debug(
+            f"Found that {len(list(filter(lambda x: x, top_clusters)))} clusters out of {len(self.ClusterMeta)} are in top"
+        )
+        return top_clusters

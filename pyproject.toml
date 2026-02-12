@@ -6,10 +6,8 @@ authors = [
     { name = "Jason Schlesinger", email = "jschlesi@nig.ac.jp" }
 ]
 dependencies = [
-    "scipy>=1.12.0",
-    "pythoncyc>=2.0.2",
     "pydantic>=2.6.3",
-    "polars>=1.14.0",
+    "polars==1.26.0",
     "pyarrow>=17.0.0",
 ]
 readme = "README.md"
@@ -17,14 +15,16 @@ requires-python = ">= 3.12"
 
 [project.scripts]
 hello = "plantclusterfinder_py:hello"
+plantclusterfinder = "plantclusterfinder_py:main.main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.rye]
+[tool.uv]
 managed = true
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "sphinx>=7.2.6",
     "pdoc>=14.4.0",
     "pytest>=8.0.1",
@@ -32,12 +32,17 @@ dev-dependencies = [
     "isort==5.13.2",
     "black>=24.2.0",
     "flake8>=7.0.0",
-    "mypy==1.8.0",
+    "mypy>=1.8.0",
     "ruff>=0.3.0",
     "uv>=0.6.10",
     "pandas>=2.2.2",
     "pyright>=1.1.404",
     "viztracer>=1.1.1",
+    "wily>=1.25.0",
+    "refurb>=2.2.0",
+    "radon>=5.1",
+    "pytest-pyright>=0.0.6",
+    "gff3tool>=2.1.0",
 ]
 
 [tool.ruff]
@@ -60,3 +65,11 @@ profile = "black"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/plantclusterfinder_py"]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+# typeCheckingMode = "basic" # Prevents it from being too noisy
+
+[tool.pytest.ini_options]
+addopts = "--pyright-dir=src"
