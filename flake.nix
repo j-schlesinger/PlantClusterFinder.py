@@ -25,6 +25,10 @@
             mcl-repo.packages.${system}.default # requires mcl support
             blast-bin # support for blast required
             diamond # optional diamond support -- faster blaster
+
+            libz
+            gcc
+            stdenv.cc.cc.lib
           ];
 
           # synchronize the environment on entry

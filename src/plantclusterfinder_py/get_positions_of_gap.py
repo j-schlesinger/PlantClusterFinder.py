@@ -1,62 +1,77 @@
+"""Get positions of gaps in FASTA files.
+
+Functions to extract, analyze, and return the gaps seen in FASTA files.
+"""
+
 import logging
-import os
-import re
 from argparse import ArgumentParser
 from collections import deque
+from collections.abc import Generator, Iterable, Iterator
+from concurrent.futures import ProcessPoolExecutor
 from itertools import groupby
 from operator import itemgetter
 from pathlib import Path
+from typing import cast
+
+import numpy as np
 
 log = logging.getLogger()
 
 
-def regex_search(string_pattern_list, string_input):
-    """Search for the positions of characters
-    in a string from an input list of characters.
+def char_run_search(chars: str, input_str: str) -> Iterator[tuple[int, int]]:
+    """Search for the positions of characters in a string from an input list of characters.
 
     Args:
-        string_pattern_list: list of characters to search for
-        string_input: string being serched
+        chars: string containing characters to search for
+        input_str: string being searched
 
     Returns:
         list: indices for the characters input
+
     """
-    string_pattern = re.compile("[" + "".join(string_pattern_list) + "]")
-    return [m.start() for m in re.finditer(string_pattern, string_input)]
+    str_array = np.frombuffer(b"\x00" + input_str.encode("ascii") + b"\x00", dtype=np.uint8)
+    test_list = [ord(x) for x in chars]
+    pattern_true = np.isin(str_array, test_list)
+    index_list = np.where(np.diff(pattern_true))[0]
+    run_starts: list[int] = cast(list[int], ((index_list + 1)[::2]).tolist())
+    run_lens: list[int] = cast(list[int], (np.diff(index_list)[::2]).tolist())
+    if len(run_lens) == len(run_starts) - 1:
+        run_lens.append(1)
+    return zip(run_starts, run_lens, strict=True)
 
 
 # From BioPython
-def read_fasta(fp):
-    """
-    From BioPython: generator which parses FASTA files
-    into tuples of names and sequences
+def read_fasta(fp: Iterable[str]) -> Generator[tuple[str, str], None, None]:
+    """From BioPython: generator which parses FASTA files into tuples of names and sequences.
 
     Args:
-        fp (filehandle): Readable handle for FASTA file
+        fp (file handle): Readable handle for FASTA file.
 
     Yields:
-        (name, sequence): the next name and sequence in the FASTA file
+        (name, sequence): the next name and sequence in the FASTA file.
+
     """
-    name, seq = None, deque()
+    name = ""
+    seq: deque[str] = deque()
     for line in fp:
         line = line.rstrip()
         if line.startswith(">"):
-            if name:
+            if len(name) > 0:
                 yield name, "".join(seq)
-            name, seq = line, []
+            name = line
+            seq.clear()
         else:
             seq.append(line)
     if name:
         yield name, "".join(seq)
 
 
-def groupbyseq(input_list: list, output_path, amino_acid: str, chromosome: str) -> None:
-    """
-    This function writes the sequence groups to a file given the inputs
+def groupbyseq(input_list: list[int], amino_acid: str, chromosome: str) -> list[str]:
+    """Write the sequence groups to a file given the inputs.
 
     Args:
-        input_list: List of indices of of amino acids from FASTA
-        output_path: Writable output file
+        input_list: List of indices of amino acids from FASTA
+        output_path: output file
         amino_acid: single character representation of amino acid
         chromosome: name of chromosome from FASTA file
 
@@ -70,56 +85,83 @@ def groupbyseq(input_list: list, output_path, amino_acid: str, chromosome: str) 
         IndexError: When the data from the indices list is corrupted or
             incomplete.
         IOError: When the output_path cannot be written to.
+
     """
     log.debug("Performing groupbyseq")
-    if os.path.exists(output_path):
-        append_write = "a"  # append if already exists
-    else:
-        append_write = "w"  # make a new file if not
+    output_str = []
 
-    with open(output_path, append_write) as op:
-        for k, g in groupby(enumerate(input_list), lambda x: x[1] - x[0]):
-            try:
-                cur_group = list(map(itemgetter(1), g))
-                start_index = str(cur_group[0] + 1)
-                length = str(len(cur_group))
-                op.write(" ".join([chromosome, amino_acid, start_index, length]) + "\n")
-            except TypeError as e:
-                log.error("Error", e, list(map(itemgetter(1), g)))
-            except IndexError as e:
-                log.error("Error", e, list(map(itemgetter(1), g)))
+    for _, g in groupby(enumerate(input_list), lambda x: x[1] - x[0]):
+        cur_group = None
+        try:
+            cur_group = list(map(itemgetter(1), g))
+            start_index = str(cur_group[0] + 1)
+            length = str(len(cur_group))
+            output_str.extend([chromosome, " ", amino_acid, " ", start_index, " ", length, "\n"])
+        except TypeError as e:
+            err_group = "ERR GETTING GROUP" if cur_group is None else ",".join(cur_group)
+            log.error(
+                "Error %s %s",
+                e,
+                err_group,
+            )
+        except IndexError as e:
+            err_group = "ERR GETTING GROUP" if cur_group is None else ",".join(cur_group)
+            log.error(
+                "Error %s %s",
+                e,
+                err_group,
+            )
+    return output_str
 
 
-def get_positions_of_gap(
-    input_path: Path, output_path: Path, parallelize: int = 1
-) -> None:
-    """
-    Get the positions of gaps from the input FASTA and save them in an
-        output file.
+def _process_sequence(seq_name_and_seq_aa: tuple[str, str]) -> deque[str]:
+    seq_name, seq_aa = seq_name_and_seq_aa
+    seq_aa = seq_aa.upper()
+    return_rows: deque[str] = deque()
+    n_indices = char_run_search("N", seq_aa)
+    char = seq_name[1:].split()[0]
+    for start, len in n_indices:
+        return_rows.extend([char, " N ", str(start), " ", str(len), "\n"])
+    a_indices = char_run_search("ATGC*", seq_aa)
+    for start, len in a_indices:
+        return_rows.extend([char, " A ", str(start), " ", str(len), "\n"])
+    return return_rows
+
+
+def get_positions_of_gap(input_path: Path, output_path: Path, parallelize: int = 1) -> Path:
+    """Get the positions of gaps from the input FASTA and save them in an output file.
 
     Args:
         input_path: Path of input amino acid FASTA file.
         output_path: Path of writable output file. This will be created
             if it does not exist, otherwise it will be appended to.
-        parallelize: Paralellize processing of FASTA file (not implemented)
+        parallelize: Parallelize processing of FASTA file (not implemented)
+
     """
     log.debug("Performing get_positions_of_gap")
-    if parallelize != 1:
-        log.warning("Parallelization of get_positions_of_gap not implemented")
-    with open(input_path, "r") as fp:
-        log.debug(f"Reading AA FASTA from {input_path}")
-        for seq_name, seq_aa in read_fasta(fp):
-            fasta_id = re.split(r"[\t\s|]", seq_name)[0].replace(">", "")
-            indices = regex_search("N", seq_aa.upper())
-            groupbyseq(indices, output_path, "N", fasta_id)
-            indices = regex_search(["A", "T", "C", "G", "*"], seq_aa.upper())
-            groupbyseq(indices, output_path, "A", fasta_id)
+    parallelize = max(parallelize, 1)
+
+    def _write_list(fh, input_list: deque[str]) -> None:
+        for x in input_list:
+            fh.write(x)
+
+    log.debug(f"Reading AA FASTA from {input_path}")
+    with (
+        input_path.open() as fp,
+        output_path.open("w") as op,
+        ProcessPoolExecutor(max_workers=parallelize) as executor,
+    ):
+        output_list = list(executor.map(_process_sequence, read_fasta(fp)))
+    with output_path.open("w") as op:
+        for x in output_list:
+            _write_list(op, x)
+    return output_path
 
 
-def main():
-    """
-    This used to be a standalone application, this main function exists
-    for testing and backward compatibility.
+def main(args=None):
+    """Script get_positions_of_gap used to be a standalone AWK application.
+
+    This main function exists for testing and backward compatibility.
     """
     parser = ArgumentParser("PCF_Groupby Seq")
     parser.add_argument(
@@ -136,15 +178,21 @@ def main():
         required=True,
         help="The path of the output groups",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "-p",
+        "--parallel",
+        dest="para",
+        default=1,
+        type=int,
+        help="The number of workers to parallelize with",
+    )
+    args = parser.parse_args(args)
     input_path = Path(args.input_path)
     output_path = Path(args.output_path)
 
-    try:
-        os.remove(output_path)
-    except OSError:
-        pass
-    get_positions_of_gap(input_path, output_path)
+    if output_path.is_file():
+        output_path.unlink()
+    get_positions_of_gap(input_path, output_path, parallelize=args.para)
 
 
 if __name__ == "__main__":
