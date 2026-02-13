@@ -242,9 +242,9 @@ class GeneLoc(BaseModel):
         ):
             raise Exception(
                 "Multiple entries (transcripts) per gene in gtpf file."
-                + f"Please clean up entries for {
-                    gene_location.group_by('Gene Name').len().filter(pl.col('len') > 1)
-                } in your input files.\n",
+                + "Please clean up entries for "
+                + str(gene_location.group_by("Gene Name").len().filter(pl.col("len") > 1))
+                + " in your input files.\n",
             )
         self._data = gene_location
         self.is_converted = True

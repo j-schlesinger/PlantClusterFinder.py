@@ -278,10 +278,10 @@ def annotate_sequencing_gaps(
         .iter_rows()
     ):
         _log.warning(
-            f"DNA Fasta file '{
-                nucleotide_fasta_filename
-            }' contains chromosomes or scaffolds not covered with the "
-            + f"gene position file: {bad_chromosome}"
+            "DNA Fasta file '%s' contains chromosomes or scaffolds not covered with the "
+            + f"gene position file: %s",
+            nucleotide_fasta_filename,
+            bad_chromosome,
         )
     sequencing_gaps = sequencing_gaps.filter(
         pl.col("scaffold").is_in(unique_chromosome_names)
@@ -1130,9 +1130,8 @@ def evaluate_criterion(
                 .sum()
             )
             _log.debug(
-                f"Number of enzymes - number of non-enzymes in clustered genes: {
-                    enzymes_in_step_size
-                }",
+                "Number of enzymes - number of non-enzymes in clustered genes: %d",
+                enzymes_in_step_size,
             )
             if step_size == maximum_step_size:
                 continue_search = False
