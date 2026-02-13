@@ -25,6 +25,7 @@
             mcl-repo.packages.${system}.default # requires mcl support
             blast-bin # support for blast required
             diamond # optional diamond support -- faster blaster
+            python311
 
             libz
             gcc

@@ -15,7 +15,7 @@ dependencies = [
     "gffutils>=0.13",
 ]
 readme = "README.md"
-requires-python = ">= 3.12"
+requires-python = ">= 3.11"
 
 [project.scripts]
 plantclusterfinder = "plantclusterfinder_py:main.main"
@@ -46,7 +46,6 @@ dev = [
     "refurb>=2.2.0",
     "radon>=5.1",
     "pytest-pyright>=0.0.6",
-    "gff3tool>=2.1.0",
     "pytest-cov>=7.0.0",
     "py-spy>=0.4.1",
 ]
