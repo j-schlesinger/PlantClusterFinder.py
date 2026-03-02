@@ -99,6 +99,10 @@ profile = "black"
 [tool.hatch.build.targets.wheel]
 packages = ["src/plantclusterfinder_py"]
 
+[[tool.mypy.overrides]]
+module = ["untyped_package.*","gffutils","BCBio.GFF"]
+follow_untyped_imports = true
+
 [tool.pyright]
 venvPath = "."
 venv = ".venv"

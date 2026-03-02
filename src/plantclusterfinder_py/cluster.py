@@ -1071,7 +1071,7 @@ def map_pgdb_gene_ids_to_conversion_file(
         ).select(pl.col("Protein Name"), pl.col("UNIQUE-ID"))
         _log.debug("Mapping proteins, found %d Protein Names to map", protein_map.height)
 
-    return (
+    conversion_mapped_df = (
         all_genes_df.join(gene_map, on="UNIQUE-ID", how="left")
         .join(transcript_map, on="UNIQUE-ID", how="left")
         .join(protein_map, on="UNIQUE-ID", how="left")
@@ -1082,6 +1082,8 @@ def map_pgdb_gene_ids_to_conversion_file(
             pl.col("Transcript Name"),
         )
     )
+    _log.debug("Conversion data mapped: %s", conversion_mapped_df)
+    return conversion_mapped_df
 
 
 def evaluate_criterion(
@@ -1851,7 +1853,7 @@ def write_cluster_output(
         .agg(
             pl.col("Gene Name").alias("cluster_genes"),
             pl.col("Gene Start (bp)").min().alias("start_bp"),
-            pl.col("Gene End (bp)").min().alias("end_bp"),
+            pl.col("Gene End (bp)").max().alias("end_bp"),
         )
     )
     test_data = indexed_clusters.select(

@@ -181,7 +181,7 @@ def extract_genes_gffutils(
                 )
                 raise Exception("Protein Regex not matched in GFF3 file.")
             if len(re_search.groups()) > 0:
-                longest_child_name = re_search.groups()[0]
+                longest_child_name = "".join(re_search.groups())
             else:
                 longest_child_name = re_search.group()
 
@@ -305,7 +305,7 @@ def extract_genes_bcbio(
                         )
                         raise Exception("Protein Regex not matched in GFF3 file.")
                     if len(re_search.groups()) > 0:
-                        longest_child_name = re_search.groups()[0]
+                        longest_child_name = "".join(re_search.groups())
                     else:
                         longest_child_name = re_search.group()
                 aafasta.append(SeqRecord(gene.translate(macro_feature.seq), id=longest_child_name))

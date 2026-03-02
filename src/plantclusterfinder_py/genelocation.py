@@ -112,7 +112,7 @@ class GeneLoc(BaseModel):
             )
         self._data = self.data.with_columns(Hypothetical=pl.lit(False))
 
-        _log.debug("Read %d genes from Gene Location file", self.data.height)
+        _log.debug("Read %d genes from Gene Location file into GeneLocation data", self.data.height)
 
     def __len__(self):
         """Return the length of the DataFrame."""
@@ -148,6 +148,7 @@ class GeneLoc(BaseModel):
                 .otherwise(pl.col("Gene Start (bp)")),
             ]
         )
+        _log.debug("Sorted all %d rows of GeneLoc", self.data.height)
         self.is_sorted = True
 
     def map_to(self, conversion: Conversion, mapping_type: str) -> None:
@@ -230,6 +231,9 @@ class GeneLoc(BaseModel):
             _log.debug("Gene Location already mapped to Conversion, returning early")
             return
         gene_location = self.data.join(conversion.df, on="Gene Name")
+        if len(gene_location) == 0:
+            _log.error("Tried to join GeneLoc to conversion data on 'Gene Name', returned zero rows")
+            raise ValueError("Conversion Gene Name not in GeneLoc data")
         if (
             # This statement returns True if duplicate keys exist in
             # "Gene Name","Protein Name",or "Transcript Name"
@@ -451,6 +455,7 @@ class GeneLoc(BaseModel):
             raise Exception("Conversion data not loaded into gene locations")
 
         if not self.is_annotated:
+            _log.debug("Annotating %d genes", self.data.height)
             genes_with_reactions = map_g_gene_pgdb.with_columns(
                 pgdb_reaction_id=pl.col("pgdb_gene_id")
                 .replace_strict(gene_to_reaction.Gene2Rxn, default=None)
@@ -493,7 +498,6 @@ class GeneLoc(BaseModel):
                 _log.error("Cound not map PGDB Gene IDs to Protein Name")
                 _log.debug("Map G to Gene PGDB DF: %s", map_g_gene_pgdb)
                 _log.debug("Current GeneLocation DF: %s", self.data)
-                print(self.data)
                 raise Exception("PGDB Protein IDs not mapping to gtpf Protein IDs.")
             # ID genes with any reactions
             self._data = self.data.join(
