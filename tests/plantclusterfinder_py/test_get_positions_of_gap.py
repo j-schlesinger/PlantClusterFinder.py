@@ -1,8 +1,7 @@
-import re
 from itertools import zip_longest
 from pathlib import Path
 
-import pytest
+import polars as pl
 
 from tests.plantclusterfinder_py.assets import (
     GAPANALYSIS_EXPECTED_RESULTS,
@@ -109,3 +108,30 @@ def test_get_positions_of_gap_against_expected(tmp_path):
     for nuc, value in ex_d.items():
         assert test_d[nuc] == value
     output_path.unlink()
+
+
+def test_positions_of_gap_main(tmp_path):
+    from plantclusterfinder_py.get_positions_of_gap import main
+
+    test_output = tmp_path / "test.csv"
+    args = [
+        "-i",
+        "csubellipsoidea/CsubellipsoideaC_169_227_v2.0.hardmasked.fa",
+        "-o",
+        str(test_output),
+        "-p",
+        "10",
+    ]
+    main(args)
+    gap_positions_df = pl.read_csv(
+        test_output,
+        schema={
+            "chromosome": pl.String,
+            "nucleotide": pl.String,
+            "start": pl.UInt64,
+            "length": pl.UInt64,
+        },
+        separator=" ",
+        has_header=False,
+    )
+    assert len(gap_positions_df) == 8828

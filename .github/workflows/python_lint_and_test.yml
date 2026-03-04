@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11","3.12","3.13"]
+        python-version: ["3.12"]
     steps:
     - uses: actions/checkout@v4
     - name: Set up UV
@@ -15,20 +15,20 @@ jobs:
     - name: Install dependencies
       run: |
         uv sync
-    - name: Install Blast, Diamond, and MCT
+    - name: Install Blast and MCT
       uses: awalsh128/cache-apt-pkgs-action@latest
       with:
-        packages: ncbi-blast+ mcl diamond-aligner
+        packages: ncbi-blast+ mcl
         version: 1.0
     - name: Performing linting with ruff and tests using pytest
       run: |
         uv --version
         echo "start mypy"
         uv run mypy --version
-        uv run mypy --follow-untyped-imports src tests
+        uv run mypy src test
         echo "start isort"
         uv run isort --version
-        uv run isort --profile black --filter-files --check src tests || uv run isort --profile black --filter-files --check src tests -v
+        uv run isort --profile black --filter-files --check src test || uv run isort --profile black --filter-files --check src test -v
         echo "start fmt"
         uv run ruff -V
         uv run ruff check

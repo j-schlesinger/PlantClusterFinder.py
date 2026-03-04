@@ -1037,16 +1037,19 @@ def map_pgdb_gene_ids_to_conversion_file(
             pl.col("Gene Name"), pl.col("Gene Name").alias("UNIQUE-ID")
         )
         _log.debug("Mapping genes, found %d Gene Names to map", gene_map.height)
+        _log.debug("Example: %s", gene_map)
 
     transcript_map = pl.DataFrame(schema={"Transcript Name": pl.String, "UNIQUE-ID": pl.String})
     # Pgdb Protein ID => Gene Name
     # pull from "ACCESSION-1"
+    _log.warning("Genes_Data_Metadata %s, ids to map %s", repr(genes_data_metadata), pgdb_ids_to_map)
     if "T" in pgdb_ids_to_map and len(genes_data_metadata) > 0:
         all_genes_df_transcript = (
             all_genes_df.select(pl.col("UNIQUE-ID"), pl.col(genes_data_metadata[0]))
             .explode(pl.col(genes_data_metadata[0]))
             .unique()
         )
+        _log.debug("Transcript Map Genes: %s", all_genes_df_transcript.head())
         transcript_map = conversion.df.join(
             all_genes_df_transcript,
             left_on="Transcript Name",

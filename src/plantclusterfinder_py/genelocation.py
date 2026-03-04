@@ -53,7 +53,7 @@ class GeneLoc(BaseModel):
 
     model_config = {"arbitrary_types_allowed": True}
     file_path: Path
-    """The filepath to the genomic data CSV file."""
+    """The file path to the genomic data CSV file."""
     unmasked: bool = True
     """Option to ignore the error if you used unmasked FASTA"""
     is_converted: bool = False
@@ -129,10 +129,7 @@ class GeneLoc(BaseModel):
         return self.data.columns
 
     def sort_genes(self) -> None:
-        """Sort the DataFrame.
-
-        Fist by chromosome index and then conditionally by start or end based on strand.
-        """
+        """Sort the DataFrame by chromosome index, and then by start or end based on strand."""
         _log.debug("Sorting GeneLoc")
         if self.is_sorted:
             _log.debug("GeneLoc is already sorted, returning early")
@@ -284,17 +281,11 @@ class GeneLoc(BaseModel):
         return self.data.select(pl.col("Chromosome Name").unique()).to_series(0).to_list()
 
     def map_to_conversion_file(self) -> dict:
-        """---------------------------------------------------------------------------
-
-        Function that maps genes in the gene location file to the genes in the id
-        conversion file.
-
-        ---------------------------------------------------------------------------
+        """Function that maps genes in the gene location file to the genes in the id conversion file.
 
         Returns:
             Mapping between the gene location file and the gene-ids
                     in the conversion file.
-
         """
         if not self.is_converted:
             raise Exception("Cannot map to gene locations before conversion file added")
@@ -306,15 +297,14 @@ class GeneLoc(BaseModel):
         conversion: Conversion,
         protein_ids: list[str] | None,
     ) -> dict[Any, Any]:
-        """---------------------------------------------------------------------------
+        """Uses the protein fasta file to search for genes.
 
-        Function that uses the protein fasta file to search for genes that encode
-        proteins and then deletes all other entries in the gene location
-        variable.
-
-        ---------------------------------------------------------------------------
+        Search for genes which encode proteins and then deletes
+        all other entries in the gene location variable.
 
         Args:
+            GeneLocation: DataFrame about the gene location information,
+                            generated in PlantClusterFinder function.
             conversion: Conversion object between genes, transcripts, and proteins
             protein_ids: A cell array of all protein-IDs that are stored in the
                         protein fasta file.
@@ -322,7 +312,6 @@ class GeneLoc(BaseModel):
         Returns:
             Mapping between the Gene location file and the gene-IDs in the
                     conversion file.
-
         """
         if not self.is_converted:
             _log.warning("Implicitly requested adding conversion to Gene Location")
@@ -609,6 +598,11 @@ class GeneLoc(BaseModel):
             _log.warning("Max sequence gap size not set or less than 1.")
         final_max_inter_gene_distance = max_inter_gene_distance
 
+        # this holds the SeqGaps_Hard data
+        sequence_gaps = sequence_gaps.with_columns(
+            hard_gap=pl.col("seq_gaps_length").is_in(hard_break_gaps) | pl.col("seq_gaps_length")
+            > max_sequence_gap_size
+        )
         if (
             percentile_for_max_inter_gene_distance is not None
             and percentile_for_max_inter_gene_distance > 1
@@ -705,6 +699,7 @@ class GeneLoc(BaseModel):
             )
             .with_columns(
                 pl.col("pchromosome name").alias("Chromosome Name"),
+                chromosome_name_old=pl.col("Chromosome Name"),
             )
             .drop(
                 [
