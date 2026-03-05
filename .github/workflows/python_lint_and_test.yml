@@ -25,10 +25,10 @@ jobs:
         uv --version
         echo "start mypy"
         uv run mypy --version
-        uv run mypy src test
+        uv run mypy src tests
         echo "start isort"
         uv run isort --version
-        uv run isort --profile black --filter-files --check src test || uv run isort --profile black --filter-files --check src test -v
+        uv run isort --profile black --filter-files --check src tests || uv run isort --profile black --filter-files --check src tests -v
         echo "start fmt"
         uv run ruff -V
         uv run ruff check
