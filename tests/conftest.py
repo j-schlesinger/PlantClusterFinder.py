@@ -31,6 +31,21 @@ def t_gene_loc():
     return GeneLoc(file_path=Path("tests/data/gene_location_test.tsv"))
 
 
+@pytest.fixture()
+def expected_mcl_cluster_obj(conversion_obj):
+    """Expected MCL cluster file."""
+    from plantclusterfinder_py.cluster import read_mcl_clustering_file
+
+    return read_mcl_clustering_file(
+        Path(
+            "./csubellipsoidea/MCL_clustering_expected_results/dump.CsubellipsoideaC_169_227_v2.0.protein.pcf13.mci.I20"
+        ),
+        Path("./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa"),
+        conversion_obj,
+        False,
+    )
+
+
 @pytest.fixture(scope="session")
 def genelocation_transformed_obj():
     """Initialized and Transformed GeneLocation object for testing.
