@@ -109,8 +109,6 @@ venv = ".venv"
 # typeCheckingMode = "basic" # Prevents it from being too noisy
 
 [tool.pytest.ini_options]
-# This section configures the pytest plugin options
-# pytest-pyright and pytest-cov perform static type checking and coverage respectively
 addopts = "--pyright-dir=src --cov=src"
 testpaths = ["tests"]
 
