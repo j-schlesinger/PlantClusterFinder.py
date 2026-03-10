@@ -4,29 +4,24 @@ Hook specifications for the PlantClusterFinder plugin system.
 This module defines the public extension points exposed by the framework.
 """
 
+
 import pluggy
 import polars as pl
-from context import RunContext
+
 
 hookspec = pluggy.HookspecMarker("plantclusterfinder")
+hookimpl = pluggy.HookimplMarker("plantclusterfinder")
 
 
-class PluginSpecs:
-     """
-    Hook specifications describing how plugins can interact with
-    PlantClusterFinder results.
+class PLantCLusterSpecs:
     """
-     
-    @hookspec
-    def process_results(
-        self,
-        results: pl.DataFrame,
-        context: RunContext,
-    ):
-        """
-        Process final clustering results.
+    Hook specifications for PlantClusterFinder plugins.
+    """
 
-        Should return:
-        - None (side effects only)
-        - OR a named result object
+    @hookspec
+    def process_dataframe(self, df: pl.DataFrame):
         """
+        Receive a Polars DataFrame from main.py
+        and return any result.
+        """
+
