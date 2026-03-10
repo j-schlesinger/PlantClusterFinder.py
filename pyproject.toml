@@ -58,7 +58,8 @@ exclude = [
     "Inputs",
     "Expected_results_for_csubellipsoidea",
     ".venv",
-    ".pytest_cache"
+    ".pytest_cache",
+    "*.ipynb",
 ]
 line-length = 101
 
