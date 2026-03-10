@@ -1,10 +1,14 @@
 """Various classes to facilitate the storage of data for cluster finding."""
 
 import logging
+import time
+from pathlib import Path
 from typing import Any
 
 import polars as pl
 from pydantic import BaseModel
+
+from plantclusterfinder_py.pgdb_utils import read_in_pgdb_flat
 
 _log = logging.getLogger(__name__)
 
@@ -93,7 +97,58 @@ class Conversion(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
     """DataFrame containing Gene Name, Transcript Name, and Protein Name"""
     df: pl.DataFrame
+    has_pgdb_ids: bool = False
     _cache: dict[str, Any] = {}
+
+    def add_pgdb_id_column(self, pgdb_dir: Path) -> None:
+        """Add the PGDB Gene UNIQUE-ID to the Conversion data.
+
+        Args:
+            pgdb_dir: Directory of the PGDB data
+        """
+        if self.has_pgdb_ids:
+            return
+        self.has_pgdb_ids = True
+        proteins_table = (
+            read_in_pgdb_flat(
+                pgdb_dir / "proteins.dat", attrib=("UNIQUE-ID", "GENE", "COMMON-NAME", "ACCESSION-1")
+            )
+            .explode("GENE")
+            .explode("COMMON-NAME")
+        )
+        # _log.error(proteins_table.head())
+        # time.sleep(1)
+        # exit(1)
+        # join on the proteins table any way it'll fit, and accept the gene name that comes back
+        pg_gene = self.df.join(proteins_table, left_on="Gene Name", right_on="GENE").select(
+            pl.col("Gene Name"), pgdb_gene_id1=pl.col("Gene Name")
+        )
+        pg_prot = self.df.join(proteins_table, left_on="Protein Name", right_on="UNIQUE-ID").select(
+            pl.col("Gene Name"), pgdb_gene_id2=pl.col("GENE")
+        )
+        pg_common_prot = self.df.join(
+            proteins_table, left_on="Protein Name", right_on="COMMON-NAME"
+        ).select(pl.col("Gene Name"), pgdb_gene_id3=pl.col("GENE"))
+        pg_accession_prot = pl.DataFrame(schema={"Gene Name": pl.String, "pgdb_gene_id4": pl.String})
+        if isinstance(proteins_table.schema.get("ACCESSION-1", pl.Null), pl.String):
+            pg_accession_prot = self.df.join(
+                proteins_table, left_on="Transcript Name", right_on="ACCESSION-1"
+            ).select(pl.col("Gene Name"), pgdb_gene_id4=pl.col("GENE"))
+
+        pg_ids = pl.concat([pg_gene, pg_prot, pg_common_prot, pg_accession_prot], how="align")
+        pg_ids = pg_ids.select(
+            pl.col("Gene Name"),
+            pl.coalesce(
+                (
+                    pl.col("pgdb_gene_id1"),
+                    pl.col("pgdb_gene_id2"),
+                    pl.col("pgdb_gene_id3"),
+                    pl.col("pgdb_gene_id4"),
+                )
+            ).alias("pgdb_gene_id"),
+        )
+
+        self.df = self.df.join(pg_ids, on="Gene Name", how="left")
 
     @property
     def map_gene(self) -> set[str]:

@@ -64,7 +64,7 @@ def generate_gene_location(
 
     # Remove protein or transcript information
     log.debug("Remove transcript information")
-    gene_location.remove_protein_transcript_info(
+    gene_location.add_conversion_columns(
         conversion,
     )
     # Consolidate gene information (one entry per gene)
@@ -819,6 +819,9 @@ Technical Parameters:
     log.info("PART START: Read in file describing gene-ID, transcript-ID, and protein-ID conversion")
     conversion = read_in_conversion_file(gene_transcript_protein_mapping_filename)
 
+    # Part 1.5: Map PGDB Gene IDs to Coversion File
+    conversion.add_pgdb_id_column(pgdb_flat_file_folder)
+
     # Part 2: Map PGDB Gene-ids to reactions
     # Verify PGDB IDs match Conversion file
     log.info("PART START: Read in pgdb flat files")
@@ -876,7 +879,7 @@ Technical Parameters:
             remove_non_protein_locations,
         )
 
-    # % Read in Gene Position File
+    # Part 7: Read in Gene Position File: Create GeneLoc object
     log.info("PART START: Read in gene position file")
     gene_location = generate_gene_location(
         gene_location_filename,
@@ -887,7 +890,7 @@ Technical Parameters:
     )
     unique_chromosome_names = gene_location.consolidate_gene_info()
 
-    # % Annotate gene location with Enzymes (use Gene-protein mapping)
+    # Part 8: Annotate gene location with Enzymes (use Gene-protein mapping)
     log.info("PART START: Annotate gene location file with enzyme information")
     map_pgdb_genes_to_enzymes = gene_location.annotate_enzyme_info(
         map_genes_to_pgdb_genes,
