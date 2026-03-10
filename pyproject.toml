@@ -100,7 +100,7 @@ profile = "black"
 packages = ["src/plantclusterfinder_py"]
 
 [[tool.mypy.overrides]]
-module = ["untyped_package.*","gffutils","BCBio.GFF"]
+module = ["gffutils.*","BCBio.GFF.*"]
 follow_untyped_imports = true
 
 [tool.pyright]
