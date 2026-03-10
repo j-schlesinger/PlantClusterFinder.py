@@ -25,7 +25,7 @@ jobs:
         uv --version
         echo "start mypy"
         uv run mypy --version
-        uv run mypy src tests
+        uv run mypy --follow-untyped-imports src tests
         echo "start isort"
         uv run isort --version
         uv run isort --profile black --filter-files --check src tests || uv run isort --profile black --filter-files --check src tests -v
