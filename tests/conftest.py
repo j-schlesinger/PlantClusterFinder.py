@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 
-@pytest.fixture()
+@pytest.fixture
 def genelocation_obj():
     """Initialized GeneLocation object for testing."""
     from plantclusterfinder_py.genelocation import GeneLoc
@@ -13,7 +13,7 @@ def genelocation_obj():
     )
 
 
-@pytest.fixture()
+@pytest.fixture
 def conversion_obj():
     """Conversion Object."""
     from plantclusterfinder_py.cluster import read_in_conversion_file
@@ -27,7 +27,7 @@ def conversion_obj():
     return conversion
 
 
-@pytest.fixture()
+@pytest.fixture
 def t_gene_loc():
     """Initialized GeneLocation object with simple test data for testing."""
     from plantclusterfinder_py.genelocation import GeneLoc
@@ -35,7 +35,7 @@ def t_gene_loc():
     return GeneLoc(file_path=Path("tests/data/gene_location_test.tsv"))
 
 
-@pytest.fixture()
+@pytest.fixture
 def expected_mcl_cluster_obj(conversion_obj):
     """Expected MCL cluster file."""
     from plantclusterfinder_py.cluster import read_mcl_clustering_file
