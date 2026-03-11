@@ -276,7 +276,7 @@ class Clusters(BaseModel):
                 < top_clusters_percent / 100,
             )
         )
-        _log.debug(f"cluster meta in top {cluster_meta_in_top.head()}")
+        _log.debug("cluster meta in top %s", cluster_meta_in_top.head())
         # prevent re-adding the top_percent_clusters column
         if "top_percent_clusters" in self.ClusterMeta.columns:
             self.ClusterMeta.drop("tep_percent_clusters")

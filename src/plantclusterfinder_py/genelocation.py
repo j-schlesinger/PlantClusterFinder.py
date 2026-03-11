@@ -373,7 +373,7 @@ class GeneLoc(BaseModel):
         """
         # TODO(j-schlesinger): replace with window functions if possible (issue #53) # noqa: FIX002
         # https://github.com/j-schlesinger/PlantClusterFinder.py/issues/53
-        for chromosome, gene_start, gene_end, gene_name, strand in self.data.select(
+        for chromosome, gene_start, gene_end, gene_name, _ in self.data.select(
             pl.col(
                 [
                     "Chromosome Name",
@@ -384,14 +384,8 @@ class GeneLoc(BaseModel):
                 ]
             )
         ).iter_rows():
-            # in case gene is on - strand
-            if "-" in strand:
-                global_gene_start = gene_end
-                global_gene_end = gene_start
-            else:
-                global_gene_start = gene_start
-                global_gene_end = gene_end
             global_gene_start = min(gene_start, gene_end)
+            global_gene_end = max(gene_start, gene_end)
             if not (
                 previous_gene is None
                 or previous_gene["Gene End"] >= global_gene_start

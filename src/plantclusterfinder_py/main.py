@@ -678,7 +678,7 @@ def main(argv: list[str] | None = None) -> None:
     if cpu_count is None and parallelize > 1:
         log.warning("Cannot determind CPU count, trusting user's setting of -para argument.")
     elif parallelize > os.cpu_count():
-        log.error(f"Parallelize argument {parallelize} exceeds CPU count {os.cpu_count()}")
+        log.error("Parallelize argument %d exceeds CPU count %d", parallelize, os.cpu_count())
         raise Exception("Cannot parallelize beyond CPU count")
     elif parallelize <= 0:
         int_cpu_count: int = os.cpu_count() or 1

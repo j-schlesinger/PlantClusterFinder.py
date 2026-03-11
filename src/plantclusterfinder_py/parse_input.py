@@ -318,5 +318,5 @@ def extract_genes_bcbio(
                 )
     # guarantee seq_fasta_dict is garbage collected
     del seq_fasta_dict
-    _log.warning(f"{no_name} genes were ignored for not having attribute {gene_name_column}")
+    _log.warning("%s genes were ignored for not having attribute %s", no_name, gene_name_column)
     return (gtpf, glof, aafasta)
