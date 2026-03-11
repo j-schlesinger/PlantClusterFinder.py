@@ -5,32 +5,51 @@ import pytest
 
 @pytest.fixture
 def genelocation_obj():
-    """
-    Initialized GeneLocation object for testing
-    """
+    """Initialized GeneLocation object for testing."""
     from plantclusterfinder_py.genelocation import GeneLoc
 
     return GeneLoc(
-        file_path=Path(
-            "csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt"
-        )
+        file_path=Path("csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt")
+    )
+
+
+@pytest.fixture
+def conversion_obj():
+    """Conversion Object."""
+    from plantclusterfinder_py.cluster import read_in_conversion_file
+
+    return read_in_conversion_file(
+        Path("./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt")
     )
 
 
 @pytest.fixture
 def t_gene_loc():
-    """
-    Initialized GeneLocation object with simple test data for testing
-    """
+    """Initialized GeneLocation object with simple test data for testing."""
     from plantclusterfinder_py.genelocation import GeneLoc
 
-    return GeneLoc(file_path=Path("test/data/gene_location_test.tsv"))
+    return GeneLoc(file_path=Path("tests/data/gene_location_test.tsv"))
+
+
+@pytest.fixture
+def expected_mcl_cluster_obj(conversion_obj):
+    """Expected MCL cluster file."""
+    from plantclusterfinder_py.cluster import read_mcl_clustering_file
+
+    return read_mcl_clustering_file(
+        Path(
+            "./csubellipsoidea/MCL_clustering_expected_results/dump.CsubellipsoideaC_169_227_v2.0.protein.pcf13.mci.I20"
+        ),
+        Path("./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa"),
+        conversion_obj,
+        False,
+    )
 
 
 @pytest.fixture(scope="session")
 def genelocation_transformed_obj():
-    """
-    Initialized and Transformed GeneLocation object for testing
+    """Initialized and Transformed GeneLocation object for testing.
+
     This shouldn't need further transformation,
     so it is only created once per session
     """
@@ -39,19 +58,15 @@ def genelocation_transformed_obj():
         map_pgdb_reactions_to_genes,
         read_in_conversion_file,
         read_in_pgdb_flat,
-        read_MCL_clustering_file,
+        read_mcl_clustering_file,
     )
     from plantclusterfinder_py.genelocation import GeneLoc
 
     gene_location = GeneLoc(
-        file_path=Path(
-            "csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt"
-        )
+        file_path=Path("csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt")
     )
     conversion = read_in_conversion_file(
-        Path(
-            "./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
-        )
+        Path("./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt")
     )
     gene_location.remove_protein_transcript_info(conversion)
     gene_location.consolidate_gene_info()
@@ -67,9 +82,9 @@ def genelocation_transformed_obj():
     pgdb_conversions_df = map_pgdb_gene_ids_to_conversion_file(
         conversion, genes_all, gene_info_from_genes_dat, ids_to_map
     )
-    gene2rxn = map_pgdb_reactions_to_genes(pgdb_dir)
+    gene2rxn = map_pgdb_reactions_to_genes(pgdb_dir, conversion)
     gene_location.annotate_enzyme_info(pgdb_conversions_df, gene2rxn)
-    mcl_cluster_data = read_MCL_clustering_file(
+    mcl_cluster_data = read_mcl_clustering_file(
         Path(
             "./csubellipsoidea/MCL_clustering_expected_results/dump.CsubellipsoideaC_169_227_v2.0.protein.pcf13.mci.I20"
         ),

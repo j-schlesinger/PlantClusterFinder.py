@@ -2,6 +2,9 @@
 mkdir -p Outputs
 rm ./Outputs/csubellipsoidea_Clust_v2_0.txt 2>/dev/null
 rm ./Outputs/csubellipsoidea_Gene_v2_0.txt 2>/dev/null
+#   '-psf'  './csubellipsoidea/CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa'\
+#   '-glof' './csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt'\
+#   '-gtpf' './csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt'\
 uv run python -m plantclusterfinder_py\
    '--GenesDat_GeneInfo' 'ACCESSION-1'\
    '-md'\
@@ -15,9 +18,7 @@ uv run python -m plantclusterfinder_py\
    "Redox Metabolism" "Specialized Metabolism" "Sugar Derivatives"\
    "Terpenoids"\
    '-dnaf' './csubellipsoidea/CsubellipsoideaC_169_227_v2.0.hardmasked.fa'\
-   '-psf'  './csubellipsoidea/CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa'\
-   '-glof' './csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt'\
-   '-gtpf' './csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt'\
+   '-gff3' './csubellipsoidea/CsubellipsoideaC_169_227_v2.0.gene.gff3'\
    '-pgdb' './csubellipsoidea/pgdb/csubellipsoideacyc/1.0/data/'\
    '-sitf' './Inputs/scaffold-tailoring-reactions-05082016.tab'\
    '-rmdf' './Inputs/ReactionMetabolicDomainClassification.txt'\
