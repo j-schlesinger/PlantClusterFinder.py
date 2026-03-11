@@ -15,7 +15,7 @@ jobs:
     - name: Install dependencies
       run: |
         uv sync
-    - name: Install Blast and MCT
+    - name: Install Blast, Diamond, and MCT
       uses: awalsh128/cache-apt-pkgs-action@latest
       with:
         packages: ncbi-blast+ mcl diamond-aligner

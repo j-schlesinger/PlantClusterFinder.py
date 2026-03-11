@@ -639,8 +639,6 @@ class GeneLoc(BaseModel):
                     final_max_inter_gene_distance,
                     median_set_max_intergenic_distance * max_inter_gene_distance_by_median,
                 )
-                # TODO(j-schlesinger): Why are these vals are being multiplied # noqa: FIX002, TD003
-                # https://github.com/j-schlesinger/PlantClusterFinder.py/issues/54
             )
         # this holds the SeqGaps Hard data
         sequence_gaps = sequence_gaps.with_columns(
