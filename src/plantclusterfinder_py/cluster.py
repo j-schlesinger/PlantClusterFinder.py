@@ -279,7 +279,7 @@ def annotate_sequencing_gaps(
     ):
         _log.warning(
             "DNA Fasta file '%s' contains chromosomes or scaffolds not covered with the "
-            + f"gene position file: %s",
+            + "gene position file: %s",
             nucleotide_fasta_filename,
             bad_chromosome,
         )
