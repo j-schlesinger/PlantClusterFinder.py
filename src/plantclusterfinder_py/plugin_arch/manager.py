@@ -1,5 +1,4 @@
-"""
-Plugin manager for PlantClusterFinder.
+"""Plugin manager for PlantClusterFinder.
 
 This module is responsible for:
 - Initializing the Pluggy plugin manager
@@ -8,44 +7,42 @@ This module is responsible for:
 """
 
 import pluggy
-from hookspecs import PluginSpecs
+
+from plantclusterfinder_py.plugin_arch.context import RunContext
+from plantclusterfinder_py.plugin_arch.hookspecs import PlantClusterSpecs
+
 
 class PluginManager:
-      """
-    Central manager for loading and executing PlantClusterFinder plugins.
+    """Central manager for loading and executing PlantClusterFinder plugins.
 
     This class abstracts Pluggy internals and provides a stable interface
     for the core pipeline to interact with plugins.
     """
-      
+
     def __init__(self):
+        """Create new PluginManager instance for PlantClusterFinder."""
         self.pm = pluggy.PluginManager("plantclusterfinder")
-        self.pm.add_hookspecs(PluginSpecs)
+        self.pm.add_hookspecs(PlantClusterSpecs)
 
     def register(self, plugin):
-         """
-        Register a plugin implementation.
+        """Register a plugin implementation.
 
-        Parameters
-        ----------
-        plugin : object
-            An object or class containing hook implementations decorated
-            with @hookimpl.
+        Args:
+            plugin: An object or class decorated with @hookimpl
         """
-         
-         self.pm.register(plugin)
+        self.pm.register(plugin)
 
     def load_entrypoints(self):
-          """
-        Load and register plugins exposed via setuptools entry points.
+        """Load and register plugins exposed via setuptools entry points."""
+        self.pm.load_setuptools_entrypoints("plantclusterfinder.plugins")
 
+    def run(self, results, context: RunContext):
+        """Run all registered plugins (process_results).
+
+        Args:
+            results: Results DataFrame as input for each plugin
+            context: Context for run of all plugins
         """
-          
-        self.pm.load_setuptools_entrypoints(
-            "plantclusterfinder.plugins"
-        )
-
-    def run(self, results, context):
         outputs = []
         for out in self.pm.hook.process_results(
             results=results,

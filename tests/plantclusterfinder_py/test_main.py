@@ -1,5 +1,7 @@
 import time
 
+import polars as pl
+
 
 def test_run_main(tmp_path):
     from plantclusterfinder_py.main import main
@@ -7,6 +9,7 @@ def test_run_main(tmp_path):
     test_start = int(time.time())
     gene_output_temp_file = tmp_path / f"gene_output_test.{test_start}.tsv"
     cluster_output_temp_file = tmp_path / f"cluster_output_test.{test_start}.tsv"
+    parquet_output_temp_file = tmp_path / f"parquet_output_test.{test_start}.tsv"
 
     args = [
         "--GenesDat_GeneInfo",
@@ -55,6 +58,13 @@ def test_run_main(tmp_path):
         "--MaxInterGeneDistByMedian",
         "120",
         "--OutputGeneLocationParquet",
-        "./Outputs/csubellipsoidea_gene_loc.parquet",
+        parquet_output_temp_file.name,
     ]
     main(args)
+
+    gene_location = pl.read_parquet(parquet_output_temp_file.name)
+    assert len(gene_location) == 9629
+    genes_file = pl.read_csv(gene_output_temp_file.name, separator="\t")
+    assert len(genes_file) == 9629
+    clusters_file = pl.read_csv(cluster_output_temp_file.name, separator="\t")
+    assert len(clusters_file) == 134

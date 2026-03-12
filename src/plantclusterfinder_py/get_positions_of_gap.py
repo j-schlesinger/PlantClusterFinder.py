@@ -145,7 +145,7 @@ def get_positions_of_gap(input_path: Path, output_path: Path, parallelize: int =
         for x in input_list:
             fh.write(x)
 
-    log.debug(f"Reading AA FASTA from {input_path}")
+    log.debug("Reading AA FASTA from %s", input_path)
     with (
         input_path.open() as fp,
         output_path.open("w") as op,

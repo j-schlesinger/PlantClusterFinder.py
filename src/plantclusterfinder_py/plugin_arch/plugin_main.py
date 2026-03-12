@@ -1,5 +1,4 @@
-"""
-Plugin manager for PlantClusterFinder.
+"""Plugin manager for PlantClusterFinder.
 
 This module is responsible for:
 - Initializing the Pluggy plugin manager
@@ -9,38 +8,33 @@ This module is responsible for:
 
 import pluggy
 import polars as pl
-from plugin_arch.hookspecs import PLantCLusterSpecs
-from plugin_arch.example import ExamplePlugin
+
+from plantclusterfinder_py.plugin_arch.example import ExamplePlugin
+from plantclusterfinder_py.plugin_arch.hookspecs import PlantClusterSpecs
+
 
 def get_plugin_manager():
+    """Get the plugin manager for PlantClusterFinder."""
     pm = pluggy.PluginManager("plantclusterfinder")
-    
+
     # register hook specifications
-    pm.add_hookspecs(PLantCLusterSpecs)
+    pm.add_hookspecs(PlantClusterSpecs)
 
     # register plugins
     pm.register(ExamplePlugin())
-    #pm.register(Plugin_2())
-    
+
     return pm
 
 
 def run_plugins(df: pl.DataFrame):
-
+    """Run the plugins defined by the input DataFrame."""
     pm = get_plugin_manager()
 
-    results = pm.hook.process_dataframe(df=df)
-
-    return results
+    return pm.hook.process_dataframe(df=df)
 
 
 if __name__ == "__main__":
-    df = pl.DataFrame(
-        {
-            "gene": ["g1", None, "g3"],
-            "enzyme": ["PAL", "C4H", "4CL"]
-        }
-    )
+    df = pl.DataFrame({"gene": ["g1", None, "g3"], "enzyme": ["PAL", "C4H", "4CL"]})
 
     results = run_plugins(df)
 

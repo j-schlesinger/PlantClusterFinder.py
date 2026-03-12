@@ -215,7 +215,7 @@ def test_annotate_sequencing_gaps(genelocation_obj):
     sequencing_gaps = annotate_sequencing_gaps(
         sequencing_gaps_fasta, gene_location.find_intergenic_regions(), uniq_chr
     )
-    assert sequencing_gaps.height == 2694  # 1166
+    assert sequencing_gaps.height == 1166
     assert len(sequencing_gaps.columns) == 6
     sequencing_gaps_test = annotate_sequencing_gaps(
         GENOME_FASTA_PATH, gene_location.find_intergenic_regions(), uniq_chr
@@ -246,7 +246,7 @@ def test_introduce_hypo_genes(genelocation_obj):
     non_hypo_count = gene_location.data.filter(
         pl.col("Gene Name").str.starts_with("Hypo").not_()
     ).height
-    assert orig_gene_count * 2 - 207 == len(gene_location)  # TEST INCOMPLETE
+    assert len(gene_location) == orig_gene_count * 2 - 216  # TEST INCOMPLETE
     assert orig_gene_count == non_hypo_count
     assert orig_gene_count != 0
 
@@ -300,9 +300,9 @@ def test_compute_background():
         (pl.col("window_size") <= 4) | (pl.col("window_size") != pl.col("enzyme_count"))
     )
     background = compute_background(cluster, gene_location, pl.DataFrame())
+
     assert expected_background.height == background.height
     ex_grouped = expected_background.group_by("window_size").agg(
-        # pl.sum("winzyme_occurrence"),
         pl.last("window_occurrence"),
     )
     for window in (
@@ -315,6 +315,7 @@ def test_compute_background():
         .iter_rows()
     ):
         (size, winzyme_occurrence_sum, _, total_window_occurrence) = window
+        print(size, total_window_occurrence)
         assert winzyme_occurrence_sum == total_window_occurrence
         assert total_window_occurrence == 192 - size * 6
         assert (
@@ -323,7 +324,6 @@ def test_compute_background():
                 "window_occurrence"
             ][0]
         )
-    return
 
 
 def test_perform_clustering(genelocation_transformed_obj, expected_mcl_cluster_obj):

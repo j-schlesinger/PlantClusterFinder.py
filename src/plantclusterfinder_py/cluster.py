@@ -279,7 +279,7 @@ def annotate_sequencing_gaps(
     ):
         _log.warning(
             "DNA Fasta file '%s' contains chromosomes or scaffolds not covered with the "
-            + f"gene position file: %s",
+            + "gene position file: %s",
             nucleotide_fasta_filename,
             bad_chromosome,
         )
@@ -396,7 +396,7 @@ def get_metabolic_domains(
         `MD_to_annotate`.
 
     """
-    _log.debug(f"Getting metabolic domains from file {genes_metabolic_domains_filename}")
+    _log.debug("Getting metabolic domains from file %s", genes_metabolic_domains_filename)
     # file used to have a \r EOL character
     rxn_meta_dom = (
         pl.read_csv(genes_metabolic_domains_filename, separator="\t")
@@ -1360,7 +1360,7 @@ def perform_clustering(
             )
         )
         cluster_starts_count = len(cluster_starts_df)
-        _log.debug(f"Found {cluster_starts_count} cluster starts for step size {step_size}")
+        _log.debug("Found %s cluster starts for step size %d", cluster_starts_count, step_size)
         for i, gene in enumerate(cluster_starts_df.iter_rows()):
             # gene has start index and start chromosome
             start, chrom_start, *_ = gene
@@ -1388,7 +1388,9 @@ def perform_clustering(
                 end_s = end  # end search start
                 # stop search step size
                 end_e = min(end + step_size, len(gene_location.data))
-                _log.debug(f"Searching for enzyme cluster for index {start} from {end_s} to {end_e}")
+                _log.debug(
+                    "Searching for enzyme cluster for index %d from %d to %d", start, end_s, end_e
+                )
                 end_df = gene_location.data.with_row_index("index").filter(
                     is_enzyme_criteria
                     & chromosome_criteria

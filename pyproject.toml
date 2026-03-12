@@ -21,6 +21,14 @@ requires-python = ">= 3.11"
 plantclusterfinder = "plantclusterfinder_py:main.main"
 get_positions_of_gap = "plantclusterfinder_py:get_positions_of_gap.main"
 
+[project.optional-dependencies]
+plugin = [
+    "click>=8.3.1",
+    "pluggy>=1.6.0",
+    "pygments>=2.19.2",
+    "requests>=2.32.5",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -36,14 +44,13 @@ dev = [
     "isort==5.13.2",
     "black>=24.2.0",
     "flake8>=7.0.0",
-    "mypy>=1.8.0",
-    "ruff>=0.3.0",
+    "mypy>=1.19.1",
+    "ruff>=0.15.5",
     "uv>=0.6.10",
     "pandas>=2.2.2",
     "pyright>=1.1.404",
     "viztracer>=1.1.1",
     "wily>=1.25.0",
-    "refurb>=2.2.0",
     "radon>=5.1",
     "pytest-pyright>=0.0.6",
     "pytest-cov>=7.0.0",
@@ -60,7 +67,7 @@ exclude = [
     "Expected_results_for_csubellipsoidea",
     ".venv",
     ".pytest_cache",
-    "*.ipynb",
+    "*.ipynb"
 ]
 line-length = 101
 
@@ -102,7 +109,7 @@ profile = "black"
 packages = ["src/plantclusterfinder_py"]
 
 [[tool.mypy.overrides]]
-module = ["untyped_package.*","gffutils","BCBio.GFF"]
+module = ["gffutils.*","BCBio.GFF.*"]
 follow_untyped_imports = true
 
 [tool.pyright]

@@ -166,7 +166,7 @@ class GeneLoc(BaseModel):
 
         if not self.is_converted:
             _log.warning("Adding Conversion to Gene Location")
-            self.remove_protein_transcript_info(conversion)
+            self.add_conversion_columns(conversion)
 
         # Create a new column with the count of each gene
         column_name = (
@@ -210,7 +210,7 @@ class GeneLoc(BaseModel):
 
         self._data = self._data.join(mapped_genes, on="Gene Name")
 
-    def remove_protein_transcript_info(
+    def add_conversion_columns(
         self,
         conversion: Conversion,
     ) -> None:
@@ -227,6 +227,9 @@ class GeneLoc(BaseModel):
         if self.is_converted:
             _log.debug("Gene Location already mapped to Conversion, returning early")
             return
+        if not conversion.has_pgdb_ids:
+            _log.error("Conversion file needs PGDB Gene IDs to map to")
+            raise Exception("Conversion file not mapped to PDGB Gene IDs")
         gene_location = self.data.join(conversion.df, on="Gene Name")
         if len(gene_location) == 0:
             _log.error("Tried to join GeneLoc to conversion data on 'Gene Name', returned zero rows")
@@ -315,7 +318,7 @@ class GeneLoc(BaseModel):
         """
         if not self.is_converted:
             _log.warning("Implicitly requested adding conversion to Gene Location")
-            self.remove_protein_transcript_info(conversion)
+            self.add_conversion_columns(conversion)
 
         original_gene_count = self.data.height
         if protein_ids is None or len(protein_ids) == 0:
@@ -370,7 +373,7 @@ class GeneLoc(BaseModel):
         """
         # TODO(j-schlesinger): replace with window functions if possible (issue #53) # noqa: FIX002
         # https://github.com/j-schlesinger/PlantClusterFinder.py/issues/53
-        for chromosome, gene_start, gene_end, gene_name, strand in self.data.select(
+        for chromosome, gene_start, gene_end, gene_name, _ in self.data.select(
             pl.col(
                 [
                     "Chromosome Name",
@@ -381,14 +384,8 @@ class GeneLoc(BaseModel):
                 ]
             )
         ).iter_rows():
-            # in case gene is on - strand
-            if "-" in strand:
-                global_gene_start = gene_end
-                global_gene_end = gene_start
-            else:
-                global_gene_start = gene_start
-                global_gene_end = gene_end
             global_gene_start = min(gene_start, gene_end)
+            global_gene_end = max(gene_start, gene_end)
             if not (
                 previous_gene is None
                 or previous_gene["Gene End"] >= global_gene_start
@@ -454,34 +451,6 @@ class GeneLoc(BaseModel):
                 "Mapping %d genes with reactions to %d genes",
                 len(genes_with_reactions),
                 len(self.data),
-            )
-            # get gene IDs for PGDB data - may come from Protein Name or Gene Name
-            self._data = self.data.join(
-                map_g_gene_pgdb.select(pl.col("Protein Name"), pl.col("pgdb_gene_id")),
-                on="Protein Name",
-                how="left",
-            )
-            self._data = (
-                self.data.join(
-                    map_g_gene_pgdb.select(pl.col("Gene Name"), pl.col("pgdb_gene_id")),
-                    on="Gene Name",
-                    how="left",
-                )
-                .with_columns(
-                    pgdb_gene_id=pl.coalesce(pl.col("pgdb_gene_id"), pl.col("pgdb_gene_id_right"))
-                )
-                .drop("pgdb_gene_id_right")
-            )
-            self._data = (
-                self.data.join(
-                    map_g_gene_pgdb.select(pl.col("Transcript Name"), pl.col("pgdb_gene_id")),
-                    on="Transcript Name",
-                    how="left",
-                )
-                .with_columns(
-                    pgdb_gene_id=pl.coalesce(pl.col("pgdb_gene_id"), pl.col("pgdb_gene_id_right"))
-                )
-                .drop("pgdb_gene_id_right")
             )
             if self.data.filter(pl.col("pgdb_gene_id").is_not_null()).height == 0:
                 _log.error("Cound not map PGDB Gene IDs to Protein Name")
@@ -639,6 +608,8 @@ class GeneLoc(BaseModel):
                     final_max_inter_gene_distance,
                     median_set_max_intergenic_distance * max_inter_gene_distance_by_median,
                 )
+                # TODO(j-schlesinger): Why are these vals are being multiplied # noqa: FIX002, TD003
+                # https://github.com/j-schlesinger/PlantClusterFinder.py/issues/54
             )
         # this holds the SeqGaps Hard data
         sequence_gaps = sequence_gaps.with_columns(

@@ -1,3 +1,3 @@
-# plugins/__init__.py
+"""Plugins Architecture for PlantClusterFinder.py."""
 
-#import example
+# import example
