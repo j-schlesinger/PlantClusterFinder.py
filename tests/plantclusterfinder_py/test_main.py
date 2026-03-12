@@ -12,6 +12,8 @@ def test_run_main(tmp_path):
     parquet_output_temp_file = tmp_path / f"parquet_output_test.{test_start}.tsv"
 
     args = [
+        "-r",
+        "PyTest_Execution",
         "--GenesDat_GeneInfo",
         "ACCESSION-1",
         "-md",

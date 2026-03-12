@@ -20,6 +20,7 @@ requires-python = ">= 3.11"
 [project.scripts]
 plantclusterfinder = "plantclusterfinder_py:main.main"
 get_positions_of_gap = "plantclusterfinder_py:get_positions_of_gap.main"
+test_plugins = "plantclusterfinder_py.plugin_arch:plugin_main.main"
 
 [project.optional-dependencies]
 plugin = [

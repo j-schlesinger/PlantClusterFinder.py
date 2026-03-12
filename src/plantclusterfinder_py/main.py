@@ -10,6 +10,7 @@ import sys
 import time
 from argparse import ArgumentParser, RawTextHelpFormatter
 from pathlib import Path
+from uuid import uuid4
 
 from plantclusterfinder_py.cluster import (
     annotate_sequencing_gaps,
@@ -29,6 +30,9 @@ from plantclusterfinder_py.cluster import (
 from plantclusterfinder_py.cluster_datatypes import Conversion
 from plantclusterfinder_py.genelocation import GeneLoc
 from plantclusterfinder_py.parse_input import extract_genes_from_gff_and_fasta
+from plantclusterfinder_py.plugin_arch.context import RunContext
+from plantclusterfinder_py.plugin_arch.enzyme_stats import EnzymeStatsPlugin
+from plantclusterfinder_py.plugin_arch.manager import PluginManager
 
 LOG_FORMAT = "{asctime} | {levelname:<8} | {name} : {message}"
 
@@ -158,6 +162,14 @@ def main(argv: list[str] | None = None) -> None:
         formatter_class=RawTextHelpFormatter,
     )
     # Mandatory inputs: all files need full path, order does not matter.
+    parser.add_argument(
+        "--RunName",
+        "-r",
+        required=True,
+        type=str,
+        help="""Name of run of PlantClusterFinder. Helpful for
+        identifying execution across different organisms/samples""",
+    )
     parser.add_argument(
         "--ReactionMetabolicDomainFilename",
         "-rmdf",
@@ -694,9 +706,11 @@ def main(argv: list[str] | None = None) -> None:
     rerun_blastp = not args.NoRerunBlastP
     use_diamond = not args.use_ncbi_blast
     run_info_file = args.RunInfoFile
+    run_name = args.RunName
+    uniq_run_name = run_name + str(uuid4())
 
     run_start_time = time.time()
-    run_info_str = f"""PlantClusterFinder.py Execution; Start Time: {int(run_start_time)}
+    run_info_str = f"""PlantClusterFinder.py Execution {run_name}; Start Time: {int(run_start_time)}
 --------------------------------------
 Files
     Genome FASTA Filename: {dna_fasta_filename}
@@ -1027,6 +1041,20 @@ Technical Parameters:
         gene_location.write_parquet(gene_location_output_filename)
     run_end_time = time.time()
     log.info("Execution completed in %f seconds.", run_end_time - run_start_time)
+    plugin_start_time = time.time()
+    log.info("Plugin execution started")
+    plug_context = RunContext(
+        run_name=uniq_run_name,
+        config={},
+        genome_file=dna_fasta_filename,
+        annotation_file=annotation_gff3_filename,
+        output_dir=cluster_output_filename.parent,
+    )
+    plugman = PluginManager()
+    plugman.register(EnzymeStatsPlugin())
+    plugman.run(gene_location.data, plug_context)
+    plugin_end_time = time.time()
+    log.info("Execution completed in %f seconds.", plugin_end_time - plugin_start_time)
     listener.stop()
 
     if __name__ == "__main__":

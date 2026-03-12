@@ -4,6 +4,7 @@ mkdir -p Outputs
 rm ./Outputs/Medicago_Clust_v2.tsv 2>/dev/null
 rm ./Outputs/Medicago_Gene_v2.tsv 2>/dev/null
 uv run python -m plantclusterfinder_py\
+   '-r' 'Medicago_Test_Run'\
    '--GenesDat_GeneInfo' 'ACCESSION-1' 'PRODUCT'\
    '-md'\
    "Amines and Polyamines Metabolism" "Amino Acids Metabolism"\
