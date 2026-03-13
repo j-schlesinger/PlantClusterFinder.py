@@ -263,8 +263,9 @@ def annotate_sequencing_gaps(
             overwrite_sequence_gap_info_file,
             dna_unmasked_ok,
         )
+    _log.debug("Reading in sequencing gaps")
     sequencing_gaps = (
-        pl.read_csv(
+        pl.scan_csv(
             gap_output_file,
             separator=" ",
             has_header=False,
@@ -273,9 +274,11 @@ def annotate_sequencing_gaps(
         .with_columns((pl.col("start index") + pl.col("length") - pl.lit(1)).alias("end index"))
         .filter(pl.col("amino acid") == pl.lit("N"))  # Do not process all non N sequences.
     )
+    _log.debug("Finding 'bad' chromosomes")
     for bad_chromosome, *_ in (
         sequencing_gaps.filter(pl.col("scaffold").is_in(unique_chromosome_names).not_())
         .select(pl.col("scaffold").unique())
+        .collect()
         .iter_rows()
     ):
         _log.warning(
@@ -284,21 +287,22 @@ def annotate_sequencing_gaps(
             nucleotide_fasta_filename,
             bad_chromosome,
         )
-    sequencing_gaps = sequencing_gaps.filter(
-        pl.col("scaffold").is_in(unique_chromosome_names)
-    )  # Do not process sequences that do not lie on a chromosome we want
+    _log.debug("Do not process sequences that do not lie on a chromosome we want")
     sequencing_gaps = (
-        # All predicates of join_where() must be true for join to happen
-        sequencing_gaps.join_where(
-            intergenic_location,
-            pl.col("Chromosome Name") == pl.col("scaffold"),
-            pl.col("Start")  # intergenic region start
-            # intergenic region starts before gap start
-            <= pl.col("start index"),
-            pl.col("End")  # intergenic region end
-            >= pl.col("start index"),  # intergenic region ends after gap start
-            pl.col("Start")  # intergenic region start
-            <= pl.col("end index"),  # intergenic region starts before gap end
+        sequencing_gaps.filter(pl.col("scaffold").is_in(unique_chromosome_names))
+        .sort("start index")
+        .with_columns(pl.col("scaffold").alias("Chromosome Name"))
+    )
+    sequencing_gaps = (
+        # Find closest start indices using join, filter to complete
+        sequencing_gaps.join_asof(
+            intergenic_location.lazy().sort("Start"),
+            left_on="start index",
+            right_on="Start",
+            strategy="backward",
+            by="Chromosome Name",
+        )
+        .filter(
             pl.col("End")  # intergenic region end
             >= pl.col("end index"),  # intergenic region ends after gap end
         )
@@ -309,14 +313,16 @@ def annotate_sequencing_gaps(
         )
         .with_columns(seq_gaps_length=pl.col("seq_gaps_end") - pl.col("seq_gaps_start") + 1)
     )
-    _log.debug("Found %d sequencing gaps", sequencing_gaps.height)
-    _log.debug("Example gaps %s", sequencing_gaps.head())
+    _log.debug("Collecting sequencing gaps")
+    sequencing_gaps_df = sequencing_gaps.collect()
+    _log.debug("Found %d sequencing gaps", len(sequencing_gaps_df))
+    _log.debug("Example gaps %s", sequencing_gaps_df.head())
     # find the intergenic region of the gap, if the gap is present within a
     # gene model, get rid of the gap.
     # logic validated in issue (#28)
     # only gaps which are in intergenic regions
     # & indicate which intergenic region
-    return sequencing_gaps
+    return sequencing_gaps_df
 
 
 def get_sequencing_gaps(
@@ -1938,8 +1944,9 @@ def analyze_plant_cluster_gap_file(
             f"plant_cluster_gap_filename {plant_cluster_gap_filename}"
             + " is not a file or does not exist"
         )
-    _gap_output = (
-        pl.read_csv(
+
+    gap_output_lf = (
+        pl.scan_csv(
             plant_cluster_gap_filename,
             separator=" ",
             has_header=False,
@@ -1948,17 +1955,20 @@ def analyze_plant_cluster_gap_file(
         .filter(pl.col("amino acid") == "N")
         .group_by("length")
         .len()
-        .rows_by_key(key="length", unique=True)
+        # .rows_by_key(key="length", unique=True)
     )
     f_out_filename = plant_cluster_gap_filename.with_suffix(
         plant_cluster_gap_filename.suffix + "_count.txt"
     )
     if not file_output:
-        return (str(f_out_filename), _gap_output)
-    with f_out_filename.open(mode="w") as f:
-        f.write("Gapsize in bp\tNumber of Gaps\n")
-        for k, v in sorted(_gap_output.items(), key=lambda x: -list(x)[1][0]):
-            f.write(f"{k}\t{list(v)[0]}\n")
+        return (str(f_out_filename), gap_output_lf.collect().rows_by_key(key="length", unique=True))
+    gap_output_lf.sort(pl.col("len")).select(
+        pl.col("length").alias("Gapsize in bp"), pl.col("len").alias("Number of Gaps")
+    ).sink_csv(f_out_filename, separator="\t")
+    # with f_out_filename.open(mode="w") as f:
+    #    f.write("Gapsize in bp\tNumber of Gaps\n")
+    #    for k, v in sorted(gap_output_lf.items(), key=lambda x: -list(x)[1][0]):
+    #        f.write(f"{k}\t{list(v)[0]}\n")
     return f_out_filename
 
 
