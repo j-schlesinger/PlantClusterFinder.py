@@ -108,10 +108,8 @@ def test_remove_non_protein_fasta_gene_locations(genelocation_obj, conversion_ob
     ok_prot = list(biomg_g.keys())
     random.shuffle(ok_prot)
     protein_ids = ok_prot[0:100]
-    cleaned_gene_location = gene_location.remove_non_protein_fasta_gene_locations(
-        conversion, protein_ids
-    )
-    unclean_gene_location = gene_location.remove_non_protein_fasta_gene_locations(conversion, [])
+    cleaned_gene_location = gene_location.remove_non_protein_fasta_gene_locations(protein_ids)
+    unclean_gene_location = gene_location.remove_non_protein_fasta_gene_locations([])
     assert len(gene_location) == len(unclean_gene_location)
     assert len(cleaned_gene_location) == 100
 

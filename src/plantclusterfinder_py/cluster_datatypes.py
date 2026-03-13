@@ -116,9 +116,6 @@ class Conversion(BaseModel):
             .explode("GENE")
             .explode("COMMON-NAME")
         )
-        # _log.error(proteins_table.head())
-        # time.sleep(1)
-        # exit(1)
         # join on the proteins table any way it'll fit, and accept the gene name that comes back
         pg_gene = self.df.join(proteins_table, left_on="Gene Name", right_on="GENE").select(
             pl.col("Gene Name"), pgdb_gene_id1=pl.col("Gene Name")
@@ -147,8 +144,40 @@ class Conversion(BaseModel):
                 )
             ).alias("pgdb_gene_id"),
         )
+        if len(pg_ids.filter(pl.col("pgdb_gene_id").is_not_null())) > 0:
+            self.df = self.df.join(pg_ids, on="Gene Name", how="left")
+            return
+        _log.warning("Could not map PGDB Gene IDs using proteins.dat, trying genes.dat")
+        # I already tested against UNIQUE-ID and PRODUCT of genes.dat
+        # as GENE and UNIQUE-ID from proteins.dat.
+        # Now I just need to see if my gene or protein name
+        # line up with the COMMON-NAME from genes.dat
+        genes_table = read_in_pgdb_flat(
+            pgdb_dir / "genes.dat", attrib=("UNIQUE-ID", "COMMON-NAME", "ACCESSION-1")
+        ).explode("COMMON-NAME")
+        _log.debug("Genes table %s", genes_table)
+        gg_common_prot = self.df.join(
+            genes_table, left_on="Protein Name", right_on="COMMON-NAME"
+        ).select(pl.col("Gene Name"), pgdb_gene_id1=pl.col("UNIQUE-ID"))
+        gg_common_gene = self.df.join(
+            genes_table, left_on="Gene Name", right_on="COMMON-NAME"
+        ).select(pl.col("Gene Name"), pgdb_gene_id2=pl.col("UNIQUE-ID"))
 
-        self.df = self.df.join(pg_ids, on="Gene Name", how="left")
+        gg_ids = pl.concat([gg_common_prot, gg_common_gene], how="align")
+        gg_ids = gg_ids.select(
+            pl.col("Gene Name"),
+            pl.coalesce(
+                (
+                    pl.col("pgdb_gene_id1"),
+                    pl.col("pgdb_gene_id2"),
+                )
+            ).alias("pgdb_gene_id"),
+        )
+        if len(gg_ids.filter(pl.col("pgdb_gene_id").is_not_null())) > 0:
+            self.df = self.df.join(gg_ids, on="Gene Name", how="left")
+            return
+        _log.error("Could not map gene IDs to protein IDs %s", gg_ids)
+        raise Exception("Cannot map PGDB Gene IDs to IDs in GLOF file.")
 
     @property
     def map_gene(self) -> set[str]:

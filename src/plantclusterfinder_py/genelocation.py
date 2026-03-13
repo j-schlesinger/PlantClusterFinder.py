@@ -251,6 +251,19 @@ class GeneLoc(BaseModel):
                 + " in your input files.\n",
             )
         self._data = gene_location
+        if self.data.filter(pl.col("pgdb_gene_id").is_not_null()).height == 0:
+            _log.error("PGDB Conversion Data: %s", conversion.df.head())
+            _log.error(
+                "mapped PGDB Conversion Data: %s",
+                conversion.df.filter(pl.col("pgdb_gene_id").is_not_null()).head(),
+            )
+            _log.error(
+                "Gene Location Gene, Protein, and Transcript columns",
+                gene_location.select(
+                    pl.col(["Gene Name", "Protein Name", "Transcript Name"])
+                ).head(),
+            )
+            raise ValueError("PGDB Gene IDs could not be mapped to Gene Location")
         self.is_converted = True
 
     def __repr__(self) -> str:
@@ -297,7 +310,6 @@ class GeneLoc(BaseModel):
 
     def remove_non_protein_fasta_gene_locations(
         self,
-        conversion: Conversion,
         protein_ids: list[str] | None,
     ) -> dict[Any, Any]:
         """Uses the protein fasta file to search for genes.
@@ -308,7 +320,6 @@ class GeneLoc(BaseModel):
         Args:
             GeneLocation: DataFrame about the gene location information,
                             generated in PlantClusterFinder function.
-            conversion: Conversion object between genes, transcripts, and proteins
             protein_ids: A cell array of all protein-IDs that are stored in the
                         protein fasta file.
 
@@ -317,8 +328,8 @@ class GeneLoc(BaseModel):
                     conversion file.
         """
         if not self.is_converted:
-            _log.warning("Implicitly requested adding conversion to Gene Location")
-            self.add_conversion_columns(conversion)
+            _log.error("Implicitly requested adding conversion to Gene Location")
+            raise ValueError("Cannot remove non-protein genes from unconverted Gene Location")
 
         original_gene_count = self.data.height
         if protein_ids is None or len(protein_ids) == 0:
