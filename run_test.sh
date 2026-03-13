@@ -6,6 +6,7 @@ rm ./Outputs/csubellipsoidea_Gene_v2_0.txt 2>/dev/null
 #   '-glof' './csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt'\
 #   '-gtpf' './csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt'\
 uv run python -m plantclusterfinder_py\
+   '-r' 'Csubellipsoidea_Test_Run'\
    '--GenesDat_GeneInfo' 'ACCESSION-1'\
    '-md'\
    "Amines and Polyamines Metabolism" "Amino Acids Metabolism"\

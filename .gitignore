@@ -1,11 +1,21 @@
 *.log
 *.blast*
 *.MCL*
+*.dmnd
+*.faa
+*.tsv
+*.csv
+*_GAPOutput*
+.harper*
+*.bak
+*.fai
 
 __pycache__/
 *.py[cod]
 *.$py.class
 *,cover
+.coverage
+coverage.json
 
 .Python
 build/

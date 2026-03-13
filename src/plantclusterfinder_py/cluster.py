@@ -256,6 +256,7 @@ def annotate_sequencing_gaps(
     )
     _log.debug("Using gap output file %s", gap_output_file)
     if overwrite_sequence_gap_info_file or not gap_output_file.exists():
+        _log.debug("Re-generating gap output file")
         gap_output_file = get_sequencing_gaps(
             nucleotide_fasta_filename,
             parallelize,

@@ -10,6 +10,7 @@ import sys
 import time
 from argparse import ArgumentParser, RawTextHelpFormatter
 from pathlib import Path
+from uuid import uuid4
 
 from plantclusterfinder_py.cluster import (
     annotate_sequencing_gaps,
@@ -29,6 +30,9 @@ from plantclusterfinder_py.cluster import (
 from plantclusterfinder_py.cluster_datatypes import Conversion
 from plantclusterfinder_py.genelocation import GeneLoc
 from plantclusterfinder_py.parse_input import extract_genes_from_gff_and_fasta
+from plantclusterfinder_py.plugin_arch.context import RunContext
+from plantclusterfinder_py.plugin_arch.enzyme_stats import EnzymeStatsPlugin
+from plantclusterfinder_py.plugin_arch.manager import PluginManager
 
 LOG_FORMAT = "{asctime} | {levelname:<8} | {name} : {message}"
 
@@ -37,8 +41,8 @@ def generate_gene_location(
     gene_location_filename: Path,
     dna_unmasked_ok: bool,
     conversion: Conversion,
-    remove_non_protein_locations: bool,
-    gene_to_mcl_map,
+    # remove_non_protein_locations: bool,
+    # gene_to_mcl_map,
 ) -> GeneLoc:
     """Generate GeneLoc object from source files.
 
@@ -63,7 +67,7 @@ def generate_gene_location(
         log.debug("Attribute %d: %s", i, attribute)
 
     # Remove protein or transcript information
-    log.debug("Remove transcript information")
+    log.debug("Add conversion column to genes")
     gene_location.add_conversion_columns(
         conversion,
     )
@@ -74,14 +78,6 @@ def generate_gene_location(
     log.debug("Sort genes on the chromosomes")
     gene_location.sort_genes()
 
-    # If chosen, remove gene position information about genes that are
-    # not present in the protein FASTA file.
-    if remove_non_protein_locations:
-        log.debug("Remove non-protein coding genes in gene locations.")
-        _ = gene_location.remove_non_protein_fasta_gene_locations(
-            conversion,
-            gene_to_mcl_map.Protein_IDs,
-        )
     return gene_location
 
 
@@ -158,6 +154,14 @@ def main(argv: list[str] | None = None) -> None:
         formatter_class=RawTextHelpFormatter,
     )
     # Mandatory inputs: all files need full path, order does not matter.
+    parser.add_argument(
+        "--RunName",
+        "-r",
+        required=True,
+        type=str,
+        help="""Name of run of PlantClusterFinder. Helpful for
+        identifying execution across different organisms/samples""",
+    )
     parser.add_argument(
         "--ReactionMetabolicDomainFilename",
         "-rmdf",
@@ -694,9 +698,11 @@ def main(argv: list[str] | None = None) -> None:
     rerun_blastp = not args.NoRerunBlastP
     use_diamond = not args.use_ncbi_blast
     run_info_file = args.RunInfoFile
+    run_name = args.RunName
+    uniq_run_name = run_name + str(uuid4())
 
     run_start_time = time.time()
-    run_info_str = f"""PlantClusterFinder.py Execution; Start Time: {int(run_start_time)}
+    run_info_str = f"""PlantClusterFinder.py Execution {run_name}; Start Time: {int(run_start_time)}
 --------------------------------------
 Files
     Genome FASTA Filename: {dna_fasta_filename}
@@ -853,8 +859,15 @@ Technical Parameters:
         genes_data_gene_info,
         pgdb_ids_to_map,
     )
+    # Part 6: Read in Gene Location File
+    log.info("PART START: Read in gene position file")
+    gene_location = generate_gene_location(
+        gene_location_filename,
+        dna_unmasked_ok,
+        conversion,
+    )
 
-    # Part 6: Create MCL clustering mapped to mapping genes
+    # Part 7: Create MCL clustering mapped to mapping genes
     if not precomputed_mcl_cluster_file:
         log.info(
             "PART START: Create MCL clustering based on protein file"
@@ -879,18 +892,18 @@ Technical Parameters:
             remove_non_protein_locations,
         )
 
-    # Part 7: Read in Gene Position File: Create GeneLoc object
-    log.info("PART START: Read in gene position file")
-    gene_location = generate_gene_location(
-        gene_location_filename,
-        dna_unmasked_ok,
-        conversion,
-        remove_non_protein_locations,
-        gene_to_mcl_map,
-    )
+    # Part 8: Read in Gene Position File: Create GeneLoc object
+    # If chosen, remove gene position information about genes that are
+    # not present in the protein FASTA file.
+    if remove_non_protein_locations:
+        # returns mapping between gene IDs and conversion file, which we don't need
+        log.debug("Remove non-protein coding genes in gene locations.")
+        _ = gene_location.remove_non_protein_fasta_gene_locations(
+            gene_to_mcl_map.Protein_IDs,
+        )
     unique_chromosome_names = gene_location.consolidate_gene_info()
 
-    # Part 8: Annotate gene location with Enzymes (use Gene-protein mapping)
+    # Part 9: Annotate gene location with Enzymes (use Gene-protein mapping)
     log.info("PART START: Annotate gene location file with enzyme information")
     map_pgdb_genes_to_enzymes = gene_location.annotate_enzyme_info(
         map_genes_to_pgdb_genes,
@@ -901,7 +914,7 @@ Technical Parameters:
     if enzyme_gene_count == 0:
         raise Exception("No genes mapped to enzymes. Clusters cannot be determined")
 
-    # % Compute LD information
+    # Part 10: Compute LD information
     log.info("PART START: Compute local gene duplication per gene location")
     gene_location.compute_local_duplication(
         gene_to_mcl_map,
@@ -909,11 +922,11 @@ Technical Parameters:
         local_duplication_range_genes,
     )
 
-    # % Get places on genome that do not have genes encoded:
+    # Part 11: Get places on genome that do not have genes encoded:
     log.info("PART START: Find intergenic regions")
     intergenic_regions = gene_location.find_intergenic_regions()
 
-    # % Calculate percentile of gene size that should yield hypo genes
+    # Part 12: Calculate percentile of gene size that should yield hypo genes
     log.info(
         "PART START: Calculate size of sequence gap that should be populated by hypothetical genes"
     )
@@ -921,7 +934,7 @@ Technical Parameters:
         gene_location, hypothetical_gene_percentile
     )
 
-    # % Get sequencing gaps
+    # Part 13: Get sequencing gaps
     log.info("PART START: Identify sequencing gaps (bases encoded by N)")
     sequencing_gaps = annotate_sequencing_gaps(
         dna_fasta_filename,
@@ -932,7 +945,7 @@ Technical Parameters:
         overwrite_sequence_gap_info_file=overwrite_sequence_gaps_information_file,
     )
 
-    # % Introduce hard breaks (split chromosomes)
+    # Part 14: Introduce hard breaks (split chromosomes)
     log.info("PART START: Introduce Hard Breaks")
     if maximum_sequence_gap_size is not None:
         log.info(
@@ -1027,6 +1040,20 @@ Technical Parameters:
         gene_location.write_parquet(gene_location_output_filename)
     run_end_time = time.time()
     log.info("Execution completed in %f seconds.", run_end_time - run_start_time)
+    plugin_start_time = time.time()
+    log.info("Plugin execution started")
+    plug_context = RunContext(
+        run_name=uniq_run_name,
+        config={},
+        genome_file=dna_fasta_filename,
+        annotation_file=annotation_gff3_filename,
+        output_dir=cluster_output_filename.parent,
+    )
+    plugman = PluginManager()
+    plugman.register(EnzymeStatsPlugin())
+    plugman.run(gene_location.data, plug_context)
+    plugin_end_time = time.time()
+    log.info("Execution completed in %f seconds.", plugin_end_time - plugin_start_time)
     listener.stop()
 
     if __name__ == "__main__":

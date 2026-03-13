@@ -4,6 +4,7 @@ mkdir -p Outputs
 rm ./Outputs/Athaliana_Clust_v1_3.txt 2>/dev/null
 rm ./Outputs/Athaliana_Gene_v1_3.txt 2>/dev/null
 uv run python -m plantclusterfinder_py\
+   '-r' 'Arabidopsis_TestRun'\
    '--GenesDat_GeneInfo' 'PRODUCT'\
    '-md'\
    "Amines and Polyamines Metabolism" "Amino Acids Metabolism"\

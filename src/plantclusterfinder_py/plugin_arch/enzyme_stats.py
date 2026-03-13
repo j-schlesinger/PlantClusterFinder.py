@@ -4,21 +4,31 @@ This plugin demonstrates how to consume PlantClusterFinder results
 and produce a derived analysis without modifying core pipeline behavior.
 """
 
-from pathlib import Path
+import logging
 
-import pluggy
 import polars as pl
 
-hookimpl = pluggy.HookimplMarker("plantclusterfinder")
+from plantclusterfinder_py.plugin_arch.context import ReturnContext, RunContext
+from plantclusterfinder_py.plugin_arch.hookspecs import hookimpl
+
+_log = logging.getLogger(__name__)
 
 
 class EnzymeStatsPlugin:
     """Enzyme Statistics: calculates enzyme stats from results."""
 
     @hookimpl
-    def process_results(self, results: pl.DataFrame, context) -> dict[str, Path]:
+    def process_results(self, results: pl.DataFrame, context: RunContext) -> ReturnContext:
         """Find the number of ___ sharing an enzyme."""
-        stats = results.group_by("enzyme").count().sort("count", descending=True)
-        out = context.output_dir / "enzyme_stats.csv"
-        stats.write_csv(out)
-        return {"enzyme_stats": out}
+        stats = (
+            results.group_by("EC-NUMBER")
+            .count()
+            .select(pl.col(["EC-NUMBER", "count"]))
+            .sort("count", descending=True)
+        )
+        out = context.output_dir / f"enzyme_stats.{context.run_name}.csv"
+        try:
+            stats.write_csv(out)
+        except pl.exceptions.ComputeError:
+            _log.error("Cannot write stats DF to CSV: %s", stats)
+        return ReturnContext(plugin_name="enzyme_stats", output_filename=out)
