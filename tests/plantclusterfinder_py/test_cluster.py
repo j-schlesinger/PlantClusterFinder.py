@@ -11,7 +11,6 @@ from tests.plantclusterfinder_py.assets import (
     GAPANALYSIS_EXPECTED_RESULTS,
     GENE_COUNT,
     GENOME_FASTA_PATH,
-    GTPF_FILE_PATH,
     MCL_EXPECTED_RESULTS_PATH,
     PGDB_DIR,
     PGDB_GENE_COUNT,
@@ -24,20 +23,6 @@ _log = logging.getLogger(__name__)
 
 TOP_PERCENT = 5
 # Part 1
-
-
-def test_read_in_conversion_file():
-    """Test read_in_conversion_file.
-
-    The conversion file defines the genes, proteins, and reactions
-    that many downstream processes rely on.
-    """
-    from plantclusterfinder_py.cluster import read_in_conversion_file
-
-    conversion = read_in_conversion_file(GTPF_FILE_PATH)
-    assert len(conversion.map_gene) == GENE_COUNT
-    assert len(conversion.map_transcript) == GENE_COUNT
-    assert len(conversion.map_protein) == GENE_COUNT
 
 
 # Part 2 -- in test_pgdb_utils
@@ -137,6 +122,12 @@ def test_read_mcl_clustering_file(conversion_obj):
     assert len(mcl_cluster_data.Gene2MCLClusters) == GENE_COUNT - 2
     assert isinstance(mcl_cluster_data.Protein_IDs, list)
     assert len(mcl_cluster_data.Protein_IDs) == GENE_COUNT - 2
+    assert mcl_cluster_data.MCL_Clusters.schema == {
+        "ID": pl.String,
+        "Transcript_IDs": pl.List(pl.String),
+        "Gene_Names": pl.List(pl.String),
+        "Cluster_Size": pl.Int64,
+    }
 
 
 def test_get_mcl_clustering(conversion_obj):
@@ -639,12 +630,12 @@ def test_write_gene_output(
 def test_write_cluster_output(genelocation_transformed_obj, tmp_path):
     from plantclusterfinder_py.cluster import (
         perform_clustering,
-        read_in_conversion_file,
         read_mcl_clustering_file,
         write_cluster_output,
     )
+    from plantclusterfinder_py.conversion import Conversion
 
-    conversion = read_in_conversion_file(
+    conversion = Conversion.read_in_conversion_file(
         Path("./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt")
     )
     write_cluster_start_time = int(time.time())

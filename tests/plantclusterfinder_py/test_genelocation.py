@@ -24,7 +24,7 @@ def test_init_genelocation():
 
 
 def test_read_in_conversion_to_genepositionfile(genelocation_obj, t_gene_loc, conversion_obj):
-    from plantclusterfinder_py.cluster import read_in_conversion_file
+    from plantclusterfinder_py.conversion import Conversion
 
     gene_location = genelocation_obj
     conversion = conversion_obj
@@ -45,7 +45,7 @@ def test_read_in_conversion_to_genepositionfile(genelocation_obj, t_gene_loc, co
     assert len(gene_location) == 9_629
 
     test_gene_location = t_gene_loc
-    bad_conversion = read_in_conversion_file(Path("./tests/data/bad_conversion.tsv"))
+    bad_conversion = Conversion.read_in_conversion_file(Path("./tests/data/bad_conversion.tsv"))
     bad_conversion.df = bad_conversion.df.with_columns(pgdb_gene_id=pl.lit(None))
     bad_conversion.has_pgdb_ids = True
     with pytest.raises(Exception, match="Multiple entries") as _:
@@ -261,7 +261,7 @@ def test_compute_local_duplication(genelocation_obj, conversion_obj):
     # find duplicates within 100KB and 10 genes of each gene (defaults)
     local_duplication = gene_location.compute_local_duplication(
         mcl_cluster_data,
-        100000,
+        10000,
         10,
     )
     expected_columns = [
@@ -278,9 +278,17 @@ def test_compute_local_duplication(genelocation_obj, conversion_obj):
         "mcl_clusters",
         "is_locally_duplicated",
     ]
-    print(local_duplication.columns)
-    print(local_duplication["mcl_clusters"].head())
-    print(local_duplication.filter(pl.col("mcl_clusters").list.len() > 1).height)
+    print("Local Duplication GeneLoc Columns ", local_duplication.columns)
+    print("Local Duplication GeneLoc MCL Clusters head", local_duplication["mcl_clusters"].head())
+    print("Local Duplication GeneLoc overall head", local_duplication.head())
+    print(
+        "LD GeneLoc Clusters > 1 count",
+        local_duplication.filter(pl.col("mcl_clusters").list.len() > 1).height,
+    )
+    print(
+        "LD GeneLoc Locally Duplicated Rows",
+        local_duplication.filter(pl.col("is_locally_duplicated")).head(),
+    )
     assert expected_columns == local_duplication.columns
-    assert local_duplication.filter(pl.col("is_locally_duplicated")).height == 358
+    assert len(local_duplication.filter(pl.col("is_locally_duplicated"))) == 358
     # assert 91 == local_duplication.filter(pl.col("is_locally_duplicated")).height

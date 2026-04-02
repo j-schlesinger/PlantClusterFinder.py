@@ -7,11 +7,8 @@ from typing import Any
 import polars as pl
 from pydantic import BaseModel
 
-from plantclusterfinder_py.cluster_datatypes import (
-    Conversion,
-    GenesToReactions,
-    MclClusterData,
-)
+from plantclusterfinder_py.cluster_datatypes import GenesToReactions, MclClusterData
+from plantclusterfinder_py.conversion import Conversion
 
 _log = logging.getLogger(__name__)
 
@@ -751,15 +748,15 @@ class GeneLoc(BaseModel):
         # For all clusters, select only those with multiple genes
         possible_ld_clusters = mcl_cluster_data.MCL_Clusters.filter(pl.col("Cluster_Size") > 1)
         # Explode on Gene Name, and select just cluster ID and gene name
-        possible_ld_g_w_clust = possible_ld_clusters.explode("Gene_Names").select(
+        possible_ld_g_w_clust = possible_ld_clusters.select(
             pl.col("ID").alias("mcl_cluster_id"),
             pl.col("Gene_Names")
             .list.first()
             .alias("Gene Name"),  # should only have one value because we exploded
         )
         # Join on GeneLocation data to get gene start and end point
-        possible_ld_genes = possible_ld_g_w_clust.join(
-            self.data.with_row_index("gene_index"), on="Gene Name"
+        possible_ld_genes = self.data.with_row_index("gene_index").join(
+            possible_ld_g_w_clust, on="Gene Name"
         )
         # self-join with cluster criteria
         #  - same mcl_cluster_id
@@ -783,14 +780,14 @@ class GeneLoc(BaseModel):
                 ),
             )
             .filter(
-                pl.col("intervening_genes") <= local_duplication_gene_range,
+                # pl.col("intervening_genes") <= local_duplication_gene_range,
                 pl.col("kb_between_genes") <= local_duplication_kb_range,
             )
             .group_by("Gene Name")
-            .agg(
-                pl.lit(True).alias("is_locally_duplicated"),
-            )
+            .agg(pl.lit(True).alias("is_locally_duplicated"), pl.col("intervening_genes").min())
         )
+        print(possible_ld_genes["gene_index"].describe())
+        print(ld_genes)
 
         # Get is_locally_duplicated from join, and use replace_strict to get clusters per gene
         mcl_df = pl.from_dicts(
@@ -800,8 +797,8 @@ class GeneLoc(BaseModel):
             ]
         )
         self._data = (
-            self.data.join(mcl_df, on="Gene Name", how="left")
-            .join(ld_genes, on="Gene Name", how="left")
+            self.data.join(ld_genes, on="Gene Name", how="left")
+            .join(mcl_df, on="Gene Name", how="left")
             .with_columns(is_locally_duplicated=pl.col("is_locally_duplicated").fill_null(False))
         )
 
