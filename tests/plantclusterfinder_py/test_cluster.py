@@ -296,6 +296,7 @@ def test_compute_background():
     ).filter(  # filtering out background cases not seen in data
         (pl.col("window_size") <= 4) | (pl.col("window_size") != pl.col("enzyme_count"))
     )
+    print(expected_background)
     background = compute_background(cluster, gene_location, pl.DataFrame())
 
     assert expected_background.height == background.height
@@ -307,11 +308,13 @@ def test_compute_background():
         .agg(
             pl.sum("winzyme_occurrence"),
             pl.sum("winzyme_frequency"),
-            pl.last("window_occurrence"),
+            pl.min("window_occurrence"),
         )
         .iter_rows()
     ):
-        (size, winzyme_occurrence_sum, _, total_window_occurrence) = window
+        (size, winzyme_occurrence_sum, _, total_window_occurrence) = (
+            window  # not testing winzyme frequency
+        )
         print(size, total_window_occurrence)
         assert winzyme_occurrence_sum == total_window_occurrence
         assert total_window_occurrence == 192 - size * 6
