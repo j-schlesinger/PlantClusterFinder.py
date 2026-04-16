@@ -2,6 +2,7 @@ from itertools import zip_longest
 from pathlib import Path
 
 import polars as pl
+import pytest
 
 from tests.plantclusterfinder_py.assets import (
     GAPANALYSIS_EXPECTED_RESULTS,
@@ -41,6 +42,7 @@ def test_char_run_search():
     assert test_start_end == [(1, 7), (9, 6), (22, 1), (24, 3)]
 
 
+@pytest.mark.benchmark
 def test_read_fasta():
     from plantclusterfinder_py.get_positions_of_gap import read_fasta
 
@@ -54,6 +56,7 @@ def test_read_fasta():
     assert len(seq[">Test Sequence 2"]) == 80 * 16
 
 
+@pytest.mark.benchmark
 def test_get_positions_of_gap(tmp_path):
     from plantclusterfinder_py.get_positions_of_gap import get_positions_of_gap
 
@@ -77,6 +80,7 @@ def test_get_positions_of_gap(tmp_path):
     output_path2.unlink()
 
 
+@pytest.mark.benchmark
 def test_get_positions_of_gap_against_expected(tmp_path):
     from plantclusterfinder_py.get_positions_of_gap import get_positions_of_gap
 

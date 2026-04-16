@@ -30,6 +30,7 @@ TOP_PERCENT = 5
 # Part 3 match PGDB flat in test_pgdb_utils
 
 
+@pytest.mark.benchmark
 def test_map_pgdb_reactions_to_genes(conversion_obj):
     from plantclusterfinder_py.cluster import map_pgdb_reactions_to_genes
 
@@ -52,6 +53,7 @@ def test_get_metabolic_domains():
     assert len(metabolic_domains.Rxn2MetaDom) == 3_113
 
 
+@pytest.mark.benchmark
 def test_match_pgdb_to_md(conversion_obj):
     from plantclusterfinder_py.cluster import (
         get_metabolic_domains,
@@ -69,6 +71,7 @@ def test_match_pgdb_to_md(conversion_obj):
 
 
 # part 4
+@pytest.mark.benchmark
 def test_label_reactions_with_sig_and_tail():
     from plantclusterfinder_py.cluster import label_reactions_with_sig_and_tail
     from plantclusterfinder_py.pgdb_utils import read_in_pgdb_flat
@@ -191,6 +194,7 @@ def test_analyze_plant_cluster_gap_file():
     assert str(test_gap_output) + "_count.txt" == filename  # TEST INCOMPLETE
 
 
+@pytest.mark.benchmark
 def test_annotate_sequencing_gaps(genelocation_obj):
     """Tests annotate_sequencing_gaps and get_sequencing_gaps."""
     from plantclusterfinder_py.cluster import annotate_sequencing_gaps
@@ -223,6 +227,7 @@ def test_annotate_sequencing_gaps(genelocation_obj):
 
 
 # part 13
+@pytest.mark.benchmark
 def test_introduce_hypo_genes(genelocation_obj):
     from plantclusterfinder_py.cluster import introduce_hypo_genes
 
@@ -251,6 +256,7 @@ def test_introduce_hypo_genes(genelocation_obj):
 
 
 # Part 16
+@pytest.mark.benchmark
 def test_compute_background():
     """Used by perform_clustering."""
     from plantclusterfinder_py.cluster import compute_background
@@ -317,6 +323,7 @@ def test_compute_background():
         )
 
 
+@pytest.mark.benchmark
 def test_perform_clustering(genelocation_transformed_obj, expected_mcl_cluster_obj):
     from plantclusterfinder_py.cluster import perform_clustering
 
@@ -335,9 +342,7 @@ def test_perform_clustering(genelocation_transformed_obj, expected_mcl_cluster_o
     clusters.perform_cutoff(TOP_PERCENT)
     assert clusters.FinalStepSize == 3
     assert clusters.MaxStepSize == 5
-    # assert 86 == clusters.ClusterMeta.height # This was the old test value
-    # assert 482 == clusters.ClusterBackground.height
-    assert clusters.ClusterMeta.height == 1192
+    assert clusters.ClusterMeta.height == 1345  # 1192 adjusted for corrected LD logic
     assert clusters.ClusterBackground.height == 830
 
 
@@ -666,5 +671,5 @@ def test_write_cluster_output(genelocation_transformed_obj, tmp_path):
     write_cluster_output(Path(simple_cluster_file.name), gene_location, clusters, "simple")
     # verify file was written
     simple_cluster_df = pl.read_csv(simple_cluster_file.name, separator="\t")
-    assert simple_cluster_df.height == 109
+    assert simple_cluster_df.height == 132  # 109 adjusted for corrected LD logic
     # test "verbose" output

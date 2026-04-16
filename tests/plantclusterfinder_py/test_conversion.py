@@ -1,4 +1,5 @@
 import polars as pl
+import pytest
 
 from tests.plantclusterfinder_py.assets import GENE_COUNT, GTPF_FILE_PATH, PGDB_DIR
 
@@ -17,6 +18,7 @@ def test_read_in_conversion_file():
     assert len(conversion.map_protein) == GENE_COUNT
 
 
+@pytest.mark.benchmark
 def test_add_pgdb_id_column():
     """Test add_pgdb_id_column from Conversion."""
     from plantclusterfinder_py.conversion import Conversion

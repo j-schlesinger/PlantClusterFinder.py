@@ -21,9 +21,10 @@ class EnzymeStatsPlugin:
     def process_results(self, results: pl.DataFrame, context: RunContext) -> ReturnContext:
         """Find the number of ___ sharing an enzyme."""
         stats = (
-            results.group_by("EC-NUMBER")
-            .count()
-            .select(pl.col(["EC-NUMBER", "count"]))
+            results.explode("EC-NUMBER")
+            .group_by("EC-NUMBER")
+            .agg(count=pl.len())
+            # .select(pl.col("EC-NUMBER"), pl.col("len").alias("count"))
             .sort("count", descending=True)
         )
         out = context.output_dir / f"enzyme_stats.{context.run_name}.csv"

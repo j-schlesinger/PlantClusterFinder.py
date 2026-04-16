@@ -50,6 +50,7 @@ dev = [
     "pytest-cov>=7.0.0",
     "py-spy>=0.4.1",
     "gff3tool>=2.1.0",
+    "pytest-codspeed>=4.4.0",
 ]
 
 [tool.ruff]

@@ -1,8 +1,10 @@
 import time
 
 import polars as pl
+import pytest
 
 
+@pytest.mark.benchmark
 def test_run_main(tmp_path):
     from plantclusterfinder_py.main import main
 
@@ -69,4 +71,4 @@ def test_run_main(tmp_path):
     genes_file = pl.read_csv(gene_output_temp_file.name, separator="\t")
     assert len(genes_file) == 9629
     clusters_file = pl.read_csv(cluster_output_temp_file.name, separator="\t")
-    assert len(clusters_file) == 134
+    assert len(clusters_file) == 123

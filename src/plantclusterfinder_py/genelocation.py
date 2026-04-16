@@ -743,8 +743,11 @@ class GeneLoc(BaseModel):
 
         if "is_locally_duplicated" in self.data.columns:
             _log.warning("Local duplication already exists, replacing with new inputs")
-            self._data.drop("is_locally_duplicated")
-            self._data.drop("mcl_clusters")
+            self._data = (
+                self.data.drop("is_locally_duplicated")
+                .drop("mcl_clusters")
+                .drop("intervening_genes")
+            )
         # For all clusters, select only those with multiple genes
         possible_ld_clusters = mcl_cluster_data.MCL_Clusters.filter(pl.col("Cluster_Size") > 1)
         # Explode on Gene Name, and select just cluster ID and gene name
@@ -773,7 +776,9 @@ class GeneLoc(BaseModel):
                 suffix="_right",
             )
             .with_columns(
-                intervening_genes=(pl.col("gene_index") - pl.col("gene_index_right")).abs(),
+                intervening_genes=(
+                    pl.col("gene_index").cast(pl.Int32) - pl.col("gene_index_right").cast(pl.Int32)
+                ).abs(),
                 kb_between_genes=pl.min_horizontal(
                     (pl.col("Gene Start (bp)") - pl.col("Gene End (bp)_right")).abs(),
                     (pl.col("Gene End (bp)") - pl.col("Gene Start (bp)_right")).abs(),
@@ -786,8 +791,6 @@ class GeneLoc(BaseModel):
             .group_by("Gene Name")
             .agg(pl.lit(True).alias("is_locally_duplicated"), pl.col("intervening_genes").min())
         )
-        print(possible_ld_genes["gene_index"].describe())
-        print(ld_genes)
 
         # Get is_locally_duplicated from join, and use replace_strict to get clusters per gene
         mcl_df = pl.from_dicts(
@@ -809,7 +812,7 @@ class GeneLoc(BaseModel):
         self.data.write_parquet(filename)
 
 
-# Example usage
+# Example usage, main function not recommended
 if __name__ == "__main__":
     gene_loc = GeneLoc(
         file_path=Path("./csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt"),
