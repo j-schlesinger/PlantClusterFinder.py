@@ -1,4 +1,7 @@
 # PlantClusterFinder.py (version 2.0)
+
+[![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://codspeed.io/j-schlesinger/PlantClusterFinder.py?utm_source=badge)
+
 ## Installation and Usage
 
 ## Developing PlantClusterFinder.py

@@ -52,6 +52,7 @@ dev = [
     "gff3tool>=2.1.0",
     "pyperf>=2.10.0",
     "psutil>=7.2.2",
+    "pytest-codspeed>=4.4.0",
 ]
 
 [tool.ruff]
