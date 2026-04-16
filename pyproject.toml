@@ -50,6 +50,8 @@ dev = [
     "pytest-cov>=7.0.0",
     "py-spy>=0.4.1",
     "gff3tool>=2.1.0",
+    "pyperf>=2.10.0",
+    "psutil>=7.2.2",
     "pytest-codspeed>=4.4.0",
 ]
 
