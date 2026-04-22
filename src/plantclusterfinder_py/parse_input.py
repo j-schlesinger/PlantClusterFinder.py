@@ -7,7 +7,7 @@ import logging
 import re
 from collections import deque
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import gffutils
 import polars as pl
@@ -166,6 +166,9 @@ def extract_genes_gffutils(
                 continue
             if longest_child is None or len(child) > len(longest_child):
                 longest_child = child
+        cds_data: deque[gffutils.Feature] = deque()
+        for child in gff3_data.children(gene.id, featuretype="CDS"):
+            cds_data.append(child)
         if longest_child is None:
             _log.debug("no child for %s", gene_name)
             no_children += 1
@@ -210,7 +213,7 @@ def extract_genes_gffutils(
             raise e
         aafasta.append(
             SeqRecord(
-                Seq(longest_child.sequence(str(fasta_file))).translate(),
+                Seq("".join(cds.sequence(str(fasta_file)) for cds in cds_data)).translate(),
                 id=longest_child_name,
             )
         )
@@ -261,7 +264,9 @@ def extract_genes_bcbio(
     no_name = 0
     no_children = 0
     with gff3_file.open() as gff_fh:
+        # go over every macro feature (chromosome or scaffold)
         for macro_feature in parse_gff(gff_fh, base_dict=seq_fasta_dict):
+            # go over every gene or gene-like feature
             for gene in macro_feature.features:
                 if gene_name_column not in gene.qualifiers:
                     _log.warning(
@@ -308,7 +313,9 @@ def extract_genes_bcbio(
                         longest_child_name = "".join(re_search.groups())
                     else:
                         longest_child_name = re_search.group()
-                aafasta.append(SeqRecord(gene.translate(macro_feature.seq), id=longest_child_name))
+                aafasta.append(
+                    SeqRecord(gene.translate(macro_feature.seq, cds=False), id=longest_child_name)
+                )
                 gtpf.append(
                     (
                         gene_name,

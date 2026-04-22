@@ -13,11 +13,11 @@ import polars as pl
 from plantclusterfinder_py.cluster_datatypes import (
     AnnotatedMetabolicDomains,
     Clusters,
-    Conversion,
     GenesToReactions,
     MclClusterData,
     ReactionLabels,
 )
+from plantclusterfinder_py.conversion import Conversion
 from plantclusterfinder_py.genelocation import GeneLoc
 from plantclusterfinder_py.get_positions_of_gap import get_positions_of_gap
 from plantclusterfinder_py.pgdb_utils import read_in_pgdb_flat
@@ -493,10 +493,11 @@ def read_mcl_clustering_file(
 
     proteins_list = list(clusters_by_p.keys())
     _log.debug("Found %d clusters across %d proteins", len(clusters_by_p), len(proteins_list))
+    mcl_data = pl.DataFrame(mcl_cluster_data).explode("Gene_Names")
 
     return MclClusterData(
         Gene2MCLClusters=clusters_by_g,
-        MCL_Clusters=pl.DataFrame(mcl_cluster_data),
+        MCL_Clusters=mcl_data,
         Protein_IDs=proteins_list,
     )
 
@@ -895,67 +896,6 @@ def map_pgdb_reactions_to_genes(  # noqa: D417
     _log.debug("Genes to Reactions DF %s", protein_enz_reaction_df)
 
     return GenesToReactions(GenesAll=genes_all, ReactionsAll=reactions_all, Gene2Rxn=gene2rxn)
-
-
-def read_in_conversion_file(
-    gene_transcript_protein_mapping_filename: Path,
-) -> Conversion:
-    """---------------------------------------------------------------------------
-
-      Function that reads in the gene, transcript, and protein ID conversion
-      file and stores the IDs as unique lists and mapping between genes and
-      transcripts aswell as genes and proteins.
-
-    ---------------------------------------------------------------------------
-
-    Args:
-        gene_transcript_protein_mapping_filename: TSV file with a header describing
-                                             gene, transcript, and protein
-                                             identifier and then for all the
-                                             identfiers the listings (gene-ID,
-                                             transcript-ID, protein-ID).
-
-    Returns:
-        Conversion object containing the IDs from the conversion file
-    Raises
-
-    """
-    _log.debug("Reading in conversion file %s", gene_transcript_protein_mapping_filename)
-    conversion_data = pl.read_csv(
-        gene_transcript_protein_mapping_filename,
-        separator="\t",
-        schema_overrides=dict.fromkeys(["Gene Name", "Transcript Name", "Protein Name"], pl.String),
-    )
-    column_names = conversion_data.columns
-    conversion_len = len(conversion_data)
-    _log.debug("Read in conversion data, %d rows, columns are %s", conversion_len, column_names)
-    conversion = Conversion(df=conversion_data)
-    # Validate conversion before output
-    if len(conversion.map_gene_to_transcript) < len(conversion.map_gene):
-        _log.warning("Some Transcripts match multiple genes in the ID Conversion file")
-        transcript_multi = (
-            conversion_data.group_by(column_names[1])
-            .n_unique()
-            .filter(pl.col(column_names[0]) > 1)[column_names[1]]
-        )
-        for transcript in transcript_multi:
-            _log.warning("Please check the transcript %s", transcript)
-        _log.error("Please clean the protein ID file")
-    if len(conversion.map_gene_to_protein) < len(conversion.map_gene):
-        _log.warning("Some Proteins match multiple genes in the ID Conversion file")
-        prot_multi = (
-            conversion_data.group_by(column_names[2])
-            .n_unique()
-            .filter(pl.col(column_names[0]) > 1)[column_names[2]]
-        )
-        for prot in prot_multi:
-            _log.warning("Please check the protein %s", prot)
-        _log.error("Please clean the protein ID file")
-    _log.info(
-        "Number of Gene-ID to Transcript-ID mappings: %i", len(conversion.map_gene_to_transcript)
-    )
-    _log.info("Number of Gene-ID to Protein mappings: %i", len(conversion.map_gene_to_protein))
-    return conversion
 
 
 def match_pgdbs_to_mds(

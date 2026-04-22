@@ -16,11 +16,11 @@ def genelocation_obj():
 @pytest.fixture
 def conversion_obj():
     """Conversion Object."""
-    from plantclusterfinder_py.cluster import read_in_conversion_file
+    from plantclusterfinder_py.conversion import Conversion
 
     pgdb_dir = Path("./csubellipsoidea/pgdb/csubellipsoideacyc/1.0/data")
 
-    conversion = read_in_conversion_file(
+    conversion = Conversion.read_in_conversion_file(
         Path("./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt")
     )
     conversion.add_pgdb_id_column(pgdb_dir)
@@ -60,17 +60,17 @@ def genelocation_transformed_obj():
     from plantclusterfinder_py.cluster import (
         map_pgdb_gene_ids_to_conversion_file,
         map_pgdb_reactions_to_genes,
-        read_in_conversion_file,
         read_in_pgdb_flat,
         read_mcl_clustering_file,
     )
+    from plantclusterfinder_py.conversion import Conversion
     from plantclusterfinder_py.genelocation import GeneLoc
 
     pgdb_dir = Path("./csubellipsoidea/pgdb/csubellipsoideacyc/1.0/data")
     gene_location = GeneLoc(
         file_path=Path("csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt")
     )
-    conversion = read_in_conversion_file(
+    conversion = Conversion.read_in_conversion_file(
         Path("./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt")
     )
     conversion.add_pgdb_id_column(pgdb_dir)

@@ -24,7 +24,7 @@ def test_init_genelocation():
 
 
 def test_read_in_conversion_to_genepositionfile(genelocation_obj, t_gene_loc, conversion_obj):
-    from plantclusterfinder_py.cluster import read_in_conversion_file
+    from plantclusterfinder_py.conversion import Conversion
 
     gene_location = genelocation_obj
     conversion = conversion_obj
@@ -45,13 +45,14 @@ def test_read_in_conversion_to_genepositionfile(genelocation_obj, t_gene_loc, co
     assert len(gene_location) == 9_629
 
     test_gene_location = t_gene_loc
-    bad_conversion = read_in_conversion_file(Path("./tests/data/bad_conversion.tsv"))
+    bad_conversion = Conversion.read_in_conversion_file(Path("./tests/data/bad_conversion.tsv"))
     bad_conversion.df = bad_conversion.df.with_columns(pgdb_gene_id=pl.lit(None))
     bad_conversion.has_pgdb_ids = True
     with pytest.raises(Exception, match="Multiple entries") as _:
         test_gene_location.add_conversion_columns(bad_conversion)
 
 
+@pytest.mark.benchmark
 def test_consolidate_gene_info(genelocation_obj, t_gene_loc):
     gene_location = genelocation_obj
     gene_info = gene_location.consolidate_gene_info()
@@ -61,6 +62,7 @@ def test_consolidate_gene_info(genelocation_obj, t_gene_loc):
     assert test_gene_info == ["A"]
 
 
+@pytest.mark.benchmark
 def test_sort_genes(genelocation_obj, t_gene_loc):
     import polars as pl
 
@@ -78,6 +80,7 @@ def test_sort_genes(genelocation_obj, t_gene_loc):
     assert not sorted_genes.equals(unexpected_gene_order)
 
 
+@pytest.mark.benchmark
 def test_map_genelocation_to_conversion_file(genelocation_obj, conversion_obj):
     # Gene Location Test, possibly redundant (mapping takes place in remove_protein_transcript_info)
 
@@ -100,6 +103,7 @@ def test_map_genelocation_to_conversion_file(genelocation_obj, conversion_obj):
     assert len(biomg_g) == 9629
 
 
+@pytest.mark.benchmark
 def test_remove_non_protein_fasta_gene_locations(genelocation_obj, conversion_obj):
     conversion = conversion_obj
     gene_location = genelocation_obj
@@ -115,6 +119,7 @@ def test_remove_non_protein_fasta_gene_locations(genelocation_obj, conversion_ob
 
 
 # Part 9
+@pytest.mark.benchmark
 def test_find_intergenic_regions(genelocation_obj, t_gene_loc):
     import polars as pl
 
@@ -137,6 +142,7 @@ def test_find_intergenic_regions(genelocation_obj, t_gene_loc):
 
 
 # Part 14
+@pytest.mark.benchmark
 def test_annotate_enzyme_info(genelocation_obj, conversion_obj):
     from plantclusterfinder_py.cluster import (
         map_pgdb_gene_ids_to_conversion_file,
@@ -182,6 +188,7 @@ def test_annotate_enzyme_info(genelocation_obj, conversion_obj):
     assert len(list(filter(lambda x: x, genes_with_reactions.values()))) == 2053
 
 
+@pytest.mark.benchmark
 def test_introduce_hard_breaks(genelocation_obj):
     from plantclusterfinder_py.cluster import annotate_sequencing_gaps
 
@@ -245,6 +252,7 @@ def test_insert_genes(genelocation_obj):
     assert orig_gene_count + 500 == len(gene_location)
 
 
+@pytest.mark.benchmark
 def test_compute_local_duplication(genelocation_obj, conversion_obj):
     from plantclusterfinder_py.cluster import read_mcl_clustering_file
 
@@ -261,7 +269,7 @@ def test_compute_local_duplication(genelocation_obj, conversion_obj):
     # find duplicates within 100KB and 10 genes of each gene (defaults)
     local_duplication = gene_location.compute_local_duplication(
         mcl_cluster_data,
-        100000,
+        10000,
         10,
     )
     expected_columns = [
@@ -275,12 +283,24 @@ def test_compute_local_duplication(genelocation_obj, conversion_obj):
         "Protein Name",
         "pgdb_gene_id",
         # "neighbor_genes",
-        "mcl_clusters",
         "is_locally_duplicated",
+        "intervening_genes",
+        "mcl_clusters",
     ]
-    print(local_duplication.columns)
-    print(local_duplication["mcl_clusters"].head())
-    print(local_duplication.filter(pl.col("mcl_clusters").list.len() > 1).height)
+    print("Local Duplication GeneLoc Columns ", local_duplication.columns)
+    print("Local Duplication GeneLoc MCL Clusters head", local_duplication["mcl_clusters"].head())
+    print("Local Duplication GeneLoc overall head", local_duplication.head())
+    print(
+        "LD GeneLoc Clusters > 1 count",
+        local_duplication.filter(pl.col("mcl_clusters").list.len() > 1).height,
+    )
+    print(
+        "LD GeneLoc Locally Duplicated Rows",
+        local_duplication.filter(pl.col("is_locally_duplicated")).head(),
+    )
+    assert local_duplication.select(pl.col("intervening_genes").max())["intervening_genes"][0] < len(
+        local_duplication
+    )
     assert expected_columns == local_duplication.columns
-    assert local_duplication.filter(pl.col("is_locally_duplicated")).height == 358
+    assert len(local_duplication.filter(pl.col("is_locally_duplicated"))) == 995  # 358
     # assert 91 == local_duplication.filter(pl.col("is_locally_duplicated")).height

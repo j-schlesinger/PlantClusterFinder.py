@@ -41,11 +41,11 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1769311401,
-        "narHash": "sha256-yKup4ePeqOikVQrDsLDf7eQdgeicli+D6OLnbpxjqss=",
+        "lastModified": 1773972286,
+        "narHash": "sha256-8FX/h3Gj1KmjiX9UhaVc1smdWpslvXVYzcmYX9iPrII=",
         "owner": "j-schlesinger",
         "repo": "mcl_flake",
-        "rev": "d88373d443c2a48d8dc270418cc2b7975afa84f2",
+        "rev": "5d0edd832a011543bade0d42f19a55376696337b",
         "type": "github"
       },
       "original": {
@@ -72,11 +72,11 @@
     },
     "nixpkgs_2": {
       "locked": {
-        "lastModified": 1768564909,
-        "narHash": "sha256-Kell/SpJYVkHWMvnhqJz/8DqQg2b6PguxVWOuadbHCc=",
+        "lastModified": 1773821835,
+        "narHash": "sha256-TJ3lSQtW0E2JrznGVm8hOQGVpXjJyXY2guAxku2O9A4=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "e4bae1bd10c9c57b2cf517953ab70060a828ee6f",
+        "rev": "b40629efe5d6ec48dd1efba650c797ddbd39ace0",
         "type": "github"
       },
       "original": {
@@ -109,11 +109,11 @@
       },
       "locked": {
         "dir": "development/python",
-        "lastModified": 1768887843,
-        "narHash": "sha256-lNc5qmyl9o87Ud9fmwKs/hFywEAexQFE4fHvob3Cmas=",
+        "lastModified": 1773743726,
+        "narHash": "sha256-8S8Z42Eqzzuw8zRO3i/hmtqYi8E8/3IOLN+QkpMlAbQ=",
         "owner": "j-schlesinger",
         "repo": "nix-templates",
-        "rev": "c64462d5d6e1a1b806af928c32a0ea2f0ce6e286",
+        "rev": "69a0c750c34c4d7c9d4e051eb15da8255577c8ef",
         "type": "github"
       },
       "original": {

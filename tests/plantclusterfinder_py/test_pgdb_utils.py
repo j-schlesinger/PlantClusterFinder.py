@@ -21,6 +21,7 @@ def test_read_in_pgdb_flat():
     assert len(pubs_df) == 2872
 
 
+@pytest.mark.benchmark
 def test_match_pgdb_flat():
     from plantclusterfinder_py.pgdb_utils import match_pgdb_flat, read_in_pgdb_flat
 

@@ -37,9 +37,9 @@ def main():
     """Main function execution: test execution of plugins."""
     df = pl.DataFrame(
         {
-            "Gene Name": ["g1", "g2", "g3"],
-            "Protein Name": ["PAL", "C4H", "4CL"],
-            "EC-NUMBER": ["1.1.1.2", None, "3.1.2"],
+            "Gene Name": ["g1", "g2", "g3", "g4"],
+            "Protein Name": ["PAL", "C4H", "4CL", "G4PTN"],
+            "EC-NUMBER": [["1.1.1.2"], None, ["3.1.2"], ["3.1.2", "3.1.2.2"]],
         }
     )
 

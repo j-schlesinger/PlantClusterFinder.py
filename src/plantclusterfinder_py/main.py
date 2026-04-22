@@ -22,12 +22,11 @@ from plantclusterfinder_py.cluster import (
     map_pgdb_reactions_to_genes,
     match_pgdbs_to_mds,
     perform_clustering,
-    read_in_conversion_file,
     read_mcl_clustering_file,
     write_cluster_output,
     write_gene_output,
 )
-from plantclusterfinder_py.cluster_datatypes import Conversion
+from plantclusterfinder_py.conversion import Conversion
 from plantclusterfinder_py.genelocation import GeneLoc
 from plantclusterfinder_py.parse_input import extract_genes_from_gff_and_fasta
 from plantclusterfinder_py.plugin_arch.context import RunContext
@@ -823,7 +822,7 @@ Technical Parameters:
 
     # Part 1: Read in Gene-Transcript-Protein File
     log.info("PART START: Read in file describing gene-ID, transcript-ID, and protein-ID conversion")
-    conversion = read_in_conversion_file(gene_transcript_protein_mapping_filename)
+    conversion = Conversion.read_in_conversion_file(gene_transcript_protein_mapping_filename)
 
     # Part 1.5: Map PGDB Gene IDs to Coversion File
     conversion.add_pgdb_id_column(pgdb_flat_file_folder)

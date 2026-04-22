@@ -20,8 +20,14 @@ class ExamplePlugin:
     @hookimpl
     def process_results(self, results: pl.DataFrame, context: RunContext) -> ReturnContext:
         """Example plugin logic: process DataFrame to get non-null genes."""
-        processed_df = results.filter(pl.col("Gene Name").is_not_null())
+        processed_df = (
+            results.filter(pl.col("Gene Name").is_not_null())
+            .group_by("Gene Name")
+            .agg(pl.len(), pl.implode("Protein Name").list.join(":").alias("proteins"))
+            .with_columns(proteins=pl.col("proteins").list.first())
+        )
         output_filename = context.output_dir / f"example_results.{context.run_name}.csv"
         _log.info("Writing output to %s", output_filename)
+        print(processed_df.head())
         processed_df.write_csv(output_filename)
         return ReturnContext(plugin_name="example_plugin", output_filename=output_filename)
