@@ -60,7 +60,7 @@ RXN-7575	PSE	signature	NA	stilbene synthase
 3.1.7.7	TPS	signature	NA	drimenol cyclase
 4.2.1.123	TPS	signature	NA	tetrahymanol synthase
 4.2.1.124	TPS	signature	NA	arabidiol synthase
-4.2.1.129	TPS	signature	NA	squalene—hopanol cyclase
+4.2.1.129	TPS	signature	NA	squaleneâ€”hopanol cyclase
 4.2.1.133	TPS	signature	NA	copal-8-ol diphosphate hydratase
 4.2.3.10	TPS	signature	NA	(-)-endo-fenchol synthase
 4.2.3.100	TPS	signature	NA	bicyclogermacrene synthase
@@ -72,18 +72,18 @@ RXN-7575	PSE	signature	NA	stilbene synthase
 4.2.3.106	TPS	signature	NA	(E)-beta-ocimene synthase
 4.2.3.107	TPS	signature	NA	(+)-car-3-ene synthase
 4.2.3.108	TPS	signature	NA	"1,8-cineole synthase"
-4.2.3.109	TPS	signature	NA	(–)-sabinene synthase
+4.2.3.109	TPS	signature	NA	(â€“)-sabinene synthase
 4.2.3.11	TPS	signature	NA	sabinene-hydrate synthase
 4.2.3.110	TPS	signature	NA	(+)-sabinene synthase
-4.2.3.111	TPS	signature	NA	(–)-alpha-terpineol synthase
+4.2.3.111	TPS	signature	NA	(â€“)-alpha-terpineol synthase
 4.2.3.112	TPS	signature	NA	(+)-alpha-terpineol synthase
 4.2.3.113	TPS	signature	NA	terpinolene synthase
 4.2.3.114	TPS	signature	NA	gamma-terpinene synthase
 4.2.3.115	TPS	signature	NA	alpha-terpinene synthase
 4.2.3.116	TPS	signature	NA	(+)-camphene synthase
 4.2.3.117	TPS	signature	NA	(-)-camphene synthase
-4.2.3.119	TPS	signature	NA	(–)-alpha-pinene synthase
-4.2.3.120	TPS	signature	NA	(–)-beta-pinene synthase
+4.2.3.119	TPS	signature	NA	(â€“)-alpha-pinene synthase
+4.2.3.120	TPS	signature	NA	(â€“)-beta-pinene synthase
 4.2.3.121	TPS	signature	NA	(+)-alpha-pinene synthase
 4.2.3.122	TPS	signature	NA	(+)-beta-pinene synthase
 4.2.3.123	TPS	signature	NA	beta-sesquiphellandrene synthase
@@ -196,12 +196,12 @@ RXN-7575	PSE	signature	NA	stilbene synthase
 4.2.3.92	TPS	signature	NA	(+)-gamma-cadinene synthase
 4.2.3.93	TPS	signature	NA	delta-guaiene synthase
 4.2.3.94	TPS	signature	NA	gamma-curcumene synthase
-4.2.3.95	TPS	signature	NA	(–)-alpha-cuprenene synthase
+4.2.3.95	TPS	signature	NA	(â€“)-alpha-cuprenene synthase
 4.2.3.96	TPS	signature	NA	avermitilol synthase
-4.2.3.97	TPS	signature	NA	(–)-delta-cadinene synthase
+4.2.3.97	TPS	signature	NA	(â€“)-delta-cadinene synthase
 4.2.3.98	TPS	signature	NA	(+)-T-muurolol synthase
 4.2.3.99	TPS	signature	NA	labdatriene synthase
-5.4.99.17	TPS	signature	NA	squalene—hopene cyclase
+5.4.99.17	TPS	signature	NA	squaleneâ€”hopene cyclase
 5.4.99.31	TPS	signature	NA	thalianol synthase
 5.4.99.32	TPS	signature	NA	protostadienol synthase
 5.4.99.33	TPS	signature	NA	cucurbitadienol synthase

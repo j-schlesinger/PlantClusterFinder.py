@@ -16,6 +16,7 @@ from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqIO.FastaIO import FastaWriter
 from Bio.SeqRecord import SeqRecord
+from pyfaidx import Fasta
 
 _log = logging.getLogger(__name__)
 
@@ -40,7 +41,8 @@ def extract_genes_from_gff_and_fasta(
     r"""Extract genes form GFF and FASTA files.
 
     Produce the gtpf, glof, and Amino Acid FASTA files from the organism's
-     genome FASTA file and GFF3 file
+     genome FASTA file and GFF3 file.
+
     Args:
         fasta_file: Path to the genome FASTA file.
         gff3_file: Path the gene GFF3 file.
@@ -73,6 +75,9 @@ def extract_genes_from_gff_and_fasta(
         except Exception as e:
             _log.error("Cannot write to file %s: %s", f, e)
             raise e
+    # Attempt to extract GFF3 using BCBio first, but failover to gffutils
+    bcbio_ok = False
+    gtpf = glof = aafasta = None
     try:
         _log.info("Attempting to extract GFF3 using BCBio.GFF")
         (gtpf, glof, aafasta) = extract_genes_bcbio(
@@ -82,16 +87,26 @@ def extract_genes_from_gff_and_fasta(
             protein_name_column,
             protein_name_regex,
         )
+        bcbio_ok = True
     except Exception as e:
         _log.warning("BCBio failed to parse GFF3 file; threw the error %s", e)
         _log.info("Attempting to extract GFF3 using gffutils")
-        (gtpf, glof, aafasta) = extract_genes_gffutils(
-            gff3_file,
-            fasta_file,
-            gene_name_column,
-            protein_name_column,
-            protein_name_regex,
-        )
+    # GFFUtils is more resiliant to structural issues with GFF3 files
+    # but it is slower, as it needs to create a SQLite DB before it can run
+    if not bcbio_ok:
+        try:
+            (gtpf, glof, aafasta) = extract_genes_gffutils(
+                gff3_file,
+                fasta_file,
+                gene_name_column,
+                protein_name_column,
+                protein_name_regex,
+            )
+        except Exception as e:
+            _log.error("GFFUtils also failed to parse GFF3 file; threw the error %s", e)
+            raise Exception("Could not parse GFF3 file.") from e
+    if gtpf is None or glof is None or aafasta is None:
+        raise ValueError("Missing Inputs: GTPF, GLOF, or aaFASTA not created.")
     if len(gtpf) == 0:
         _log.error("No gene-protein pairs found.")
         _log.info("GFF3 File: %s, Attribute of Interest: %s", gff3_file, gene_name_column)
@@ -138,6 +153,7 @@ def extract_genes_gffutils(
     aafasta: deque[SeqRecord] = deque()
     gtpf: deque[tuple[str, str, str]] = deque()
     db_filename = Path(fasta_file.parent / "gff3.db")
+    fasta_faidx_obj = Fasta(fasta_file, as_raw=False)
     if not db_filename.exists():
         gff3_data = gffutils.create_db(
             str(gff3_file), str(db_filename), merge_strategy="create_unique"
@@ -213,7 +229,7 @@ def extract_genes_gffutils(
             raise e
         aafasta.append(
             SeqRecord(
-                Seq("".join(cds.sequence(str(fasta_file)) for cds in cds_data)).translate(),
+                Seq("".join(cds.sequence(fasta_faidx_obj) for cds in cds_data)).translate(),
                 id=longest_child_name,
             )
         )
@@ -276,7 +292,11 @@ def extract_genes_bcbio(
                         gene_name_column,
                     )
                     no_name += 1
-                gene_name = gene.qualifiers[gene_name_column][0]
+                    continue
+                gene_name = gene.qualifiers.get(gene_name_column, [None]).pop(0)
+                if gene_name is None:
+                    _log.error("Gene name column %s not found for file %s.", gene_name, gff3_file)
+                    raise Exception("Can not find gene name column using bcbio.")
                 _log.debug("Found gene %s", gene_name)
                 glof.append(
                     (

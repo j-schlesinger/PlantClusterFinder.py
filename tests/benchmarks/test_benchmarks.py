@@ -4,21 +4,15 @@ from collections import namedtuple
 from pathlib import Path
 
 import polars as pl
-import pytest
-
 
 GLOF_FILE_PATH = Path("csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt")
-GTPF_FILE_PATH = Path(
-    "csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt"
-)
+GTPF_FILE_PATH = Path("csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt")
 PGDB_DIR = Path("./csubellipsoidea/pgdb/csubellipsoideacyc/1.0/data")
 MCL_EXPECTED_RESULTS_PATH = Path(
     "./csubellipsoidea/MCL_clustering_expected_results/"
     "dump.CsubellipsoideaC_169_227_v2.0.protein.pcf13.mci.I20"
 )
-PROTEIN_FASTA_PATH = Path(
-    "./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa"
-)
+PROTEIN_FASTA_PATH = Path("./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.protein.pcf13.fa")
 
 
 # --- GeneLoc benchmarks ---
@@ -71,9 +65,9 @@ def test_bench_geneloc_consolidate(benchmark):
 
 def test_bench_read_conversion_file(benchmark):
     """Benchmark reading the gene-transcript-protein conversion file."""
-    from plantclusterfinder_py.cluster import read_in_conversion_file
+    from plantclusterfinder_py.conversion import Conversion
 
-    benchmark(read_in_conversion_file, GTPF_FILE_PATH)
+    benchmark(Conversion.read_in_conversion_file, GTPF_FILE_PATH)
 
 
 def test_bench_read_pgdb_flat(benchmark):
@@ -107,12 +101,8 @@ def test_bench_compute_background(benchmark):
     from plantclusterfinder_py.cluster import compute_background
     from plantclusterfinder_py.genelocation import GeneLoc
 
-    gene_location = GeneLoc(
-        file_path=Path("./tests/data/background_computation_test.tsv")
-    )
-    has_reaction = pl.read_csv(
-        Path("./tests/data/background_computation_has_reaction.csv")
-    )
+    gene_location = GeneLoc(file_path=Path("./tests/data/background_computation_test.tsv"))
+    has_reaction = pl.read_csv(Path("./tests/data/background_computation_has_reaction.csv"))
     gene_location._data = gene_location.data.join(has_reaction, on="Gene Name")
 
     step_sizes = [1 + x for x in range(4) for _ in range(100)]
@@ -152,10 +142,7 @@ def test_bench_evaluate_criterion(benchmark):
     )
 
     clusters = pl.DataFrame(
-        [
-            cluster_tuple("TEST", 3, x * 50, (x + 1) * 50 + 12, 6, 12, 0)
-            for x in range(10)
-        ]
+        [cluster_tuple("TEST", 3, x * 50, (x + 1) * 50 + 12, 6, 12, 0) for x in range(10)]
     )
 
     benchmark(evaluate_criterion, 1, clusters, 3, 24, 3)

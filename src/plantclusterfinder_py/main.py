@@ -111,6 +111,37 @@ def get_hypothetical_minimum_gene_length(
     return gene_length_hypothetical_minimum
 
 
+def download_input_files(override_dir: Path | None = None) -> bool:
+    """Download the static input files for classifying enzymes.
+
+    On the first run of PlantClusterFinder, check that the input files
+    are available. If not, download them and save them to the user's home directory.
+
+    Args:
+        override_dir: download input files to a separate directory.
+
+    Returns:
+        True if the download was successful.
+    """
+    import requests
+
+    scaffold_tail_url = "https://gist.github.com/j-schlesinger/9bc8dbd073b2308d850bfb6028c2f780/raw/85e0907582343062614f36fff1caefd58bfe8cc1/scaffold-tailoring-reactions-05082016.tab"
+    rmdc_url = "https://gist.github.com/j-schlesinger/ee0a5941020d252168232b3801b406be/raw/9d646ec035dfd431df8846872a540ac30bcc72df/ReactionMetabolicDomainClassification.txt"
+
+    download_dir = override_dir or Path.home() / ".plantclusterfinder"
+    scaffold_tail_get = requests.get(
+        scaffold_tail_url,
+        timeout=64,
+    )
+    rmdc_get = requests.get(
+        rmdc_url,
+        timeout=64,
+    )
+    (download_dir / scaffold_tail_url.split("/").pop()).write_bytes(scaffold_tail_get.content)
+    (download_dir / rmdc_url.split("/").pop()).write_bytes(rmdc_get.content)
+    return True
+
+
 def main(argv: list[str] | None = None) -> None:
     """PlantClusterFinder 2.0 Main Function.
 
