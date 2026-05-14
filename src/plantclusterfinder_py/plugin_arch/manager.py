@@ -10,6 +10,7 @@ import logging
 from pathlib import Path
 
 import pluggy
+import polars as pl
 
 from plantclusterfinder_py.plugin_arch.context import RunContext
 from plantclusterfinder_py.plugin_arch.hookspecs import PlantClusterSpecs
@@ -32,7 +33,7 @@ class PluginManager(pluggy.PluginManager):
         """Load and register plugins exposed via setuptools entry points."""
         super().load_setuptools_entrypoints("plantclusterfinder.plugins")
 
-    def run(self, results, context: RunContext) -> dict[str, Path]:
+    def run(self, results: pl.DataFrame, context: RunContext) -> dict[str, Path]:
         """Run all registered plugins (process_results).
 
         Args:

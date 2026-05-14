@@ -289,15 +289,16 @@ def main(argv: list[str] | None = None) -> None:
         "-r",
         required=True,
         type=str,
-        help="""Name of run of PlantClusterFinder. Helpful for
-        identifying execution across different organisms/samples""",
+        help="Name of run of PlantClusterFinder. Helpful for"
+        + "identifying execution across different organisms/samples",
     )
     parser.add_argument(
         "--PathwayGenomeDatabasePath",
         "-pgdb",
         required=True,
         type=str,
-        help="Give full path of PGDB flat file folder,"
+        metavar="FILENAME",
+        help="Full path of PGDB flat file folder,"
         + " where the flat files of the species pgdb is stored.",
     )
     parser.add_argument(
@@ -305,17 +306,16 @@ def main(argv: list[str] | None = None) -> None:
         "-gff3",
         required=True,
         type=str,
-        help="""
-        Gene Annotation GFF3 Filename.
-        """,
+        metavar="FILENAME",
+        help="Gene Annotation GFF3 Filename.",
     )
     parser.add_argument(
         "--DNAFastaFilename",
         "-dnaf",
         required=True,
         type=str,
-        help="""
-        Fasta file of the HARDMASKED genome nucleotide sequences.""",
+        metavar="FILENAME",
+        help="Fasta file of the HARDMASKED genome nucleotide sequences.",
     )
     parser.add_argument(
         "--MetabolicDomainsToAnnotate",
@@ -324,27 +324,27 @@ def main(argv: list[str] | None = None) -> None:
         action="extend",
         nargs="+",
         type=str,
-        help="""
-         A list of Metabolic domains that should be analyzed.
-          For example {'Amines and Polyamines Metabolism'; 'Amino Acids '}""",
+        metavar="DOMAIN",
+        help="A list of Metabolic domains that should be analyzed."
+        + " For example {'Amines and Polyamines Metabolism'; 'Amino Acids '}",
     )
     parser.add_argument(
         "-gout",
         required=True,
         type=str,
-        help="""
-        Path and file name to the gene-Outputfile,
-         make sure you have access to the file and folder.
-         This is the first results output file that will be generated.""",
+        metavar="FILENAME",
+        help="Path and file name to the gene-Outputfile, \n"
+        + "make sure you have access to the file and folder. \n"
+        + "This is the first results output file that will be generated.",
     )
     parser.add_argument(
         "-cout",
         required=True,
         type=str,
-        help="""
-        Path and file name to the cluster-Outputfile,
-         make sure you have access to the file and folder.
-        This is the second Results output file that will be generated.""",
+        metavar="FILENAME",
+        help="Path and file name to the cluster-Outputfile, \n"
+        + "make sure you have access to the file and folder. \n"
+        + "This is the second Results output file that will be generated.",
     )
     # The following inputs are conditionally optional
     parser.add_argument(
@@ -352,18 +352,19 @@ def main(argv: list[str] | None = None) -> None:
         "-rmdf",
         required=False,
         type=str,
-        help="""
-        TSV file of the metabolic domains of reactions. Check
+        metavar="FILENAME",
+        help="""TSV file of the metabolic domains of reactions. Check
          if file is outdated (needs to contain all reactions
          that are present in the PGDB that have genes
          to be annotated).
-        Defaults to $HOME/.plantclusterfinder/ReactionMetabolicDomainClassification.txt""",
+         Defaults to $HOME/.plantclusterfinder/ReactionMetabolicDomainClassification.txt""",
     )
     parser.add_argument(
         "--SignatureTailoringFilename",
         "-sitf",
         required=False,
         type=str,
+        metavar="FILENAME",
         help="""
         Signature and tailoring reactions TSV file describing the classes
          of enzymes that should be classified as signature or tailoring
@@ -376,8 +377,8 @@ def main(argv: list[str] | None = None) -> None:
         "--GFF3GeneAttribute",
         "-gff3_gene",
         default="Name",
-        help="""
-        Attribute in GFF3 file to extract for Gene Name
+        metavar="ATTRIBUTE",
+        help="""Attribute in GFF3 file to extract for Gene Name
         Typically "Name", but possibly "locus_tag".
             (Default: Name)
         """,
@@ -385,8 +386,8 @@ def main(argv: list[str] | None = None) -> None:
     gff3_args.add_argument(
         "--GFF3ProteinAttribute",
         "-gff3_prot",
-        help="""
-        Attribute in GFF3 file to extract for transcript ID.
+        metavar="ATTRIBUTE",
+        help="""Attribute in GFF3 file to extract for transcript ID.
         Typically "Name", but possibly "original_protein_id".
             (Default: Name)
         """,
@@ -395,8 +396,8 @@ def main(argv: list[str] | None = None) -> None:
         "--GFF3ProteinRegex",
         "-gff3_regex",
         default=".*",
-        help="""
-        Regex to find the protein ID shared with PGDB data.
+        metavar="REGEX",
+        help="""Regex to find the protein ID shared with PGDB data.
         If the column contains jnl|GCVI|AT1G5560.1 and PGDB
         protein ID is AT1G5560.1, you can pass the regex
         "[^|]+$" to select everything after the last '|'
@@ -412,8 +413,8 @@ def main(argv: list[str] | None = None) -> None:
         "-psf",
         required=False,
         type=str,
-        help="""
-        [DEPRECATED] Protein sequence file of the genome.
+        metavar="FILENAME",
+        help="""[DEPRECATED] Protein sequence file of the genome.
          Can only contain Protein IDs as header e.g. >protein1-ID
         This is auto-generated from Genome FASTA and GFF3 file.
          """,
@@ -423,8 +424,8 @@ def main(argv: list[str] | None = None) -> None:
         "-glof",
         required=False,
         type=str,
-        help="""
-        [DEPRECATED] Gene Location (position) TSV file with gene ID, start bp, end bp,
+        metavar="FILENAME",
+        help="""[DEPRECATED] Gene Location (position) TSV file with gene ID, start bp, end bp,
          chromosome / scaffold, strand (encoded as 1 or -1).
          This file can be generated with a biomart or out of a gff3 file.""",
     )
@@ -433,8 +434,8 @@ def main(argv: list[str] | None = None) -> None:
         "-gtpf",
         required=False,
         type=str,
-        help="""
-        [DEPRECATED] TSV file with a header describing gene, transcript,
+        metavar="FILENAME",
+        help="""[DEPRECATED] TSV file with a header describing gene, transcript,
          and protein identifier and then for all the
          identfiers the listings (gene-ID, transcript-ID,
          protein-ID). This is used to map information
@@ -450,19 +451,17 @@ def main(argv: list[str] | None = None) -> None:
     bgc_params.add_argument(
         "--MaxSeqGapSize",
         type=int,
+        metavar="GAP",
         default=100000,
-        help="""
-        Needs to be followed by a number. Maximal masked
-         nucleotide region (in bp) that a cluster is allowed
+        help="""(number) Maximal masked nucleotide region (in bp) that a cluster is allowed
          to bridge (default is 100000). """,
     )
     bgc_params.add_argument(
         "--MaxInterGeneDist",
         type=int,
+        metavar="DISTANCE",
         default=None,
-        help="""
-        Needs to be followed by a number. Maximal
-         intergenic distance ( in bp) that still can be
+        help="""(number) Maximal intergenic distance (in bp) that still can be
          crossed by a gene cluster. (default is None, thus
          inactive).""",
     )
@@ -470,9 +469,8 @@ def main(argv: list[str] | None = None) -> None:
         "--MaxInterGeneDistByMedian",
         type=int,
         default=50,
-        help="""
-        Needs to be followed by a number. Maximal
-         intergenic distance that still can be
+        metavar="DISTANCE",
+        help="""(number) Maximal intergenic distance that still can be
          crossed by a gene cluster, here defined
          by this number times the median of the
          gene sizes. (default is 50. Set it to -1
@@ -482,18 +480,12 @@ def main(argv: list[str] | None = None) -> None:
         "--PercentileForMaxInterGeneDist",
         type=int,
         default=None,
-        help="""
-        Needs to be followed by a number.
-         Calculates the maximal intergenic
-         distance that still can be crossed
-         by a gene cluster. This number
-         determines the percentile to choose
-         from all the distances. If this is
-         99.9, then a cluster is allowed to
-         bridge if the largest intergenic
-         distance in the cluster is below
-         99.9%% of the background size of all
-         intergenic distances of the genome
+        metavar="DISTANCE",
+        help="""(number) Calculates the maximal intergenic distance that still can be crossed
+         by a gene cluster. This number determines the percentile to choose
+         from all the distances. If this is 99.9, then a cluster is allowed to
+         bridge if the largest intergenic distance in the cluster is below
+         99.9%% of the background size of all intergenic distances of the genome
          (default is -1,thus inactive).""",
     )
     bgc_params.add_argument(
@@ -501,9 +493,8 @@ def main(argv: list[str] | None = None) -> None:
         type=int,
         nargs="+",
         default=[],
-        help="""
-        Needs to be followed by a list of numbers.
-         The masked nucleotides sequences of these
+        metavar="SIZE",
+        help="""(number) The masked nucleotides sequences of these
          specific lengths will prevent cluster
          formation (Default is an empty list: []).""",
     )
@@ -511,27 +502,24 @@ def main(argv: list[str] | None = None) -> None:
         "--EnzMinForClusters",
         type=int,
         default=3,
-        help="""
-        Needs to be followed by a number: Defines the
-         minimum number of enyzmes that need to be
+        metavar="MINIMUM",
+        help="""(number) Defines the minimum number of enyzmes that need to be
          present in a cluster (default is 3).""",
     )
     bgc_params.add_argument(
         "--KbRangeLD",
         type=int,
         default=100000,
-        help="""
-        Needs to be followed by a number. Genes that are
-         separated by more than this size (in bp) are not
+        metavar="KB_RANGE",
+        help="""(number) Genes that are separated by more than this size (in bp) are not
          considered as local duplicates. (default is 100000)""",
     )
     bgc_params.add_argument(
         "--GeneRangeLD",
         type=int,
         default=10,
-        help="""
-        Needs to be followed by a number. Number of
-         intervening genes that are allowed to separate two
+        metavar="GENES",
+        help="""(number) Number of intervening genes that are allowed to separate two
          local duplicated genes. Two genes that are separated
          by more than this many intervening genes are not
          called local duplicates. (default is 10)""",
@@ -540,9 +528,8 @@ def main(argv: list[str] | None = None) -> None:
         "--TopPercentClusters",
         type=int,
         default=5,
-        help="""
-        Needs to be followed by a number. Clusters are
-         labeled if they are within this top X%% of
+        metavar="PERCENT",
+        help="""(number) Clusters are labeled if they are within this top X%% of
          enzyme dense clusters compared to the
          background. (default is 5)""",
     )
@@ -550,16 +537,15 @@ def main(argv: list[str] | None = None) -> None:
         "--MinStepSize",
         type=int,
         default=5,
-        help="""
-        Needs to be followed by a number. Minimal intervening
-         gene size that should be computed (default is 5).""",
+        metavar="STEP",
+        help="(number) Minimal intervening gene size that should be computed (default is 5).",
     )
     bgc_params.add_argument(
         "--MaxStepSize",
         type=int,
         default=20,
-        help="""
-        Needs to be followed by a number. Maximal intervening
+        metavar="STEP",
+        help="""(number) Maximal intervening
          gene size that should be computed (default is 20).""",
     )
     bgc_params.add_argument(
@@ -567,9 +553,8 @@ def main(argv: list[str] | None = None) -> None:
         type=int,
         default=2,
         choices=[1, 2, 3, 4],
-        help="""
-        Needs to be followed by a number. Criterion after which
-              stepsize (intervening gene size) is chosen (default is 2).
+        help="""(number) Criterion after which stepsize (intervening gene size) is chosen
+            (default is 2).
          1: as published in Schlapfer et al 2017 (PMID:28228535)''
                  sum(enzymes in clusters) - sum(non-enzymes in clusters) > 0.
          2: stepsize 3 (because most organisms take this one)
@@ -584,8 +569,8 @@ def main(argv: list[str] | None = None) -> None:
         "--HypoGenePercentile",
         type=int,
         default=5,
-        help="""
-        Needs to be followed by a number. Defines the
+        metavar="PERCENTILE",
+        help="""(number) Defines the
          length of sequencing gap that should be
          populated by two hypothetical genes. If this is
          10, then two hypothetical genes are introduced
@@ -596,8 +581,7 @@ def main(argv: list[str] | None = None) -> None:
     hypo_params.add_argument(
         "--InsertHypos",
         action="store_true",
-        help="""
-        Defines if the genome should be populated by
+        help="""Defines if the genome should be populated by
          hypothetical genes in sequencing gaps that are not
          physical breaks. (Default False)""",
     )
@@ -605,8 +589,8 @@ def main(argv: list[str] | None = None) -> None:
         "--HypoAmount",
         type=int,
         default=0,
-        help="""
-        Needs to be followed by a number. Defines by how many
+        metavar="AMOUNT",
+        help="""(number) Defines by how many
          hypothetical genes a sequencing gap that is not a
          physical break should be populated by artificial genes
          to punish such sequencing gaps from becoming clusters.
@@ -618,17 +602,15 @@ def main(argv: list[str] | None = None) -> None:
         nargs="+",
         default=["ACCESSION-1", "COMMON-NAME"],
         type=str,
-        help="""
-        Needs to be followed by a list of Attributes in
-         PGDB genes.dat. Defines where gene ID
-         information should be searched for.
+        metavar="COLUMN_NAME",
+        help="""List of Attributes in PGDB genes.dat.
+         Defines where gene ID information should be searched for.
          (Default is "ACCESSION-1, COMMON-NAME")""",
     )
     optional.add_argument(
         "--ComputedMCLClusterFile",
         action="store_true",
-        help="""
-         Indicates that the input file is not a
+        help="""Indicates that the input file is not a
          protein fasta file, but a precomputed MCL
          clustering file (precomputing can be useful for
          speed).
@@ -638,16 +620,14 @@ def main(argv: list[str] | None = None) -> None:
     optional.add_argument(
         "--OverwriteSeqGapInfo",
         action="store_true",
-        help="""
-        Force masked nucleotide analysis for
+        help="""Force masked nucleotide analysis for
         finding sequencing gaps (Default False)
         """,
     )
     optional.add_argument(
         "--OverwriteMCLClustering",
         action="store_true",
-        help="""
-         Forces (if set) that the MCL
+        help="""Forces (if set) that the MCL
          clustering is redone even if the result
          files are already present (Default False).""",
     )
@@ -656,9 +636,9 @@ def main(argv: list[str] | None = None) -> None:
         "-v",
         type=int,
         default=0,
-        help="""
-        Needs to be followed by a number
-        (0 only logs warnings and errors,
+        metavar="VERBOSITY",
+        help="""(number) Verbosity level for logs
+         (0 only logs warnings and errors,
          1 logs info-level information
          2 logs debug information)""",
     )
@@ -666,16 +646,15 @@ def main(argv: list[str] | None = None) -> None:
         "-para",
         type=int,
         default=0,
-        help="""
-        How many cpus can be used by the algorithm
+        metavar="PARALLELIZATION",
+        help="""How many cpus can be used by the algorithm
          (used for MCL clustering and Sequencing gap search).
          The default is 0 (auto-scale).""",
     )
     optional.add_argument(
         "--UnmaskedDNA",
         action="store_true",
-        help="""
-        Defines if PlantClusterFinder should continue,
+        help="""Defines if PlantClusterFinder should continue,
         despite a non-masked genome sequence file being used.
         (Default False)
         """,
@@ -684,22 +663,17 @@ def main(argv: list[str] | None = None) -> None:
         "--PGDBIdsToMap",
         type=str,
         default="G",
-        help="""
-        Needs to be followed by a string. Can contain the
-         Letters G and/or T and/or P. In that case (the pgdb
-         is mapped to Gene (G) and/or Transcript (T) and/or
-         Protein (P) Ids of the Gene conversion file.
+        help="""(string) Can contain the Letters G and/or T and/or P.
+         In that case (the pgdb is mapped to Gene (G) and/or
+         Transcript (T) and/or Protein (P) Ids of the Gene conversion file.
          The default value is 'G'.""",
     )
     optional.add_argument(
         "--RemoveNonProtLocations",
         action="store_true",
-        help="""
-        Defines if the protein-fasta file should be
-         used to clean out the gene position file
-         from sequences that do not show up on the
-         protein fasta file, and thus do not have
-         had a chance to be predicted to be an
+        help="""Defines if the protein-fasta file should be
+         used to clean out the gene position file from sequences that do not show up on the
+         protein fasta file, and thus do not have had a chance to be predicted to be an
          enzyme. (Default False)""",
     )
     parser.add_argument(
@@ -707,8 +681,8 @@ def main(argv: list[str] | None = None) -> None:
         type=str,
         default="simple",
         choices=["simple", "old", "verbose"],
-        help="""
-        Defines the format of the Outputfiles: 'old' is using
+        metavar="TYPE",
+        help="""Defines the format of the Outputfiles: 'old' is using
          the old format to report all clusters of all stepsizes,
          'verbose' defines that top percent clusters of all
          stepsizes are reported. 'simple' just reports the top
@@ -718,8 +692,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--OutputGeneLocationParquet",
         type=str,
-        help="""
-        The file location of the parquet file to store the GeneLocation data.
+        metavar="FILENAME",
+        help="""The file location of the parquet file to store the GeneLocation data.
          The file is only written if the argument is set.
         """,
     )
@@ -733,14 +707,27 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--RunInfoFile",
         type=str,
+        metavar="FILENAME",
         help="""Store information (arguments, settings, timing) for a run.
-                        (Default: STDOUT""",
+                        (Default: STDOUT)""",
+    )
+    parser.add_argument(
+        "--LogFile",
+        type=str,
+        metavar="FILENAME",
+        help="Create a log file for run instead of logging to STDERR.",
     )
     args = parser.parse_args(argv)
 
     verbose_level = args.Verbose
-    target_handler = logging.StreamHandler(sys.stderr)
+    log_file = args.LogFile
+    target_handler: logging.FileHandler | logging.StreamHandler = logging.StreamHandler(sys.stderr)
+    if log_file is not None:
+        target_handler = logging.FileHandler(log_file)
     target_handler.setFormatter(logging.Formatter(fmt=LOG_FORMAT, style="{"))
+    if log_file is not None:
+        target_handler = logging.FileHandler(log_file)
+        target_handler.setFormatter(logging.Formatter(fmt=LOG_FORMAT, style="{"))
     log_queue: queue.Queue[logging.LogRecord] = queue.Queue(-1)
     queue_handler = logging.handlers.QueueHandler(log_queue)
     if verbose_level == 1:
@@ -750,6 +737,7 @@ def main(argv: list[str] | None = None) -> None:
         target_handler.setLevel(logging.DEBUG)
         logging.getLogger("").setLevel(logging.DEBUG)
     listener = logging.handlers.QueueListener(log_queue, target_handler, respect_handler_level=True)
+
     listener.start()
     # Add the queue_handler to the root logger
     logging.getLogger("").addHandler(queue_handler)
@@ -920,11 +908,12 @@ Technical Parameters:
     Verbosity: {verbose_level}
     """
     # Parsing Args Finished
-    if run_info_file is None:
-        print(run_info_str)
-    else:
+    print(run_info_str)
+    if run_info_file is not None:
         with Path(run_info_file).open(mode="w") as f:
             f.write(run_info_str)
+    else:
+        log.info(run_info_str)
     error_message: list[str] = []
     if not pgdb_flat_file_folder.is_dir():
         error_message.append("Argument -pgdb " + f"{pgdb_flat_file_folder} was not a dirctory")
@@ -1143,16 +1132,16 @@ Technical Parameters:
             + "equal than %d * the median of gene sizes",
             maximum_inter_gene_distance_by_median,
         )
-        gene_location.introduce_hard_breaks(
-            sequencing_gaps,
-            maximum_sequence_gap_size,
-            maximum_intergenic_distance,
-            percentile_for_max_inter_gene_distance,
-            maximum_inter_gene_distance_by_median,
-            sequence_gap_sizes_chromosome_break,
-        )
+    gene_location.introduce_hard_breaks(
+        sequencing_gaps,
+        maximum_sequence_gap_size,
+        maximum_intergenic_distance,
+        percentile_for_max_inter_gene_distance,
+        maximum_inter_gene_distance_by_median,
+        sequence_gap_sizes_chromosome_break,
+    )
 
-    # % Populate Hypothetical genes
+    # Part 15: Populate Hypothetical genes
     log.info(
         "PART START: Introduce Hypothetical genes for gaps longer than %d bp",
         gene_length_hypothetical_minimum,
@@ -1166,7 +1155,7 @@ Technical Parameters:
             hypothetical_gene_amount,
         )
 
-    # % Perform clustering
+    # Part 16: Perform clustering
     log.info("PART START: Perform clustering")
     clusters = perform_clustering(
         gene_location,
@@ -1177,13 +1166,13 @@ Technical Parameters:
         maximum_step_size,
     )
 
-    # % Perform cut off
+    # Part 17: Perform cut off
     log.info("PART START: Perform cuttof at %d%%", top_percent_clusters)
     _ = clusters.perform_cutoff(
         top_percent_clusters
     )  # returns top_clusters, but now stored in clusters object
 
-    # % Produce Gene Output file
+    # Part 18: Produce Gene Output file
     log.info("PART START: Produce GeneOutputFile")
     write_gene_output(
         gene_output_filename,  # from args
@@ -1196,7 +1185,7 @@ Technical Parameters:
         output_type,  # from args
     )
 
-    # % Print cluster File
+    # Part 19: Write cluster File
     log.info("PART START: Produce ClusterOutputFile")
     write_cluster_output(
         cluster_output_filename,
@@ -1204,10 +1193,14 @@ Technical Parameters:
         clusters,
         output_type,
     )
+
+    # Part 20: Write Gene Location Parquet File
     if gene_location_output_filename is not None:
         gene_location.write_parquet(gene_location_output_filename)
     run_end_time = time.time()
     log.info("Execution completed in %f seconds.", run_end_time - run_start_time)
+
+    # Part 21+: Run Plugins on output files
     plugin_start_time = time.time()
     log.info("Plugin execution started")
     plug_context = RunContext(
@@ -1222,6 +1215,7 @@ Technical Parameters:
     plugman.run(gene_location.data, plug_context)
     plugin_end_time = time.time()
     log.info("Execution completed in %f seconds.", plugin_end_time - plugin_start_time)
+    print("PlantClusterFinder Completed: SUCCESS")
     listener.stop()
 
     if __name__ == "__main__":

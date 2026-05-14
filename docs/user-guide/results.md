@@ -7,7 +7,7 @@ Additionally, these may be in one of three different "flavors" old, simple, and 
 By default, PlantClusterFinder.py produces "simple" output.
 
 !!! danger
-  The "old" flavor of output is for feature parity with PlantClusterFinder MATLAB **only**, and should be considered deprecated.
+    The "old" flavor of output is for feature parity with PlantClusterFinder MATLAB **only**, and should be considered deprecated.
 
 ## Gene Output
 The gene output file has a row for all annotated genes provided to PlantClusterFinder.py.
@@ -38,4 +38,23 @@ The "old" flavor has a column for every combination of top percent clusters and 
 
 ## Cluster Output
 
-## GeneLocation Parquet Output
+| Column | Type | Data |
+|----|----|----|
+| Stepsize | Int | Step size used when finding the cluster |
+| Cluster ID | Int | Cluster identifier from this run -- not stable across runs |
+| Top n% cluster | Boolean | |
+| Chromosome | String | Chromosome or scaffold name |
+| Start bp | Int | Start of first gene on cluster |
+| End bp | Int | End of last gene on cluster |
+| Physical size bp | Int | Distance between the start and end genes |
+| Number of Genes | Int | Number of genes in cluster |
+| Number of Hypothetical Genes | Int | Number of hypothetical genes that make up cluster |
+| Number of Enzymes | Int | Number of enzymes in cluster |
+| Start Gene | String | First gene in cluster |
+| End Gene | String | Last gene in cluster |
+| Gene IDs | String | Comma separated list of all genes in cluster |
+
+### Flavor-Dependent Rows
+The "simple" flavor returns clusters where the Stepsize is the "FinalStepSize" and "Top n% cluster" is true.
+
+The "verbose" flavor and "old" flavor return clusters where Stepsize is less than or equal to the "FinalStepSize"
