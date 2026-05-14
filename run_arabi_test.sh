@@ -29,6 +29,7 @@ uv run python -m plantclusterfinder_py\
    '-rmdf' './Inputs/ReactionMetabolicDomainClassification.txt'\
    '-gout' './Outputs/Athaliana_Gene_v2_0.txt'\
    '-cout' './Outputs/Athaliana_Clust_v2_0.txt'\
+   '--Criterion' '3'\
    '--SeqGapSizesChromBreak' 10000 '--PGDBIdsToMap' 'GTP'\
    '--OutputType' 'simple'\
    --Verbose 2\

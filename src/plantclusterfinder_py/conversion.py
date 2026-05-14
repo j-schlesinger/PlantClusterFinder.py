@@ -1,5 +1,7 @@
 """Handle the conversion join between PGDB and GFF3 data."""
 
+from __future__ import annotations
+
 import logging
 from pathlib import Path
 from typing import Any
@@ -25,7 +27,7 @@ class Conversion(BaseModel):
     def read_in_conversion_file(
         cls,
         gene_transcript_protein_mapping_filename: Path,
-    ):
+    ) -> Conversion:
         """---------------------------------------------------------------------------
 
         Function that reads in the gene, transcript, and protein ID conversion

@@ -69,14 +69,15 @@ def read_fasta(fp: Iterable[str]) -> Generator[tuple[str, str], None, None]:
 def groupbyseq(input_list: list[int], amino_acid: str, chromosome: str) -> list[str]:
     """Write the sequence groups to a file given the inputs.
 
+    NOTE: This function is not used by PlantClusterFinder.py
+
     Args:
         input_list: List of indices of amino acids from FASTA
-        output_path: output file
-        amino_acid: single character representation of amino acid
+        amino_acid: single character representation of amino acid in group
         chromosome: name of chromosome from FASTA file
 
     Returns:
-        None
+        Sequence group rows - start index and length of groups
 
     Raises:
         TypeError: When the data from the indices list undergoes a failed
@@ -84,11 +85,10 @@ def groupbyseq(input_list: list[int], amino_acid: str, chromosome: str) -> list[
             index to an int, or the length to a string.
         IndexError: When the data from the indices list is corrupted or
             incomplete.
-        IOError: When the output_path cannot be written to.
 
     """
     log.debug("Performing groupbyseq")
-    output_str = []
+    output_str: deque[str] = deque()
 
     for _, g in groupby(enumerate(input_list), lambda x: x[1] - x[0]):
         cur_group = None
@@ -98,20 +98,20 @@ def groupbyseq(input_list: list[int], amino_acid: str, chromosome: str) -> list[
             length = str(len(cur_group))
             output_str.extend([chromosome, " ", amino_acid, " ", start_index, " ", length, "\n"])
         except TypeError as e:
-            err_group = "ERR GETTING GROUP" if cur_group is None else ",".join(cur_group)
+            err_group = "ERR GETTING GROUP" if cur_group is None else ",".join(map(str, cur_group))
             log.error(
                 "Error %s %s",
                 e,
                 err_group,
             )
         except IndexError as e:
-            err_group = "ERR GETTING GROUP" if cur_group is None else ",".join(cur_group)
+            err_group = "ERR GETTING GROUP" if cur_group is None else ",".join(map(str, cur_group))
             log.error(
                 "Error %s %s",
                 e,
                 err_group,
             )
-    return output_str
+    return list(output_str)
 
 
 def _process_sequence(seq_name_and_seq_aa: tuple[str, str]) -> deque[str]:

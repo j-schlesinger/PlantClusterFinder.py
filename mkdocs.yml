@@ -1,0 +1,42 @@
+site_name: 'PlantClusterFinder.py Documentation'
+site_description: 'Documentation on the usage of PlantClusterFinder.py as a tool and a library.'
+site_author: 'Jason Schlesinger'
+theme:
+  name: readthedocs
+nav:
+  - Introduction: 'index.md'
+  - 'User Guide':
+    - Index: 'user-guide/index.md'
+    - Installing: 'user-guide/install.md'
+    - 'Running PlantClusterFinder.py': 'user-guide/arguments.md'
+    - 'Analyzing Results': 'user-guide/results.md'
+    - Troubleshooting: 'user-guide/troubleshooting.md'
+  - 'Plugins':
+    - Introduction: 'plugins/intro.md'
+    - 'Built-in Plugins': 'plugins/builtin.md'
+    - Writing: 'plugins/writing.md'
+  - License: 'license.md'
+  - Contact: 'contact.md'
+  - About: 'about.md'
+repo_url: 'https://github.com/j-schlesinger/PlantClusterFinder.py'
+edit_uri: 'tree/main/docs/'
+markdown_extensions:
+  - toc
+  - admonition
+  - abbr
+  - tables
+  - pymdownx.details
+plugins:
+  - search
+  - mkdocs-autoapi:
+      autoapi_dir: './src'
+      autoapi_file_patterns:
+        - '*.py'
+  - mkdocstrings:
+      default-handler: python
+      handlers:
+        python:
+          paths:
+            - './src'
+          options:
+            docstring_style: google

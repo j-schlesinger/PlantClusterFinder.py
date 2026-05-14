@@ -6,32 +6,26 @@ from pydantic import BaseModel
 
 
 class RunContext(BaseModel):
-    """Run Context dataclass for plugin execution.
+    """Run Context dataclass for plugin execution."""
 
-    Args:
-        run_name: Unique name of PlantClusterFinder execution
-        output_dir: Output directory for all plugins
-        config: configuration dictionary for execution
-        genome_file: FASTA Genome file (optional)
-        annotation_file: GFF3 gene annotation file (optional)
-        output_dict: dictionary of output files
-    """
-
+    """Unique name of PlantClusterFinder execution"""
     run_name: str
+    """Output directory for all plugins"""
     output_dir: Path
+    """configuration dictionary for execution"""
     config: dict
+    """FASTA Genome file (optional)"""
     genome_file: Path | None = None
+    """GFF3 gene annotation file (optional)"""
     annotation_file: Path | None = None
+    """dictionary of output files"""
     output_dict: dict = {}
 
 
 class ReturnContext(BaseModel):
-    """Return Context object for plugin execution.
+    """Return Context object for plugin execution."""
 
-    Args:
-        plugin_name: Name of the plugin output
-        output_filename: location of filename of output
-    """
-
+    """Name of the plugin output."""
     plugin_name: str
+    """Location of the output file."""
     output_filename: Path

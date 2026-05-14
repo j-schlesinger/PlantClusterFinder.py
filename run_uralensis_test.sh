@@ -33,5 +33,3 @@ uv run python -m plantclusterfinder_py\
    '--OutputType' 'simple'\
    --Verbose 2\
    "--OutputGeneLocationParquet" "./Outputs/Gu_kyotoline_gene_loc.parquet"\
-   --NoRerunBlastP\
-   --NoRebuildBlastDB

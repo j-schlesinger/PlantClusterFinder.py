@@ -78,13 +78,13 @@ class GeneLoc(BaseModel):
         Returns:
             **Output**: Polars DataFrame with all the content of the TSV file.
 
-               Expected columns are:
-               - gene name
-               - gene start (BP)
-               - gene end (BP)
-               - chromosome name
-               - strand
-               - hypothetical
+                Expected columns are:
+                - gene name
+                - gene start (BP)
+                - gene end (BP)
+                - chromosome name
+                - strand
+                - hypothetical
 
         """
         super().__init__(**input)
@@ -315,8 +315,6 @@ class GeneLoc(BaseModel):
         all other entries in the gene location variable.
 
         Args:
-            GeneLocation: DataFrame about the gene location information,
-                            generated in PlantClusterFinder function.
             protein_ids: A cell array of all protein-IDs that are stored in the
                         protein fasta file.
 
@@ -719,7 +717,7 @@ class GeneLoc(BaseModel):
         ---------------------------------------------------------------------------
 
         Args:
-            mcl_cluster_data : Mapping between the genes in the conversion-ID file and the
+            mcl_cluster_data: Mapping between the genes in the conversion-ID file and the
                     MCL-clustering file.
             local_duplication_kb_range: Genes that are encoded more than this bp apart, are not
                         called local duplicates.

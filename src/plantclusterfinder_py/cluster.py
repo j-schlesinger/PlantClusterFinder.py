@@ -1588,9 +1588,6 @@ def write_gene_output(
         metabolic_domains_to_annotate: A list of Metabolic domains that should
                          be analyzed. For example {'Amines and Polyamines Metabolism'; ...
                          'Amino Acids Metabolism'
-        annotated_metabolic_domains: Mapping between all Reactions stored in
-               the Metabolic domain file and the metabolic domains that were
-               identified to be of interest in metabolic_domains_to_annotate.
         pgdb_to_metabolic_domain_map: A mapping between reactions stored in the pgdb and the
                     reactions given in the metabolic domain file
         reaction_labels: Is a data structure of signature and tailoring enzyme
@@ -1752,14 +1749,17 @@ def write_gene_output(
             .alias("Signature or Tailoring"),
         )
     )
-    # debug: see explain plan for each column
-    for i, column in enumerate(gene_output_cols):
-        _log.debug("Column %d %s", i, column.meta.output_name())
-        try:
-            _log.debug(" explain: %s", gene_output.select(column).schema)
-        except Exception as e:
-            _log.warning(" column %d failed to explain %s", i, e)
     gene_output = gene_output.select(gene_output_cols)
+    # debug: see explain plan for each column
+    # this can be expensive, so check if debug logging is enabled
+    if logging.root.level <= logging.DEBUG:
+        gene_output_schema = gene_output.collect_schema()
+        for i, column in enumerate(gene_output_cols):
+            _log.debug("Column %d %s", i, column.meta.output_name())
+            try:
+                _log.debug(" explain: %s", gene_output_schema.get(column.meta.output_name()))
+            except Exception as e:
+                _log.warning(" column %d failed to explain %s", i, e)
     _log.info("Gene Output is %d rows", len(gene_output))
     _log.debug("Gene Output head %s", gene_output.head())
     gene_output.write_csv(gene_output_file, separator="\t")
@@ -1790,16 +1790,13 @@ def write_cluster_output(
                         generated in PlantClusterFinder function.
         clusters: Cluster Information (step size, chromosome id, gene start,
                    gene end, number of enzymes).
-        clusters_in_top_percent: List with size Number of Clusters x 1. It is zero if
-                       the density of the cluster is above or the same as given
-                       by the input argument top_percent_clusters*100.
         output_type: Defines which type of output is given: simple (default
                      setting) gives only top n% for the final stepsize. verbose
                      gives all computed stepsize until the final stepsize. old
                      gives at least 5 until the final stepsize.
 
     Returns:
-        Path of cluster outpuf file
+        Path of cluster output file
 
     """
     _log.debug("Writing cluster output")
@@ -1873,10 +1870,9 @@ def analyze_plant_cluster_gap_file(
     dna_unmasked_ok: bool = True,
     file_output: bool = True,
 ) -> tuple[str, dict[Any, list[Any]]] | Path:
-    """---------------------------------------------------------------------------
+    """Function that analyzes the masked DNA sequences of a _GAPOutput file.
 
-      Function that analyzes the masked DNA sequences of a _GAPOutput file, and
-      counts the occurrence of every size of gap.
+      Analyzes sequences and counts the occurrence of every size of gap.
 
     ---------------------------------------------------------------------------
 
