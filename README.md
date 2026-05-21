@@ -1,4 +1,9 @@
 # PlantClusterFinder.py (version 2.0)
+
+[![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://codspeed.io/j-schlesinger/PlantClusterFinder.py?utm_source=badge)
+
+PlantClusterFinder (PCF) detects metabolic gene clusters in a sequenced genome. It uses a gene location file provided by the user (see below) and a PGDB created with Pathway Tools as well as further information (see below) to identify enzyme-coding genes (metabolic genes) located together on a chromosome. Initially only continous stretches of metabolic genes lying directly next to each other are allowed. This condition is relaxed by iteratively increasing the intervening (non-metabolic) gene size by one. Several criteria to select for clusters are provided. In addition to this, clusters can be prevented from forming by a section of criteria.
+Details of PCF (version 1.0) can be found in PMID: 28228535.
 ## Installation and Usage
 
 ## Developing PlantClusterFinder.py
@@ -20,8 +25,7 @@ The flake installs LSPs as well as uv and required software, so you can start de
 ## Previous Versions
 
 PlantClusterFinder (PCF) detects metabolic gene clusters in a sequenced genome. It uses a gene location file provided by the user (see below) and a PGDB created with Pathway Tools as well as further information (see below) to identify enzyme-coding genes (metabolic genes) located together on a chromosome. Initially only continous stretches of metabolic genes lying directly next to each other are allowed. This condition is relaxed by iteratively increasing the intervening (non-metabolic) gene size by one. Several criteria to select for clusters are provided. In addition to this, clusters can be prevented from forming by a section of criteria.
-Details of PCF (version 1.0) can be found in PMID:
-28228535.
+Details of PCF (version 1.0) can be found in PMID: 28228535.
 
 The major differences between this version (1.3) and previous versions (1.0 and 1.2) are:
 

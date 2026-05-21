@@ -10,12 +10,13 @@ import logging
 from pathlib import Path
 
 import pluggy
+import polars as pl
 
 from plantclusterfinder_py.plugin_arch.context import RunContext
 from plantclusterfinder_py.plugin_arch.hookspecs import PlantClusterSpecs
 
 
-class PluginManager:
+class PluginManager(pluggy.PluginManager):
     """Central manager for loading and executing PlantClusterFinder plugins.
 
     This class abstracts Pluggy internals and provides a stable interface
@@ -24,30 +25,22 @@ class PluginManager:
 
     def __init__(self):
         """Create new PluginManager instance for PlantClusterFinder."""
-        self.pm = pluggy.PluginManager("plantclusterfinder")
-        self.pm.add_hookspecs(PlantClusterSpecs)
+        super().__init__("plantclusterfinder")
+        self.add_hookspecs(PlantClusterSpecs)
         self._log = logging.getLogger()
-
-    def register(self, plugin):
-        """Register a plugin implementation.
-
-        Args:
-            plugin: An object or class decorated with @hookimpl
-        """
-        self.pm.register(plugin)
 
     def load_entrypoints(self):
         """Load and register plugins exposed via setuptools entry points."""
-        self.pm.load_setuptools_entrypoints("plantclusterfinder.plugins")
+        super().load_setuptools_entrypoints("plantclusterfinder.plugins")
 
-    def run(self, results, context: RunContext) -> dict[str, Path]:
+    def run(self, results: pl.DataFrame, context: RunContext) -> dict[str, Path]:
         """Run all registered plugins (process_results).
 
         Args:
             results: Results DataFrame as input for each plugin
             context: Context for run of all plugins
         """
-        for out in self.pm.hook.process_results(
+        for out in self.hook.process_results(
             results=results,
             context=context,
         ):

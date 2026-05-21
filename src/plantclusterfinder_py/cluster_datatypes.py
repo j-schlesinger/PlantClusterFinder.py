@@ -90,6 +90,13 @@ class Clusters(BaseModel):
     """Data class for cluster data.
 
     ClusterMeta, genome background ClusterBackground and step size search information.
+
+    clusters: Cluster Information (stepsize, chromosome id, gene start,
+            gene end, number of enzymes) and Density information
+            about the genome (window size, number of enzymes.
+            Occurrence of window size with this many enzymes in the genome,
+            occurrence of this window size in the genome. Frequency of seeing
+            a window size of this size with at least as many enzymes in the genome).
     """
 
     model_config = {"arbitrary_types_allowed": True}
@@ -127,12 +134,6 @@ class Clusters(BaseModel):
         ---------------------------------------------------------------------------
 
         Args:
-            clusters: Cluster Information (stepsize, chromosome id, gene start,
-                    gene end, number of enzymes) and Density information
-                    about the genome (window size, number of enzymes.
-                    Occurrence of window size with this many enzymes in the genome,
-                    occurrence of this window size in the genome. Frequency of seeing
-                    a window size of this size with at least as many enzymes in the genome).
             top_clusters_percent: Clusters are labeled as being in the top n% if
                                 they are within this top n% of enzyme dense
                                 clusters compared to the background.

@@ -7,16 +7,16 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.12"]
+        python-version: ["3.11","3.12","3.13","3.14"]
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
     - name: Set up UV
-      uses: astral-sh/setup-uv@v7
+      uses: astral-sh/setup-uv@16592cddee295b60b48cf3202a6dbe45c6f479f9
     - name: Install dependencies
       run: |
         uv sync
     - name: Install Blast, MCT, and Diamond
-      uses: awalsh128/cache-apt-pkgs-action@latest
+      uses: awalsh128/cache-apt-pkgs-action@acb598e5ddbc6f68a970c5da0688d2f3a9f04d05
       with:
         packages: ncbi-blast+ mcl diamond-aligner
         version: 1.0

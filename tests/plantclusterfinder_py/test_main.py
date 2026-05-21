@@ -1,4 +1,6 @@
+import hashlib
 import time
+from pathlib import Path
 
 import polars as pl
 import pytest
@@ -72,3 +74,20 @@ def test_run_main(tmp_path):
     assert len(genes_file) == 9629
     clusters_file = pl.read_csv(cluster_output_temp_file.name, separator="\t")
     assert len(clusters_file) == 123
+
+
+def test_download_input(tmp_path):
+    from plantclusterfinder_py.main import download_input_files
+
+    assert download_input_files(tmp_path)
+    with (tmp_path / "scaffold-tailoring-reactions-05082016.tab").open("rb") as f:
+        print(tmp_path)
+        test_digest_s = hashlib.sha256(f.read()).digest()
+    with (tmp_path / "ReactionMetabolicDomainClassification.txt").open("rb") as f:
+        test_digest_r = hashlib.sha256(f.read()).digest()
+    with (Path("./Inputs") / "scaffold-tailoring-reactions-05082016.tab").open("rb") as f:
+        expect_digest_s = hashlib.sha256(f.read()).digest()
+    with (Path("./Inputs") / "ReactionMetabolicDomainClassification.txt").open("rb") as f:
+        expect_digest_r = hashlib.sha256(f.read()).digest()
+    assert test_digest_s == expect_digest_s
+    assert test_digest_r == expect_digest_r

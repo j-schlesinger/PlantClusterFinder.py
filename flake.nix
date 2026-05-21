@@ -30,6 +30,8 @@
             libz
             gcc
             stdenv.cc.cc.lib
+            #linuxKernel.packages.linux_6_12.perf
+            perf
           ];
 
           # synchronize the environment on entry

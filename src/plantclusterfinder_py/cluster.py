@@ -95,6 +95,7 @@ def introduce_hypo_genes(
 
       Function that introduces Hypothetical genes if a sequencing gap reached a
       critical size hypothetical_gene_gap_length_minimum.
+
     ---
 
     Args:
@@ -112,8 +113,7 @@ def introduce_hypo_genes(
             which also needs to be set. Default is -1, not active.
 
     Returns:
-        **HardBreaks** object containing the gene location information, the
-            inter-chromosomal matrix, and the HypoAmount populated.
+        **GeneLoc** object with all hypothetical genes added.
 
     """
     _log.debug("Introducing hypothetical genes into sequence")
@@ -131,7 +131,7 @@ def introduce_hypo_genes(
         )
     )
 
-    # WARNING: This is a slow way to process DataFrame
+    # WARNING: df.iter_rows() is a slow way to process DataFrame
     ngaps = sequencing_gaps.height
     hypothetical_genes = []
     for i, row in enumerate(gap_positions.iter_rows()):
@@ -186,7 +186,7 @@ def annotate_sequencing_gaps(
 ) -> pl.DataFrame:
     """---------------------------------------------------------------------------
 
-      Functions that uses the output of get_sequencing_gaps and reformulates
+      Function that uses the output of get_sequencing_gaps and reformulates
       it such that it is clear in which intergenic region the sequencing gap
       lies.
 
@@ -227,16 +227,13 @@ def annotate_sequencing_gaps(
             (Default is -1, not active.)
 
     Returns:
-        **DataFrame** containing the
-                  - scaffold: chromosome/scaffold,
-                  - start index: start bp
-                  - end index: end bp and
-                  - seq_gaps_start
-                  - seq_gaps_end
-                  - seq_gaps_length: length of a masked region.
-                  In addition there is the information stored in with
-                  intergenic region the gap is encoded and its start and end
-                  bp, corrected for maximal size (= intergenic region).
+        **Polars DataFrame** containing the
+        - scaffold: chromosome/scaffold,
+        - start index: gene index before gap start
+        - end index: gene index after gap end
+        - seq_gaps_start: start bp of gap
+        - seq_gaps_end: end bp of gap
+        - seq_gaps_length: length of a masked region.
 
     """
     if sequence_gap_sizes_chromosome_breaks is None:
@@ -338,6 +335,7 @@ def get_sequencing_gaps(
 
       Creates a "..._GAPOutput" file from the FASTA file, then creates a
       "..._GAPOutput_count.txt" file by running analyze_plant_cluster_gap_file()
+      on the gap output file to get a count of gaps.
 
     ---------------------------------------------------------------------------
 
@@ -351,10 +349,11 @@ def get_sequencing_gaps(
         dna_unmasked_ok: Option to ignore the error if you use unmasked DNA files.
 
     Returns:
-       Path of gap file
+       Path of "...GAPOutput" gap file
     Raises:
-        IOError: if file cannot be generated.
-        AttributeError: if attempting to overwrite file
+        IOError: gap output file cannot be generated.
+        AttributeError: when attempting to overwrite file
+            when overwrite_sequence_gap_info_file is set to False
 
     """
     sequence_gap_filename = sequence_fasta_filename.with_suffix(
@@ -381,10 +380,9 @@ def get_metabolic_domains(
 ) -> AnnotatedMetabolicDomains:
     """---------------------------------------------------------------------------
 
-      Function that reads in the metabolic domains of reactions
-      and gives a mapping between reactions in these files and the metabolic
-      domains that were asked to be annotated (usually a subset of all) by
-      metabolic_domains_to_annotate.
+      Read in the metabolic domains of reactions and give a mapping between
+      reactions in these files and the metabolic domains that were asked to
+      be annotated (usually a subset of all) by metabolic_domains_to_annotate.
 
     ---------------------------------------------------------------------------
 
@@ -445,7 +443,7 @@ def read_mcl_clustering_file(
             in return value.
 
     Returns:
-        MclClusterData object which provides mapping between
+        **MclClusterData** object which provides mapping between
         genes in the conversion-ID file and the MCL-clustering file,
         as well as a list of protein-IDs stored in the fasta file.
 
@@ -565,6 +563,10 @@ def get_mcl_clustering(
             missing_apps.append(app)
         else:
             app_path[app] = Path(which_path)
+    if missing_apps == ["cut"]:
+        # cut replaced with polars call
+        missing_apps = []
+        apps[apps.index("cut")] = "pycut"
     if len(missing_apps) > 0:
         missing_apps_msg = ", ".join(missing_apps)
         raise OSError(f"The following applications are not in $PATH: {missing_apps_msg}")
@@ -689,12 +691,23 @@ def get_mcl_clustering(
         if skip_blastp:
             apps.remove("blastp")
     for app in apps:
-        if app == "cut":
+        if app == "cut" or app == "pycut":
             _log.info("executing: %s %s", app_path[app], " ".join(command_for[app]))
-            with cut_output.open(mode="w") as f:
-                subprocess.run(  # noqa: S603
-                    [str(app_path[app])] + command_for[app], check=True, stdout=f
-                )
+            # use Polars to function as cut
+            # reads in blastp file, but truncates all values past the first 3
+            (
+                pl.scan_csv(
+                    blastp_file,
+                    separator="\t",
+                    has_header=False,
+                    schema={"qseqid": pl.String, "sseqid": pl.String, "evalue": pl.Float64},
+                    truncate_ragged_lines=True,
+                ).sink_csv(cut_output, separator="\t", include_header=False)
+            )
+            # with cut_output.open(mode="w") as f:
+            #    subprocess.run(  # noqa: S603
+            #    [str(app_path[app])] + command_for[app], check=True, stdout=f
+            #    )
         elif app == "diamond":
             if not skip_make_blastdb:
                 _log.info("executing: %s %s", app_path[app], " ".join(command_for["diamond1"]))
@@ -1575,9 +1588,6 @@ def write_gene_output(
         metabolic_domains_to_annotate: A list of Metabolic domains that should
                          be analyzed. For example {'Amines and Polyamines Metabolism'; ...
                          'Amino Acids Metabolism'
-        annotated_metabolic_domains: Mapping between all Reactions stored in
-               the Metabolic domain file and the metabolic domains that were
-               identified to be of interest in metabolic_domains_to_annotate.
         pgdb_to_metabolic_domain_map: A mapping between reactions stored in the pgdb and the
                     reactions given in the metabolic domain file
         reaction_labels: Is a data structure of signature and tailoring enzyme
@@ -1739,14 +1749,17 @@ def write_gene_output(
             .alias("Signature or Tailoring"),
         )
     )
-    # debug: see explain plan for each column
-    for i, column in enumerate(gene_output_cols):
-        _log.debug("Column %d %s", i, column.meta.output_name())
-        try:
-            _log.debug(" explain: %s", gene_output.select(column).schema)
-        except Exception as e:
-            _log.warning(" column %d failed to explain %s", i, e)
     gene_output = gene_output.select(gene_output_cols)
+    # debug: see explain plan for each column
+    # this can be expensive, so check if debug logging is enabled
+    if logging.root.level <= logging.DEBUG:
+        gene_output_schema = gene_output.collect_schema()
+        for i, column in enumerate(gene_output_cols):
+            _log.debug("Column %d %s", i, column.meta.output_name())
+            try:
+                _log.debug(" explain: %s", gene_output_schema.get(column.meta.output_name()))
+            except Exception as e:
+                _log.warning(" column %d failed to explain %s", i, e)
     _log.info("Gene Output is %d rows", len(gene_output))
     _log.debug("Gene Output head %s", gene_output.head())
     gene_output.write_csv(gene_output_file, separator="\t")
@@ -1777,16 +1790,13 @@ def write_cluster_output(
                         generated in PlantClusterFinder function.
         clusters: Cluster Information (step size, chromosome id, gene start,
                    gene end, number of enzymes).
-        clusters_in_top_percent: List with size Number of Clusters x 1. It is zero if
-                       the density of the cluster is above or the same as given
-                       by the input argument top_percent_clusters*100.
         output_type: Defines which type of output is given: simple (default
                      setting) gives only top n% for the final stepsize. verbose
                      gives all computed stepsize until the final stepsize. old
                      gives at least 5 until the final stepsize.
 
     Returns:
-        Path of cluster outpuf file
+        Path of cluster output file
 
     """
     _log.debug("Writing cluster output")
@@ -1860,10 +1870,9 @@ def analyze_plant_cluster_gap_file(
     dna_unmasked_ok: bool = True,
     file_output: bool = True,
 ) -> tuple[str, dict[Any, list[Any]]] | Path:
-    """---------------------------------------------------------------------------
+    """Function that analyzes the masked DNA sequences of a _GAPOutput file.
 
-      Function that analyzes the masked DNA sequences of a _GAPOutput file, and
-      counts the occurrence of every size of gap.
+      Analyzes sequences and counts the occurrence of every size of gap.
 
     ---------------------------------------------------------------------------
 

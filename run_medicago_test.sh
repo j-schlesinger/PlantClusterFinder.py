@@ -30,5 +30,3 @@ uv run python -m plantclusterfinder_py\
    '--OutputType' 'simple'\
    --Verbose 2\
    "--OutputGeneLocationParquet" "./Outputs/Medicago_gene_loc.parquet"\
-   --NoRerunBlastP\
-   --NoRebuildBlastDB

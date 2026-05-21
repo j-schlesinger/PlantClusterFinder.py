@@ -38,7 +38,6 @@ def test_char_run_search():
         == []
     )
     test_start_end = list(char_run_search("A", "AAAAAAABAAAAAABBBBBBBABAAA"))
-    print(test_start_end)
     assert test_start_end == [(1, 7), (9, 6), (22, 1), (24, 3)]
 
 
@@ -114,6 +113,52 @@ def test_get_positions_of_gap_against_expected(tmp_path):
     output_path.unlink()
 
 
+def test_groupbyseq(tmp_path):
+    from plantclusterfinder_py.get_positions_of_gap import groupbyseq
+
+    output_path = tmp_path / "groupbyseq_func.csv"  # output
+
+    test_chromosome = "TEST"
+    test_seq = ("A" * 4) + ("N" * 20) + ("Q" * 4) + ("N" * 19) + ("A" * 6)
+    test_aa = "N"
+    test_input_indecies = [1, 4, 7, 9]
+    ret = groupbyseq(test_input_indecies, test_aa, test_chromosome)
+    assert ret == [
+        "TEST",
+        " ",
+        "N",
+        " ",
+        "2",
+        " ",
+        "1",
+        "\n",
+        "TEST",
+        " ",
+        "N",
+        " ",
+        "5",
+        " ",
+        "1",
+        "\n",
+        "TEST",
+        " ",
+        "N",
+        " ",
+        "8",
+        " ",
+        "1",
+        "\n",
+        "TEST",
+        " ",
+        "N",
+        " ",
+        "10",
+        " ",
+        "1",
+        "\n",
+    ]
+
+
 def test_positions_of_gap_main(tmp_path):
     from plantclusterfinder_py.get_positions_of_gap import main
 
@@ -139,3 +184,39 @@ def test_positions_of_gap_main(tmp_path):
         has_header=False,
     )
     assert len(gap_positions_df) == 8828
+
+
+def test_process_sequence_internal_function():
+    from plantclusterfinder_py.get_positions_of_gap import _process_sequence
+
+    test_seq_name = ">TEST"
+    test_seq = ("A" * 4) + ("N" * 20) + ("Q" * 4) + ("N" * 19) + ("A" * 6)
+
+    ret = _process_sequence((test_seq_name, test_seq))
+    assert len(ret) == 24
+    assert list(ret) == [
+        "TEST",
+        " N ",
+        "5",
+        " ",
+        "20",
+        "\n",
+        "TEST",
+        " N ",
+        "29",
+        " ",
+        "19",
+        "\n",
+        "TEST",
+        " A ",
+        "1",
+        " ",
+        "4",
+        "\n",
+        "TEST",
+        " A ",
+        "48",
+        " ",
+        "6",
+        "\n",
+    ]

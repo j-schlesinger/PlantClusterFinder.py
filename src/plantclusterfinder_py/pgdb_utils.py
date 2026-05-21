@@ -62,7 +62,10 @@ def read_in_pgdb_flat(
                 elif prev_key == "COMMENT":
                     continue
                 else:
-                    if not isinstance(y[prev_key], list):
+                    if prev_key not in y:
+                        y[prev_key] = None
+                        continue
+                    elif not isinstance(y[prev_key], list):
                         y[prev_key] += line[1:]
                         continue
                     last_val = y[prev_key][-1]
