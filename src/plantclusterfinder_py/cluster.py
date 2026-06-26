@@ -1095,7 +1095,7 @@ def evaluate_criterion(
                 .sum()
             )
             _log.debug(
-                "Number of enzymes - number of non-enzymes in clustered genes: %d",
+                "Criterion: Number of enzymes - number of non-enzymes in clustered genes: %d",
                 enzymes_in_step_size,
             )
             if step_size == maximum_step_size:
@@ -1121,12 +1121,11 @@ def evaluate_criterion(
         case 2:
             # step size 3 (because most organisms take this one)
             _log.debug(
-                "Number of enzymes - number of non-enzymes (no hypos) - 2* number"
-                + " if hypos in clustered genes: %i - %i - %i",
-                clusters_df["enzyme_count"].count(),
-                -clusters_df["non_enzyme_gene_count"].count(),
-                -2 * clusters_df["hypothetical_gene_count"].count(),
+                "Criterion: final_step_size == 3 (calculating step size %d of %d)",
+                step_size,
+                minimum_step_size,
             )
+            # Stop search at minimum_step_size, but final_step_size is 3
             if step_size >= minimum_step_size:
                 final_step_size = 3
                 continue_search = False
@@ -1134,6 +1133,13 @@ def evaluate_criterion(
             # sum(enzymes in clusters) - sum(non-enzymes in clusters without hypo genes)
             #     - 2*sum(hypo genes) < 0
             # i.e. enzymes < non-enzymes + (2x hypo genes)
+            _log.debug(
+                "Criterion: Number of enzymes - number of non-enzymes (no hypos) - 2* number"
+                + " if hypos in clustered genes: %i - %i - %i",
+                clusters_df["enzyme_count"].count(),
+                -clusters_df["non_enzyme_gene_count"].count(),
+                -2 * clusters_df["hypothetical_gene_count"].count(),
+            )
             if step_size == maximum_step_size:
                 continue_search = False
                 final_step_size = step_size
@@ -1168,12 +1174,12 @@ def evaluate_criterion(
             #      clusters than the last step size
             if step_size != 0:
                 _log.debug(
-                    "Number of clusters more than last stepsize %i",
+                    "Criterion: Number of clusters more than last stepsize %i",
                     clusters_df.filter(pl.col("step_size") > (step_size - 1)).height,
                 )
             else:
                 _log.debug(
-                    "Number of clusters Stopsize 0: %i",
+                    "Criterion: Number of clusters at Stepsize 0: %i",
                     clusters_df.filter(pl.col("step_size") == 0).height,
                 )
             if step_size == maximum_step_size:
@@ -1301,40 +1307,54 @@ def perform_clustering(
 
     # get rid of clusters that only contain Local Duplicates
 
-    gene_count = len(gene_location)
+    total_gene_count = len(gene_location)
     # is there a way to make this search an expression?
-    while step_size <= minimum_step_size or continue_search:  # for each valid step size
+    while not (step_size > minimum_step_size and not continue_search):  # for each valid step size
         cluster_starts_df = (
             gene_location.data.with_row_index("index")
             .select(
-                pl.col("index").alias("start"),
+                pl.col("index").alias("start"),  # start index
                 pl.col("Chromosome Name"),
-                pl.col("has_reaction"),
-                enzyme_count=pl.col("has_reaction")
+                pl.col("has_reaction"),  # is enzyme
+                pl.col("Gene Name"),
+                # number of enzymes within 1 step_size
+                base_enzyme_count=pl.col("has_reaction")
                 .sum()  # sum counts True as 1, False as 0
-                .rolling(index_column="index", period=f"{step_size}i"),
+                .rolling(index_column="index", period=f"{step_size}i", offset="-1i"),
+                gene_count=pl.count().rolling(
+                    index_column="index", period=f"{step_size}i", offset="-1i"
+                ),
+                genes=pl.col("Gene Name").rolling(
+                    index_column="index", period=f"{step_size}i", offset="-1i"
+                ),
             )
             .filter(
                 pl.col("has_reaction")  # start is enzyme
-                # & pl.col("enzyme_count") >= 2  # another enzyme in search range
+            )
+            .filter(
+                pl.col("base_enzyme_count") >= 2  # another enzyme in step
             )
         )
         cluster_starts_count = len(cluster_starts_df)
+        if cluster_starts_count == 0:
+            step_size += 1
+            if step_size > maximum_step_size:
+                raise Exception("Step Size exceeds maximum without any enzymes found")
+            continue
         _log.debug("Found %s cluster starts for step size %d", cluster_starts_count, step_size)
         for i, gene in enumerate(cluster_starts_df.iter_rows()):
             # gene has start index and start chromosome
-            start, chrom_start, *_ = gene
+            start, chrom_start, _, gene_name, *other_details = gene
+            if start is None:
+                break  # no more enzymes
             _log.debug(
                 "Potential Gene Start %i (index: %i) of %i starts, %i genes (step size %i)",
                 i,
                 start,
-                gene_count,
                 cluster_starts_count,
+                total_gene_count,
                 step_size,
             )
-            end: int = start
-            if start is None:
-                break  # no more enzymes
             # all genes in chrom_start chromosome
             chromosome_criteria = pl.col("Chromosome Name") == chrom_start
 
@@ -1343,6 +1363,7 @@ def perform_clustering(
             # - IF there are enzymes in that range on chromosome
             # - THEN that's the new end and continue the search
             # - ELSE keep established end
+            end: int = start
             stop_search_end = False
             while not stop_search_end:
                 end_s = end  # end search start
@@ -1351,18 +1372,22 @@ def perform_clustering(
                 _log.debug(
                     "Searching for enzyme cluster for index %d from %d to %d", start, end_s, end_e
                 )
+                # search all enzymes in chromosome within one step size
                 end_df = gene_location.data.with_row_index("index").filter(
-                    is_enzyme_criteria
-                    & chromosome_criteria
-                    & (pl.col("index") > end_s)
-                    & (pl.col("index") <= end_e)
+                    is_enzyme_criteria  # has a reaction
+                    & chromosome_criteria  # in the same chromosome
+                    & (pl.col("index") > end_s)  # after search start
+                    & (pl.col("index") <= end_e)  # before or at search end
                 )
                 if end_df.height > 0:
                     end = end_df.select(pl.last("index"))["index"][0]
                 else:
                     stop_search_end = True
+            if end == start:
+                # cluster crosses chromosome boundary
+                continue
 
-            cluster_genes = gene_location.data.with_row_index("index")[start:end]
+            cluster_genes = gene_location.data.with_row_index("index")[start : end + 1]
             # get rid of clusters that only have one reaction set
             if len(cluster_genes.filter(is_enzyme_criteria)) < minimum_enzyme_for_clusters:
                 # abolish cluster and continue search
@@ -1384,18 +1409,17 @@ def perform_clustering(
 
             _cluster = cluster_genes
             _chromosome = _cluster["Chromosome Name"][0]
-
             clusters.append(
                 cluster_tuple(
                     _chromosome,
                     step_size,
                     start,
                     end,
-                    _cluster.filter(pl.col("has_reaction")).height,  # enzyme_count
+                    _cluster.filter(is_enzyme_criteria).height,
                     _cluster.filter(
                         pl.col("has_reaction").not_() & pl.col("Hypothetical").not_()
                     ).height,  # non_enzyme_gene_count
-                    _cluster.filter(pl.col("Hypothetical").not_()).height,  # hypothetical_gene_count
+                    _cluster.filter(pl.col("Hypothetical")).height,  # hypothetical_gene_count
                 )
             )
 
@@ -1510,10 +1534,10 @@ def compute_background(
             indexed_gene_location.select(
                 # The first (window_size-1) rows will not be window_size windows
                 window_size=pl.len()
-                .rolling(index_column="idx", period=f"{window_size}i")
+                .rolling(index_column="idx", period=f"{window_size}i", offset="0i")
                 .cast(pl.Int64),
                 enzyme_count=pl.sum("has_reaction")
-                .rolling(index_column="idx", period=f"{window_size}i")
+                .rolling(index_column="idx", period=f"{window_size}i", offset="0i")
                 .cast(pl.Int64),
                 window_occurrence=1,
             )

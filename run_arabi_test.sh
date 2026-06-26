@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 export ARABIDIR=/debian/home/jschlesi/workspace/bioinformatics/Arabidopsis
 mkdir -p Outputs
-rm ./Outputs/Athaliana_Clust_v1_3.txt 2>/dev/null
-rm ./Outputs/Athaliana_Gene_v1_3.txt 2>/dev/null
+rm ./Outputs/Athaliana_Clust_v2_0.tsv 2>/dev/null
+rm ./Outputs/Athaliana_Gene_v2_0.tsv 2>/dev/null
 uv run python -m plantclusterfinder_py\
    '-r' 'Arabidopsis_TestRun'\
    '--GenesDat_GeneInfo' 'PRODUCT'\
@@ -27,9 +27,9 @@ uv run python -m plantclusterfinder_py\
    '-pgdb' "${ARABIDIR}/aracyc/18.0.0/data/"\
    '-sitf' './Inputs/scaffold-tailoring-reactions-05082016.tab'\
    '-rmdf' './Inputs/ReactionMetabolicDomainClassification.txt'\
-   '-gout' './Outputs/Athaliana_Gene_v2_0.txt'\
-   '-cout' './Outputs/Athaliana_Clust_v2_0.txt'\
-   '--Criterion' '3'\
+   '-gout' './Outputs/Athaliana_Gene_v2_0.tsv'\
+   '-cout' './Outputs/Athaliana_Clust_v2_0.tsv'\
+   '--Criterion' '2'\
    '--SeqGapSizesChromBreak' 10000 '--PGDBIdsToMap' 'GTP'\
    '--OutputType' 'simple'\
    --Verbose 2\

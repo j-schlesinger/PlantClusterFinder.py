@@ -6,6 +6,7 @@ and produce a derived analysis without modifying core pipeline behavior.
 
 import logging
 
+import matplotlib.pyplot as plt
 import polars as pl
 
 from plantclusterfinder_py.plugin_arch.context import ReturnContext, RunContext
