@@ -153,7 +153,6 @@ def introduce_hypo_genes(
                 row[0],  # chromosome/scaffold
                 "-1",  # originally strand of real gene at start
                 # a strand is required for data purposes, but not used in any calculation
-                True,
             )
             hypothetical_genes.append(new_row)
     hypo_gene_df = pl.DataFrame(
@@ -164,10 +163,9 @@ def introduce_hypo_genes(
             ("Gene End (bp)", pl.Int64),
             ("Chromosome Name", pl.String),
             ("Strand", pl.String),
-            ("Hypothetical", pl.Boolean),
         ),
         orient="row",
-    ).with_columns(Hypothetical=pl.lit(True))
+    ).with_columns(pl.col("Chromosome Name").alias("True Chromosome"), Hypothetical=pl.lit(True))
 
     gene_location.insert_genes(hypo_gene_df)
     _log.debug("Inserted %d hypothetical genes", len(hypo_gene_df))

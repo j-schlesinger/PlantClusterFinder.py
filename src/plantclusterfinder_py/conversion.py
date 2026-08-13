@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -164,6 +165,7 @@ class Conversion(BaseModel):
             self.df = self.df.join(gg_ids, on="Gene Name", how="left").unique()
             return
         _log.error("Could not map gene IDs to protein IDs %s", gg_ids)
+        time.sleep(1)
         raise Exception("Cannot map PGDB Gene IDs to IDs in GLOF file.")
 
     @property

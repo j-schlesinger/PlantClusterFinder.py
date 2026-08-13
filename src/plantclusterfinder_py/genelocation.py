@@ -107,7 +107,11 @@ class GeneLoc(BaseModel):
                 "There are duplicate gene records, typical of transcript read ingestion."
                 + " Please run consolidate_gene_info() to de-duplicate"
             )
-        self._data = self.data.with_columns(Hypothetical=pl.lit(False))
+        # add alias for Chromosome (for graphing/reporting)
+        # add Hypothetical column
+        self._data = self.data.with_columns(
+            pl.col("Chromosome Name").alias("True Chromosome"), Hypothetical=pl.lit(False)
+        )
 
         _log.debug("Read %d genes from Gene Location file into GeneLocation data", self.data.height)
 
@@ -701,6 +705,15 @@ class GeneLoc(BaseModel):
                          **this DataFrame must have the same columns as this object**
 
         """
+        if other_genes.schema != self.data.schema:
+            _log.warning(
+                "Tried to add genes with schema %s, current schema is %s",
+                other_genes.schema,
+                self.data.schema,
+            )
+            raise Exception(
+                "Cannot insert genes that do not match the schema of the current GeneLocation"
+            )
         _ = self._data.extend(other_genes)
 
     def compute_local_duplication(

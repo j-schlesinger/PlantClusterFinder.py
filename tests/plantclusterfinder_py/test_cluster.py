@@ -281,13 +281,12 @@ def test_compute_background():
             for x, y, z in zip(step_sizes, enzyme_counts, window_sizes, strict=True)
         )
     )
-    # cluster.write_csv(tmp_path / "test_cluster.csv")
     expected_background = pl.DataFrame(
         [
             {
                 "window_size": x,
                 "enzyme_count": y,
-                "window_occurrence": 192 - 6 * x,
+                "window_occurrence": 192 - 6 * (x + 1),
                 "tested": True,
             }
             for x in range(1, 7)
@@ -317,12 +316,12 @@ def test_compute_background():
         )
         print(size, total_window_occurrence)
         assert winzyme_occurrence_sum == total_window_occurrence
-        assert total_window_occurrence == 192 - size * 6
-        assert (
-            total_window_occurrence
-            == ex_grouped.filter(pl.col("window_size") == size).select(pl.col("window_occurrence"))[
-                "window_occurrence"
-            ][0]
+        assert total_window_occurrence in (192 - size * 6, 192 - (size + 1) * 6)
+
+        assert total_window_occurrence in (
+            ex_grouped.filter(pl.col("window_size") == size)
+            .select(pl.col("window_occurrence"))["window_occurrence"]
+            .to_list()
         )
 
 

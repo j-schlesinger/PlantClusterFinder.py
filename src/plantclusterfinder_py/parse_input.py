@@ -192,7 +192,7 @@ def extract_genes_gffutils(
         longest_child_name = longest_child[protein_name_column][0]
         if protein_name_regex != ".*":
             re_search = re.search(protein_name_regex, longest_child_name)
-            if re_search is None:
+            if re_search is None or re_search.groups() == (None,):
                 _log.error(
                     "Regex %s does not match %s. Cannot extract protein name.",
                     protein_name_regex,

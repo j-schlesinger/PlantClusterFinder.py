@@ -15,6 +15,8 @@ hookimpl = pluggy.HookimplMarker("plantclusterfinder")
 class PlantClusterSpecs:
     """Hook specifications for PlantClusterFinder plugins."""
 
+    expected_outputs: None | list[str]
+
     @hookspec
     def process_results(self, results: pl.DataFrame, context: RunContext) -> ReturnContext:
         """Receive a Polars DataFrame from main.py and return any result."""

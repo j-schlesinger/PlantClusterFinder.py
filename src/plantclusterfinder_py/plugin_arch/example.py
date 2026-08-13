@@ -18,6 +18,8 @@ _log = logging.getLogger(__name__)
 class ExamplePlugin:
     """A hook specification namespace."""
 
+    expected_outputs = None
+
     @hookimpl
     def process_results(self, results: pl.DataFrame, context: RunContext) -> ReturnContext:
         """Example plugin logic: process DataFrame to get non-null genes."""

@@ -1203,12 +1203,19 @@ Technical Parameters:
     # Part 21+: Run Plugins on output files
     plugin_start_time = time.time()
     log.info("Plugin execution started")
+    output_dict = {
+        "cluster_filename": cluster_output_filename,
+        "gene_filename": gene_output_filename,
+    }
+    if gene_location_output_filename is not None:
+        output_dict["gene_location_filename"] = gene_location_output_filename
     plug_context = RunContext(
         run_name=uniq_run_name,
         config={},
         genome_file=dna_fasta_filename,
         annotation_file=annotation_gff3_filename,
         output_dir=cluster_output_filename.parent,
+        output_dict=output_dict,
     )
     plugman = PluginManager()
     plugman.register(EnzymeStatsPlugin())
