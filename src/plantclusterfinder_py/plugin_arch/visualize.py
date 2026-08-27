@@ -5,7 +5,9 @@ and produce a derived analysis without modifying core pipeline behavior.
 """
 
 import logging
+from collections import namedtuple
 from pathlib import Path
+from typing import NamedTuple
 
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
@@ -54,20 +56,30 @@ class VisualizationPlugin:
             )  # not using the pyfaidx result
             if not fai_file.exists():
                 raise PluginValidationError(self, "FASTA index for genome file cannot be created.")
+        if "cluster_filename" not in context.output_dict:
+            raise PluginValidationError(
+                self, "Cannot visualize clusters without cluster data (cluster_filename)"
+            )
+        try:
+            clusters = pl.read_csv(context.output_dict["cluster_filename"], separator="\t")
+        except Exception as e:
+            raise PluginValidationError(
+                self, "Error occurred when trying to read cluster data."
+            ) from e
         _log.info("Writing output to %s", output_path)
-        self.create_graph_for_clusters(fai_file, clusters=results, figure_path=output_path)
+        self.create_graph_for_clusters(fai_file, clusters=clusters, figure_path=output_path)
         return ReturnContext(plugin_name="visualize_bgc_plugin", output_filename=output_path)
 
     def plot_genomic_regions(
         self,
-        gene_location: pl.DataFrame,
+        clusters: pl.DataFrame,
         chrom_lengths: dict[str, int],
         categories=("Predicted BGC",),
     ) -> Figure:
         """Create a plot of the Biosynthetic Gene Clusters in the chromosomes.
 
         Args:
-            gene_location: DataFrame of GeneLocation from PlantClusterFinder
+            clusters: DataFrame of BGCs from PlantClusterFinder
             chrom_lengths: dictionary of chromosome IDs and lengths
             categories: names of categories in input (currently unused)
         """
@@ -90,7 +102,7 @@ class VisualizationPlugin:
         chrom_color = "darkgrey"
 
         color_map = {cat: colors[i] for i, cat in enumerate(categories)}
-        df = gene_location.to_pandas()
+        df = clusters
 
         fig, ax = plt.subplots(figsize=(10, 6))
 
@@ -112,12 +124,14 @@ class VisualizationPlugin:
                 )
             )
 
+        df = df.rename({col: col.replace(" ", "_") for col in df.columns}, strict=True)
         # 3. Plot specific regions
-        for _, row in df.itertuples():
-            true_chromosome: str = row["True Chromosome"]
-            start: float = row["Start bp"]
-            width: float = row["End bp"] - start
-            gene_ids: list[str] = row["Gene IDs"]
+        for row_t in df.iter_rows(named=True):
+            row_d = dict(row_t)
+            true_chromosome: str = str(row_d["Chromosome"])
+            start: int = int(row_d["Start_bp"])
+            width: int = int(row_d["End_bp"] - start)
+            gene_ids: list[str] = row_d["Gene_IDs"]
             y_pos = chrom_y_map[true_chromosome]
             bgc_type = "Predicted BGC"
             bgc_color_type = bgc_type

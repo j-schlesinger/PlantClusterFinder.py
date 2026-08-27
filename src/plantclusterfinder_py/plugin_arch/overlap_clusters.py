@@ -24,7 +24,7 @@ class OverlapClustersPlugin:
         """Example plugin logic: process DataFrame to get non-null genes."""
         if "cluster_filename" not in context.output_dict:
             raise ValueError("Setting 'cluster_filename' not in plugin output dictionary")
-        _log.error("Cluster Filename is " + context.output_dict.get("cluster_filename", ""))
+        _log.debug("Cluster Filename is %s", context.output_dict.get("cluster_filename", ""))
         processed_df = pl.read_csv(
             context.output_dir / context.output_dict["cluster_filename"], separator="\t"
         )

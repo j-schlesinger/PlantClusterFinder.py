@@ -158,7 +158,7 @@ def download_input_files(override_dir: Path | None = None) -> bool:
     return True
 
 
-def download_csub_files() -> bool:
+def download_csub_files(csub_download_dir: Path | None = None) -> bool:
     """Download the Csubellipsoidea files to user's $HOME."""
     # this should be handled through NCBI downloads
     import base64
@@ -166,7 +166,8 @@ def download_csub_files() -> bool:
 
     import requests
 
-    csub_compressed_file = pcf_home / "csubellipsoidea.tar.gz"
+    csub_download = csub_download_dir if csub_download_dir is not None else pcf_home
+    csub_compressed_file = csub_download / "csubellipsoidea.tar.gz"
     log = logging.getLogger(__name__)
     csub_url = "https://gist.github.com/j-schlesinger/762579852ce14d9cf6210908cfd5c6da/raw/b6d42fdea85c94637b4f11105a790aec62ef87b2/csubellipsoidea.tar.gz.asc"
     log.debug("Downloading Csub data from %s", csub_url)
@@ -178,7 +179,7 @@ def download_csub_files() -> bool:
     csub_compressed_file.write_bytes(base64.b64decode(csub_request.content))
     log.debug("Csub written to: %s", csub_compressed_file)
     with tarfile.open(csub_compressed_file, mode="r:gz") as tf:
-        tf.extractall(pcf_home)  # noqa: S202
+        tf.extractall(csub_download)  # noqa: S202
     log.info("Csub data downloaded and extracted to $HOME/.plantclusterfinder/csubellipsoidea")
     return True
 

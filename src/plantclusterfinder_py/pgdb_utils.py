@@ -1,6 +1,7 @@
 """Utils and processing functions for PGDB data."""
 
 import logging
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import IO, Any
@@ -90,7 +91,16 @@ def read_in_pgdb_flat(
 
     # The PGDB source data doesn't enforce encoding, but Arabidopsis is latin-1
     with pgdb_filename.open(encoding=pgdb_encoding) as f:
-        return pl.from_dicts(_row_gen(f, attrib, unique_keys), infer_schema_length=None)
+        try:
+            return pl.from_dicts(_row_gen(f, attrib, unique_keys), infer_schema_length=None)
+        except pl.exceptions.ComputeError as e:
+            schema = set(unique_keys).union(attrib)
+            ret_df = pl.from_dicts(_row_gen(f, attrib, unique_keys), schema=list(schema))
+            if any(k not in ret_df.columns for k in unique_keys):
+                _log.debug("columns: %s, expected: %s", ret_df.columns, unique_keys)
+                time.sleep(1)  # wait to flush log
+                raise ValueError("Could not parse PGDB source: can't find unique key") from e
+            return ret_df
 
 
 def match_pgdb_flat(

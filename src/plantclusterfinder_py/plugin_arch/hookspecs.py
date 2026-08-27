@@ -18,6 +18,11 @@ class PlantClusterSpecs:
     expected_outputs: None | list[str]
 
     @hookspec
+    def required_outputs(self) -> list[str]:
+        """Return a list with necessary `output_dict` keys populated."""
+        return []
+
+    @hookspec
     def process_results(self, results: pl.DataFrame, context: RunContext) -> ReturnContext:
         """Receive a Polars DataFrame from main.py and return any result."""
         raise NotImplementedError("This is an abstract class for plugins")

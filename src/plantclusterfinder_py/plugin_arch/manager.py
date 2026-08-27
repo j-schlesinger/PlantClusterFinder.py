@@ -40,6 +40,18 @@ class PluginManager(pluggy.PluginManager):
             results: Results DataFrame as input for each plugin
             context: Context for run of all plugins
         """
+        name_plugins = self.list_name_plugin()
+        names = [n[0] for n in name_plugins]
+        for required_outputs in self.hook.required_outputs():
+            print(required_outputs)
+            if any(req in names for req in required_outputs):
+                raise NotImplementedError("Currently plugin heirarchy is not supported.")
+            if any(req not in context.output_dict for req in required_outputs):
+                raise pluggy.PluginValidationError(
+                    self,
+                    "Plugin requires output not available in the output dictionary: "
+                    + str(required_outputs),
+                )
         for out in self.hook.process_results(
             results=results,
             context=context,

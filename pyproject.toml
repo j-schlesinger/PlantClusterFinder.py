@@ -135,7 +135,7 @@ branch = true
 
 [tool.coverage.report]
 # Fail the build if total coverage is below this percentage
-fail_under = 74
+fail_under = 75
 show_missing = true
 exclude_lines = [
     "pragma: no cover",
