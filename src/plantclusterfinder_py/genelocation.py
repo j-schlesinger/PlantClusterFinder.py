@@ -65,7 +65,7 @@ class GeneLoc(BaseModel):
     """The Polars DataFrame that stores the genomic data."""
     _cache: dict = {}
 
-    def __init__(self, **input) -> None:
+    def __init__(self, **location_input) -> None:
         """Load data from the specified filepath into the Polars DataFrame.
 
             Function that reads in TSV files with headers. The headers are used as
@@ -87,10 +87,10 @@ class GeneLoc(BaseModel):
                 - hypothetical
 
         """
-        super().__init__(**input)
-        _log.debug("Reading TSV file %s to get gene location data.", input["file_path"])
+        super().__init__(**location_input)
+        _log.debug("Reading TSV file %s to get gene location data.", location_input["file_path"])
         self._data = pl.read_csv(
-            input["file_path"],
+            location_input["file_path"],
             separator="\t",
             schema_overrides={"Strand": pl.datatypes.String},
         )

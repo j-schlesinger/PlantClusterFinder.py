@@ -80,6 +80,7 @@ line-length = 101
 
 [tool.ruff.lint]
 select = [
+    "A",
     "E", "W", # pycodestyle
     "I", # isort
     "N", # Naming

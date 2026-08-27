@@ -120,11 +120,11 @@ def _process_sequence(seq_name_and_seq_aa: tuple[str, str]) -> deque[str]:
     return_rows: deque[str] = deque()
     n_indices = char_run_search("N", seq_aa)
     char = seq_name[1:].split()[0]
-    for start, len in n_indices:
-        return_rows.extend([char, " N ", str(start), " ", str(len), "\n"])
+    for start, length in n_indices:
+        return_rows.extend([char, " N ", str(start), " ", str(length), "\n"])
     a_indices = char_run_search("ATGC*", seq_aa)
-    for start, len in a_indices:
-        return_rows.extend([char, " A ", str(start), " ", str(len), "\n"])
+    for start, length in a_indices:
+        return_rows.extend([char, " A ", str(start), " ", str(length), "\n"])
     return return_rows
 
 

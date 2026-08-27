@@ -136,8 +136,14 @@ def download_input_files(override_dir: Path | None = None) -> bool:
         # requests is only needed if files need to be downloaded
         import requests
 
+        headers = {"User-Agent": "PlantClusterFinder"}
+        token = os.getenv("GITHUB_TOKEN")
+        if token:
+            log.debug("Using GITHUB_TOKEN to avoid request timeout issues")
+            headers["Authorization"] = f"Bearer {token}"
         scaffold_tail_get = requests.get(
             scaffold_tail_url,
+            headers=headers,
             timeout=64,
         )
         if scaffold_tail_get.status_code != 200:
@@ -171,8 +177,14 @@ def download_csub_files(csub_download_dir: Path | None = None) -> bool:
     log = logging.getLogger(__name__)
     csub_url = "https://gist.github.com/j-schlesinger/762579852ce14d9cf6210908cfd5c6da/raw/b6d42fdea85c94637b4f11105a790aec62ef87b2/csubellipsoidea.tar.gz.asc"
     log.debug("Downloading Csub data from %s", csub_url)
+    headers = {"User-Agent": "PlantClusterFinder"}
+    token = os.getenv("GITHUB_TOKEN")
+    if token:
+        log.debug("Using GITHUB_TOKEN to avoid request timeout issues")
+        headers["Authorization"] = f"Bearer {token}"
     csub_request = requests.get(
         csub_url,
+        headers=headers,
         timeout=64,
     )
     log.debug("Csub downloaded, status: %d", csub_request.status_code)
