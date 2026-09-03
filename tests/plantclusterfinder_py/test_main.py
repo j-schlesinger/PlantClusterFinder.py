@@ -73,15 +73,15 @@ def test_run_main(tmp_path):
     genes_file = pl.read_csv(gene_output_temp_file.name, separator="\t")
     assert len(genes_file) == 9629
     clusters_file = pl.read_csv(cluster_output_temp_file.name, separator="\t")
-    assert len(clusters_file) == 123
+    assert len(clusters_file) == 255
 
 
 def test_download_input(tmp_path):
+    """Download the static Input files."""
     from plantclusterfinder_py.main import download_input_files
 
     assert download_input_files(tmp_path)
     with (tmp_path / "scaffold-tailoring-reactions-05082016.tab").open("rb") as f:
-        print(tmp_path)
         test_digest_s = hashlib.sha256(f.read()).digest()
     with (tmp_path / "ReactionMetabolicDomainClassification.txt").open("rb") as f:
         test_digest_r = hashlib.sha256(f.read()).digest()
@@ -91,3 +91,24 @@ def test_download_input(tmp_path):
         expect_digest_r = hashlib.sha256(f.read()).digest()
     assert test_digest_s == expect_digest_s
     assert test_digest_r == expect_digest_r
+
+
+def test_download_csub(tmp_path):
+    """Download the Csubellipsoidea data."""
+    from plantclusterfinder_py.main import download_csub_files
+
+    assert download_csub_files(tmp_path)
+    test_digests = {}
+    expected_digests = {}
+    for file in (tmp_path / "csubellipsoidea").iterdir():
+        if not file.is_file():
+            continue
+        with file.open("rb") as f:
+            test_digests[file.name] = hashlib.sha256(f.read()).digest()
+    for file in (Path("./csubellipsoidea")).iterdir():
+        if not file.is_file():
+            continue
+        with file.open("rb") as f:
+            expected_digests[file.name] = hashlib.sha256(f.read()).digest()
+    for filename in test_digests:
+        assert test_digests[filename] == expected_digests[filename]

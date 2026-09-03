@@ -6,6 +6,7 @@ and produce a derived analysis without modifying core pipeline behavior.
 
 import logging
 
+import matplotlib.pyplot as plt
 import polars as pl
 
 from plantclusterfinder_py.plugin_arch.context import ReturnContext, RunContext
@@ -16,6 +17,8 @@ _log = logging.getLogger(__name__)
 
 class ExamplePlugin:
     """A hook specification namespace."""
+
+    expected_outputs = None
 
     @hookimpl
     def process_results(self, results: pl.DataFrame, context: RunContext) -> ReturnContext:

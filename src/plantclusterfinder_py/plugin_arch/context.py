@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class RunContext(BaseModel):
@@ -20,6 +20,13 @@ class RunContext(BaseModel):
     annotation_file: Path | None = None
     """dictionary of output files"""
     output_dict: dict = {}
+
+    @field_validator("output_dir", mode="after")
+    @classmethod
+    def _is_dir(cls, value: Path):
+        if not value.is_dir():
+            raise ValueError(f"output_dir {value} is not a directory")
+        return value
 
 
 class ReturnContext(BaseModel):

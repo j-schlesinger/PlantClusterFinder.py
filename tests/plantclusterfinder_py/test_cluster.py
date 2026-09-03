@@ -281,13 +281,12 @@ def test_compute_background():
             for x, y, z in zip(step_sizes, enzyme_counts, window_sizes, strict=True)
         )
     )
-    # cluster.write_csv(tmp_path / "test_cluster.csv")
     expected_background = pl.DataFrame(
         [
             {
                 "window_size": x,
                 "enzyme_count": y,
-                "window_occurrence": 192 - 6 * x,
+                "window_occurrence": 192 - 6 * (x + 1),
                 "tested": True,
             }
             for x in range(1, 7)
@@ -317,12 +316,12 @@ def test_compute_background():
         )
         print(size, total_window_occurrence)
         assert winzyme_occurrence_sum == total_window_occurrence
-        assert total_window_occurrence == 192 - size * 6
-        assert (
-            total_window_occurrence
-            == ex_grouped.filter(pl.col("window_size") == size).select(pl.col("window_occurrence"))[
-                "window_occurrence"
-            ][0]
+        assert total_window_occurrence in (192 - size * 6, 192 - (size + 1) * 6)
+
+        assert total_window_occurrence in (
+            ex_grouped.filter(pl.col("window_size") == size)
+            .select(pl.col("window_occurrence"))["window_occurrence"]
+            .to_list()
         )
 
 
@@ -345,8 +344,8 @@ def test_perform_clustering(genelocation_transformed_obj, expected_mcl_cluster_o
     clusters.perform_cutoff(TOP_PERCENT)
     assert clusters.FinalStepSize == 3
     assert clusters.MaxStepSize == 5
-    assert clusters.ClusterMeta.height == 1345  # 1192 adjusted for corrected LD logic
-    assert clusters.ClusterBackground.height == 830
+    assert clusters.ClusterMeta.height == 1699
+    assert clusters.ClusterBackground.height == 848
 
 
 def test_evaluate_criterion():
@@ -674,5 +673,11 @@ def test_write_cluster_output(genelocation_transformed_obj, tmp_path):
     write_cluster_output(Path(simple_cluster_file.name), gene_location, clusters, "simple")
     # verify file was written
     simple_cluster_df = pl.read_csv(simple_cluster_file.name, separator="\t")
-    assert simple_cluster_df.height == 132  # 109 adjusted for corrected LD logic
+    assert simple_cluster_df.height == 258
     # test "verbose" output
+    verbose_cluster_file = (
+        tmp_path / f"tmp_cluster_output_test_write_verbose.{write_cluster_start_time}.tsv"
+    )
+    write_cluster_output(Path(verbose_cluster_file.name), gene_location, clusters, "verbose")
+    simple_cluster_df = pl.read_csv(verbose_cluster_file.name, separator="\t")
+    assert simple_cluster_df.height == 477

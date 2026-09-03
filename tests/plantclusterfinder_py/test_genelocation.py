@@ -19,7 +19,7 @@ def test_init_genelocation():
 
     gene_location = GeneLoc(file_path=GLOF_FILE_PATH)
 
-    assert len(gene_location.data.columns) == 6
+    assert len(gene_location.data.columns) == 7
     assert len(gene_location) == 9_629
 
 
@@ -34,13 +34,14 @@ def test_read_in_conversion_to_genepositionfile(genelocation_obj, t_gene_loc, co
         "Gene End (bp)",
         "Chromosome Name",
         "Strand",
+        "True Chromosome",
         "Hypothetical",
         "Transcript Name",  # added
         "Protein Name",  # added
         "pgdb_gene_id",  # added
     ]
     gene_location.add_conversion_columns(conversion)
-    assert len(gene_location.columns) == 9
+    assert len(gene_location.columns) == 10
     assert expected_columns == gene_location.columns
     assert len(gene_location) == 9_629
 
@@ -91,6 +92,7 @@ def test_map_genelocation_to_conversion_file(genelocation_obj, conversion_obj):
         "Gene End (bp)",
         "Chromosome Name",
         "Strand",
+        "True Chromosome",
         "Hypothetical",
         "Transcript Name",  # added
         "Protein Name",  # added
@@ -174,6 +176,7 @@ def test_annotate_enzyme_info(genelocation_obj, conversion_obj):
         "Gene End (bp)",
         "Chromosome Name",
         "Strand",
+        "True Chromosome",
         "Hypothetical",
         "Transcript Name",
         "Protein Name",
@@ -241,7 +244,15 @@ def test_small_gap_introduce_hard_breaks(genelocation_obj):
 def test_insert_genes(genelocation_obj):
     print(genelocation_obj.data.head(10))
     test_genes = [
-        (f"TEST{i + 1:02}", 50 + 1000 * i, 50 + 1000 * i, "test_scaffold", "-1", True)
+        (
+            f"TEST{i + 1:02}",
+            50 + 1000 * i,
+            50 + 1000 * i,
+            "test_scaffold",
+            "-1",
+            f"TEST{i + 1:02}",
+            True,
+        )
         for i in range(500)
     ]
     gene_location = genelocation_obj.model_copy()
@@ -278,6 +289,7 @@ def test_compute_local_duplication(genelocation_obj, conversion_obj):
         "Gene End (bp)",
         "Chromosome Name",
         "Strand",
+        "True Chromosome",
         "Hypothetical",
         "Transcript Name",
         "Protein Name",

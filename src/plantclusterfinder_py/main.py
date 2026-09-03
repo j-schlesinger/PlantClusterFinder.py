@@ -136,8 +136,14 @@ def download_input_files(override_dir: Path | None = None) -> bool:
         # requests is only needed if files need to be downloaded
         import requests
 
+        headers = {"User-Agent": "PlantClusterFinder"}
+        token = os.getenv("GITHUB_TOKEN")
+        if token:
+            log.debug("Using GITHUB_TOKEN to avoid request timeout issues")
+            headers["Authorization"] = f"Bearer {token}"
         scaffold_tail_get = requests.get(
             scaffold_tail_url,
+            headers=headers,
             timeout=64,
         )
         if scaffold_tail_get.status_code != 200:
@@ -158,7 +164,7 @@ def download_input_files(override_dir: Path | None = None) -> bool:
     return True
 
 
-def download_csub_files() -> bool:
+def download_csub_files(csub_download_dir: Path | None = None) -> bool:
     """Download the Csubellipsoidea files to user's $HOME."""
     # this should be handled through NCBI downloads
     import base64
@@ -166,19 +172,26 @@ def download_csub_files() -> bool:
 
     import requests
 
-    csub_compressed_file = pcf_home / "csubellipsoidea.tar.gz"
+    csub_download = csub_download_dir if csub_download_dir is not None else pcf_home
+    csub_compressed_file = csub_download / "csubellipsoidea.tar.gz"
     log = logging.getLogger(__name__)
     csub_url = "https://gist.github.com/j-schlesinger/762579852ce14d9cf6210908cfd5c6da/raw/b6d42fdea85c94637b4f11105a790aec62ef87b2/csubellipsoidea.tar.gz.asc"
     log.debug("Downloading Csub data from %s", csub_url)
+    headers = {"User-Agent": "PlantClusterFinder"}
+    token = os.getenv("GITHUB_TOKEN")
+    if token:
+        log.debug("Using GITHUB_TOKEN to avoid request timeout issues")
+        headers["Authorization"] = f"Bearer {token}"
     csub_request = requests.get(
         csub_url,
+        headers=headers,
         timeout=64,
     )
     log.debug("Csub downloaded, status: %d", csub_request.status_code)
     csub_compressed_file.write_bytes(base64.b64decode(csub_request.content))
     log.debug("Csub written to: %s", csub_compressed_file)
     with tarfile.open(csub_compressed_file, mode="r:gz") as tf:
-        tf.extractall(pcf_home)  # noqa: S202
+        tf.extractall(csub_download)  # noqa: S202
     log.info("Csub data downloaded and extracted to $HOME/.plantclusterfinder/csubellipsoidea")
     return True
 
@@ -1203,12 +1216,19 @@ Technical Parameters:
     # Part 21+: Run Plugins on output files
     plugin_start_time = time.time()
     log.info("Plugin execution started")
+    output_dict = {
+        "cluster_filename": cluster_output_filename,
+        "gene_filename": gene_output_filename,
+    }
+    if gene_location_output_filename is not None:
+        output_dict["gene_location_filename"] = gene_location_output_filename
     plug_context = RunContext(
         run_name=uniq_run_name,
         config={},
         genome_file=dna_fasta_filename,
         annotation_file=annotation_gff3_filename,
         output_dir=cluster_output_filename.parent,
+        output_dict=output_dict,
     )
     plugman = PluginManager()
     plugman.register(EnzymeStatsPlugin())

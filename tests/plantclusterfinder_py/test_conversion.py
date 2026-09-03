@@ -18,7 +18,6 @@ def test_read_in_conversion_file():
     assert len(conversion.map_protein) == GENE_COUNT
 
 
-@pytest.mark.benchmark
 def test_add_pgdb_id_column():
     """Test add_pgdb_id_column from Conversion."""
     from plantclusterfinder_py.conversion import Conversion
