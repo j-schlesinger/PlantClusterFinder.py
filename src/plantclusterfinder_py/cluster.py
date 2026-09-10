@@ -1002,11 +1002,14 @@ def map_pgdb_gene_ids_to_conversion_file(
     # pull from "ACCESSION-1"
     _log.warning("Genes_Data_Metadata %s, ids to map %s", repr(genes_data_metadata), pgdb_ids_to_map)
     if "T" in pgdb_ids_to_map and len(genes_data_metadata) > 0:
-        all_genes_df_transcript = (
-            all_genes_df.select(pl.col("UNIQUE-ID"), pl.col(genes_data_metadata[0]))
-            .explode(pl.col(genes_data_metadata[0]))
-            .unique()
+        all_genes_df_transcript = all_genes_df.select(
+            pl.col("UNIQUE-ID"), pl.col(genes_data_metadata[0])
         )
+        # if the genes metadata column is a list, explode it out
+        if all_genes_df.schema[genes_data_metadata[0]] == pl.List:
+            all_genes_df_transcript = all_genes_df_transcript.explode(
+                pl.col(genes_data_metadata[0])
+            ).unique()
         _log.debug("Transcript Map Genes: %s", all_genes_df_transcript.head())
         transcript_map = conversion.df.join(
             all_genes_df_transcript,

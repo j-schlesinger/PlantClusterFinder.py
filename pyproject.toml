@@ -48,7 +48,6 @@ dev = [
     "pandas>=2.2.2",
     "pyright>=1.1.404",
     "viztracer>=1.1.1",
-    "wily>=1.25.0",
     "radon>=5.1",
     "pytest-pyright>=0.0.6",
     "pytest-cov>=7.0.0",

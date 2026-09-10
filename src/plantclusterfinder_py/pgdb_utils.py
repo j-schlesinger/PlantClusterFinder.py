@@ -43,56 +43,61 @@ def read_in_pgdb_flat(
         fh: IO, attrib: tuple[str, ...], unique_keys: tuple[str, ...]
     ) -> Iterator[dict[str, Any]]:
         """Generate a dict row from the pgdb flat file."""
-        y: dict[str, Any] = dict.fromkeys(attrib)
-        prev_key = "COMMENT"
+        y: dict[str, Any] = {}  # dict.fromkeys(attrib)
+        # create a copy of y to start off each row
+        # y_prime = y.copy()
+        # previous column key, is set when previous key is valid
+        prev_key: str | None = None
         for line in fh:
-            # ignore comment rows, columns
-            if line.startswith("#") or line.startswith("COMMENT"):
-                if line.startswith("COMMENT - "):
-                    prev_key = "COMMENT"
+            # data row ends, split lines and reset row
+            if line.startswith("//"):
+                #  return all attrib values, even if they are not found
+                yield {k: y.get(k) for k in attrib}
+                y = {}
                 continue
-            # line continues or data row ends
+            # ignore comment rows
+            elif line.startswith("#"):
+                continue
+            # value continues from previous line
             elif line.startswith("/"):
-                # split lines and reset row
-                if line.startswith("//"):
-                    yield y
-                    y = dict.fromkeys(attrib)
-                    prev_key = "COMMENT"
-                    continue
-                # row ends, extend value from previous row
-                elif prev_key == "COMMENT":
-                    continue
-                else:
-                    if prev_key not in y:
-                        y[prev_key] = None
-                        continue
-                    elif not isinstance(y[prev_key], list):
-                        y[prev_key] += line[1:]
+                if prev_key is not None:
+                    if not isinstance(y.get(prev_key), list):
+                        y[prev_key] = [y[prev_key], line[1:]]
                         continue
                     last_val = y[prev_key][-1]
                     last_val += line[1:]
                     y[prev_key][-1] = last_val
-
+                else:
+                    # prev_key is not set, ignore line
+                    continue
             # get key, value pair from line
             elif " - " in line:
                 key, *value_arr = line.split(" - ")
-                prev_key = key
                 value: str = (" - ".join(value_arr)).strip()
-                if key in y:
-                    if y[key] is None:
-                        if key == unique_keys[0]:
-                            y[key] = value
-                        else:
-                            y[key] = [value]
-                    elif not isinstance(y[key], list):
-                        y[key] = [y[key], value]
+                # value is an annotation-value pair
+                if line.startswith("^") and prev_key is not None and prev_key in attrib:
+                    attrib_key = prev_key + "_attrib_" + key
+                    if attrib_key not in y or y[attrib_key] is None:
+                        y[attrib_key] = []
+                    y[attrib_key] = y[attrib_key].append({key: value})
+                else:
+                    prev_key = key
+                    # each row should have exactly one unique_key
+                    if key in unique_keys:
+                        y[key] = value
+                    # only store values in attrib
+                    elif key in attrib:
+                        y[key] = y.get(key, []) + [value]
                     else:
-                        y[key].append(value)
+                        prev_key = None
+            else:
+                raise ValueError("Invalid PGDB File")
 
     # The PGDB source data doesn't enforce encoding, but Arabidopsis is latin-1
     with pgdb_filename.open(encoding=pgdb_encoding) as f:
         try:
-            return pl.from_dicts(_row_gen(f, attrib, unique_keys), infer_schema_length=None)
+            ret_df = pl.from_dicts(_row_gen(f, attrib, unique_keys), infer_schema_length=None)
+            _log.debug("Extracted from %s, %s", pgdb_filename, ret_df.head())
         except pl.exceptions.ComputeError as e:
             schema = set(unique_keys).union(attrib)
             ret_df = pl.from_dicts(_row_gen(f, attrib, unique_keys), schema=list(schema))
@@ -100,7 +105,7 @@ def read_in_pgdb_flat(
                 _log.debug("columns: %s, expected: %s", ret_df.columns, unique_keys)
                 time.sleep(1)  # wait to flush log
                 raise ValueError("Could not parse PGDB source: can't find unique key") from e
-            return ret_df
+    return ret_df
 
 
 def match_pgdb_flat(

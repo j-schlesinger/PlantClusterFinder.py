@@ -30,6 +30,7 @@ def test_match_pgdb_flat():
         ("UNIQUE-ID", "ACCESSION-1", "PRODUCT", "COMMON-NAME"),
         unique_keys=("UNIQUE-ID",),
     )
+    # read in the PGDB file expecting the "BOGUS" column (not found)
     proteins = read_in_pgdb_flat(
         PGDB_DIR / "proteins.dat",
         ("UNIQUE-ID", "ACCESSION-1", "GENE", "COMMON-NAME", "BOGUS"),
