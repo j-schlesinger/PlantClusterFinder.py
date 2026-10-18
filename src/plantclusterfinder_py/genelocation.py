@@ -667,7 +667,15 @@ class GeneLoc(BaseModel):
             )
             prev_end = end
             prev_gene = next_gene
-        pseudochrom_df = pl.DataFrame(pseudochromosome)
+        pseudochrom_schema = {
+            "pchrom_start": pl.Int64,
+            "pchrom_end": pl.Int64,
+            "pchromosome name": pl.String,
+            "Old Chromosome Name": pl.String,
+            "pchrom_start_gene": pl.String,
+            "pchrom_end_gene": pl.String,
+        }
+        pseudochrom_df = pl.from_dicts(pseudochromosome, schema=pseudochrom_schema)
         # Add pseudochromosomes to genes which are between the break boundaries
         updated_genes = (
             self.data.join_where(

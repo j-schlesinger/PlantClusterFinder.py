@@ -36,12 +36,14 @@ def test_match_pgdb_flat():
         ("UNIQUE-ID", "ACCESSION-1", "GENE", "COMMON-NAME", "BOGUS"),
         unique_keys=("UNIQUE-ID",),
     )
+    # gene UNIQUE-ID should join on protein GENE column
     genes_and_prots = match_pgdb_flat(genes_all, proteins, join_on=("UNIQUE-ID", "GENE"))
     assert len(genes_and_prots) == 2053
+    # gene UNIQUE-ID should **not** join on protein "BOGUS" column
     genes_and_nulls = match_pgdb_flat(genes_all, proteins, join_on=("UNIQUE-ID", "BOGUS"))
-    assert len(genes_and_nulls) == 2053
-    with pytest.raises(Exception, match="Column-matching Mismatch") as _:
-        match_pgdb_flat(proteins, proteins, join_on=("BOGUS", "UNIQUE-ID"))
+    assert len(genes_and_nulls) == 0
+    proteins_and_bogus = match_pgdb_flat(proteins, proteins, join_on=("BOGUS", "UNIQUE-ID"))
+    assert len(proteins_and_bogus) == 0
     with pytest.raises(Exception, match="Column-matching Mismatch") as _:
         match_pgdb_flat(proteins, proteins, join_on=("NOT-COLUMN", "UNIQUE-ID"))
     with pytest.raises(Exception, match="Column-matching Mismatch") as _:

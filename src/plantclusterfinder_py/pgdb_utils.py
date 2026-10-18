@@ -43,17 +43,18 @@ def read_in_pgdb_flat(
         fh: IO, attrib: tuple[str, ...], unique_keys: tuple[str, ...]
     ) -> Iterator[dict[str, Any]]:
         """Generate a dict row from the pgdb flat file."""
-        y: dict[str, Any] = {}  # dict.fromkeys(attrib)
+        y: dict[str, Any] = {k: "" if k in unique_keys else [] for k in attrib}
         # create a copy of y to start off each row
-        # y_prime = y.copy()
+        y_prime = y.copy()
         # previous column key, is set when previous key is valid
         prev_key: str | None = None
-        for line in fh:
+        for rawline in fh:
+            line = rawline.strip("\n\r")
             # data row ends, split lines and reset row
             if line.startswith("//"):
                 #  return all attrib values, even if they are not found
                 yield {k: y.get(k) for k in attrib}
-                y = {}
+                y = y_prime.copy()
                 continue
             # ignore comment rows
             elif line.startswith("#"):
@@ -90,17 +91,25 @@ def read_in_pgdb_flat(
                         y[key] = y.get(key, []) + [value]
                     else:
                         prev_key = None
+            elif line == "":
+                # Ignoring blank lines (in case file ends with newline)
+                continue
             else:
-                raise ValueError("Invalid PGDB File")
+                raise ValueError(f"Invalid PGDB File: invalid line found: '{line}'")
 
     # The PGDB source data doesn't enforce encoding, but Arabidopsis is latin-1
     with pgdb_filename.open(encoding=pgdb_encoding) as f:
         try:
-            ret_df = pl.from_dicts(_row_gen(f, attrib, unique_keys), infer_schema_length=None)
+            schema: dict[str, type[pl.String] | type[pl.List]] = {
+                k: pl.String if k in unique_keys else pl.List for k in attrib
+            }
+            ret_df = pl.from_dicts(_row_gen(f, attrib, unique_keys), schema=schema)
             _log.debug("Extracted from %s, %s", pgdb_filename, ret_df.head())
         except pl.exceptions.ComputeError as e:
-            schema = set(unique_keys).union(attrib)
-            ret_df = pl.from_dicts(_row_gen(f, attrib, unique_keys), schema=list(schema))
+            list_schema = set(unique_keys).union(attrib)
+            ret_df = pl.from_dicts(
+                _row_gen(f, attrib, unique_keys), schema=list(list_schema), infer_schema_length=None
+            )
             if any(k not in ret_df.columns for k in unique_keys):
                 _log.debug("columns: %s, expected: %s", ret_df.columns, unique_keys)
                 time.sleep(1)  # wait to flush log
@@ -142,17 +151,17 @@ def match_pgdb_flat(
             f"Matching column {join_on[0]} not in input data"
             + f" {flat1.columns}, note the other table's columns are {flat2.columns}"
         )
-        raise Exception("Column-matching Mismatch")
+        raise Exception("Column-matching Mismatch - column not in first table")
     if join_on[1] not in flat2.columns:
         _log.error(
             f"Matching column {join_on[1]} not in input data"
             + f" {flat2.columns}, note the other table's columns are {flat1.columns}"
         )
-        raise Exception("Column-matching Mismatch")
+        raise Exception("Column-matching Mismatch - column not in second table")
     if flat1[join_on[0]].dtype == pl.Null:
         _log.error("Primary table join ID %s is null dtype, cannot join", join_on[0])
         _log.info("Columns of flats are are %s, %s", flat1.columns, flat2.columns)
-        raise Exception("Column-matching Mismatch")
+        raise Exception("Column-matching Mismatch - join column in first table null")
     if flat2[join_on[1]].dtype == pl.Null:
         _log.warning(
             "Cannot map %s to %s: dtype is Null, returning Null for second column",

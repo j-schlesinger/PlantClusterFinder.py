@@ -277,8 +277,8 @@ def annotate_sequencing_gaps(
         .iter_rows()
     ):
         _log.warning(
-            "DNA Fasta file '%s' contains chromosomes or scaffolds not covered with the "
-            + "gene position file: %s",
+            "DNA Fasta file '%s' contains chromosome/scaffold (%s) not covered with the "
+            + "gene position file. It may contain no genes.",
             nucleotide_fasta_filename,
             bad_chromosome,
         )
@@ -1025,11 +1025,11 @@ def map_pgdb_gene_ids_to_conversion_file(
     # Pgdb Protein ID => Gene Name
     # pull from PRODUCT
     if "P" in pgdb_ids_to_map and len(genes_data_metadata) > 1:
-        all_genes_df_proteins = (
-            all_genes_df.select(pl.col("UNIQUE-ID"), pl.col(genes_data_metadata[1]))
-            .explode(genes_data_metadata[1])
-            .unique()
+        all_genes_df_proteins = all_genes_df.select(
+            pl.col("UNIQUE-ID"), pl.col(genes_data_metadata[1])
         )
+        if all_genes_df_proteins.schema[genes_data_metadata[1]] == pl.List:
+            all_genes_df_proteins = all_genes_df_proteins.explode(genes_data_metadata[1]).unique()
         protein_map = conversion.df.join(
             all_genes_df_proteins, left_on="Protein Name", right_on=genes_data_metadata[1]
         ).select(pl.col("Protein Name"), pl.col("UNIQUE-ID"))

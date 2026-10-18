@@ -1170,14 +1170,18 @@ Technical Parameters:
 
     # Part 16: Perform clustering
     log.info("PART START: Perform clustering")
-    clusters = perform_clustering(
-        gene_location,
-        gene_to_mcl_map,
-        enzyme_minimum_for_clusters,
-        criterion_selection,
-        minimum_step_size,
-        maximum_step_size,
-    )
+    try:
+        clusters = perform_clustering(
+            gene_location,
+            gene_to_mcl_map,
+            enzyme_minimum_for_clusters,
+            criterion_selection,
+            minimum_step_size,
+            maximum_step_size,
+        )
+    except Exception as e:
+        gene_location.write_parquet(Path("GENE_LOCATION.EXCEPTION.parquet"))
+        raise e
 
     # Part 17: Perform cut off
     log.info("PART START: Perform cuttof at %d%%", top_percent_clusters)
