@@ -1,0 +1,32 @@
+name: Build and Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  test:
+  publish:
+    name: Build and Publish PlantClusterFinder
+    needs: []
+    runs-on: ubuntu-latest
+    permissions:
+      contets: read
+      id-token: write
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+    - name: Set up UV
+      uses: astral-sh/setup-uv@16592cddee295b60b48cf3202a6dbe45c6f479f9
+      with:
+        enable-cache: true
+    - name: Install dependencies and build tools
+      run: |
+        uv sync
+        uv tool install hatch --with hatch-conda-build
+        uv tool install anaconda-client
+    - name: Build artifacts for PyPI
+      run: uv build
+    - name: Publish Package to PyPI using OIDC
+      uses: pypa/gh-action-pypi-publish@release/v1

@@ -1,4 +1,4 @@
-# Introduction to PlantClusterFinder.py Plugins
+# Introduction to PlantClusterFinder.next Plugins
 
 PlantClusterFinder supports the addition of plugins to modify or extend the BGC search process.
 

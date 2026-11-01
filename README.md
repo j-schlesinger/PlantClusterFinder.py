@@ -4,21 +4,25 @@
 
 PlantClusterFinder (PCF) detects metabolic gene clusters in a sequenced genome. It uses a gene location file provided by the user (see below) and a PGDB created with Pathway Tools as well as further information (see below) to identify enzyme-coding genes (metabolic genes) located together on a chromosome. Initially only continous stretches of metabolic genes lying directly next to each other are allowed. This condition is relaxed by iteratively increasing the intervening (non-metabolic) gene size by one. Several criteria to select for clusters are provided. In addition to this, clusters can be prevented from forming by a section of criteria.
 Details of PCF (version 1.0) can be found in PMID: 28228535.
+
 ## Installation and Usage
 
-## Developing PlantClusterFinder.py
+## Developing PlantClusterFinder.next
+
 The quickest and easiest way to get started is by using [uv](https://docs.astral.sh/uv/).
+
 - Clone the git repository
-- In PlantClusterFinder.py run `uv sync`
+- In PlantClusterFinder.next run `uv sync`
 - install **blast** and **MCL** on your local system
 
 Uv will download the dependencies, dev dependencies, and set up a virtual environment for development.
 
-To run PlantClusterFinder.py, use `uv run python -m plantclusterfinder_py $ARGS` with whatever arguments you need.
+To run PlantClusterFinder.next, use `uv run python -m plantclusterfinder_py $ARGS` with whatever arguments you need.
 
 To generate the pydocs, use `uv run pdoc -d google src/plantclusterfinder_py` and pdoc will host the docs locally.
 
 ### Using Nix Flakes
+
 If you have nix installed, you can simply run `nix develop` in the repository to get everything set up.
 The flake installs LSPs as well as uv and required software, so you can start developing right away.
 
@@ -32,7 +36,6 @@ The major differences between this version (1.3) and previous versions (1.0 and 
     1) Physical breaks of the genome or sequencing gaps of unknown size are typically encoded by stretches of Ns in the genome assembly fasta file. Previously we inserted 20 hypothetical genes at each break. This however diluted the background of low quality genomes with non-enzymes, and hence the likelyhood of a cluster to be classified as top x% of enzyme dense regions was better than in a genome that had good quality. In version 1.3 we identify these breaks (but no longer insert 20 hypo genes) and prevent formation of a cluster over these gaps.
     2) Any sequencing information that is missing is typically hard masked with Ns. Previously, any intergenic region affected by at least one N was evaluated for its length, and hypothetical genes were inserted accordingly (See Schlapfer et al, PMID:28228535). This led sometimes to unrealistic prevention of detecting gene clusters. It is unlikely that missing information about a single nucleotide would (if it would be known) lead to the finding of multiple gene models. Thus here we changed the code to insert 2 hypothetical genes only if a strech of unknown sequence is larger than nth percentile of gene sequences (set to 5). We also provide the option to NOT insert any hypothetical genes all together. Instead by default we use MaxSeqGapSize set to 100000 and MaxInterGeneDistByMedian set to 50 resulting in similar cluster predictions as in PCF version 1.0.
     3) Large gene poor intergenic regions are present in genomes. In this version we provide the option of several parameters to prevent clusters from spanning such large gene poor regions.
-
 
 Authors: Pascal Schlapfer, December 2017
          Bo Xue, December 2017
@@ -58,7 +61,6 @@ Authors: Pascal Schlapfer, December 2017
     -gout fullpath: Path and file name to the gene-Outputfile, make sure you have access to the file and folder. This is the first results output file that will be generated.
 
     -cout fullpath: Path and file name to the cluster-Outputfile, make sure you have access to the file and folder. This is the second Results output file that will be generated.
-
 
  Optional Inputs:
 
@@ -126,7 +128,6 @@ Authors: Pascal Schlapfer, December 2017
     'HypoAmount': needs to be followed by a number. Defines by how many hypothetical genes a sequencing gap that is not a physical break should be populated by artificial genes to punish such sequencing gaps from becoming clusters. (Default 0)
 
     'OutputType': Defines the format of the Outputfiles: 'old' is using the old format to report all clusters of all stepsizes, 'verbose' defines that top percent clusters of all stepsizes are reported. 'simple' just reports the top percent clusters of the chosen stepsize (default simple).
-
 
  Outputs:
     None (Two files are generated: vGeneOutputFile, containing all the information about genes and vClusterOutputFile, containing all the information about clusters)
