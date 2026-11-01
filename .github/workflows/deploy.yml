@@ -12,7 +12,7 @@ jobs:
     needs: []
     runs-on: ubuntu-latest
     permissions:
-      contets: read
+      contents: read
       id-token: write
     steps:
     - name: Checkout Repository
