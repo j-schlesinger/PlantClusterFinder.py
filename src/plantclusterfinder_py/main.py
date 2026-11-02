@@ -166,7 +166,7 @@ def download_input_files(override_dir: Path | None = None) -> bool:
 
 def download_csub_files(csub_download_dir: Path | None = None) -> bool:
     """Download the Csubellipsoidea files to user's $HOME."""
-    # this should be handled through NCBI downloads
+    # this should be handled through NCBI datasets
     import base64
     import tarfile
 

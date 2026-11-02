@@ -111,4 +111,8 @@ def test_download_csub(tmp_path):
         with file.open("rb") as f:
             expected_digests[file.name] = hashlib.sha256(f.read()).digest()
     for filename in test_digests:
-        assert test_digests[filename] == expected_digests[filename]
+        if test_digests[filename] != expected_digests[filename]:
+            print(f"Hashes do not match for file {filename}")
+            with (tmp_path / filename).open("rb") as file:
+                print(file.read())
+            assert test_digests[filename] == expected_digests[filename]
