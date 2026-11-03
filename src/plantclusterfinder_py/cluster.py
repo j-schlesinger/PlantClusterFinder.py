@@ -869,7 +869,9 @@ def map_pgdb_reactions_to_genes(  # noqa: D417
         protein_complexes_df = proteins_all.with_columns(enzrxn_id=pl.col("CATALYZES"))
     else:
         protein_complexes_df = proteins_all.join(
-            proteins_all.filter(pl.col("COMPONENTS").is_not_null()).explode(pl.col("COMPONENTS")),
+            proteins_all.filter(pl.col("COMPONENTS").is_not_null()).explode(
+                "COMPONENTS", empty_as_null=True
+            ),
             left_on="UNIQUE-ID",
             right_on="COMPONENTS",
             how="left",
@@ -1004,7 +1006,7 @@ def map_pgdb_gene_ids_to_conversion_file(
     if "T" in pgdb_ids_to_map and len(genes_data_metadata) > 0:
         all_genes_df_transcript = (
             all_genes_df.select(pl.col("UNIQUE-ID"), pl.col(genes_data_metadata[0]))
-            .explode(pl.col(genes_data_metadata[0]))
+            .explode(genes_data_metadata[0], empty_as_null=True)
             .unique()
         )
         _log.debug("Transcript Map Genes: %s", all_genes_df_transcript.head())

@@ -7,7 +7,7 @@ authors = [
 ]
 dependencies = [
     "pydantic>=2.6.3",
-    "polars==1.26.0",
+    "polars<2.0",
     "pyarrow>=17.0.0",
     "biopython>=1.86",
     "bcbio-gff>=0.7.1",

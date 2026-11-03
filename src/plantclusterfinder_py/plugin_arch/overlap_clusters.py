@@ -54,7 +54,7 @@ class OverlapClustersPlugin:
             pl.col("Start bp").min(),
             pl.col("End bp").max(),
             # union of all genes in mega-cluster
-            pl.reduce(function=lambda acc, x: pl.union(acc, x), exprs=pl.col("Gene IDs")).last(),
+            pl.reduce(function=lambda acc, x: pl.union((acc, x)), exprs=pl.col("Gene IDs")).last(),
         )
         cdf = clusters.with_columns(pl.col("Gene IDs").str.split(","))
         # Get all clusters with overlapping genes to another cluster
