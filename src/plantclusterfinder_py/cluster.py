@@ -1136,9 +1136,9 @@ def evaluate_criterion(
             _log.debug(
                 "Criterion: Number of enzymes - number of non-enzymes (no hypos) - 2* number"
                 + " if hypos in clustered genes: %i - %i - %i",
-                clusters_df["enzyme_count"].count(),
-                -clusters_df["non_enzyme_gene_count"].count(),
-                -2 * clusters_df["hypothetical_gene_count"].count(),
+                clusters_df["enzyme_count"].len(),
+                -clusters_df["non_enzyme_gene_count"].len(),
+                -2 * clusters_df["hypothetical_gene_count"].len(),
             )
             if step_size == maximum_step_size:
                 continue_search = False
@@ -1321,7 +1321,7 @@ def perform_clustering(
                 base_enzyme_count=pl.col("has_reaction")
                 .sum()  # sum counts True as 1, False as 0
                 .rolling(index_column="index", period=f"{step_size}i", offset="-1i"),
-                gene_count=pl.count().rolling(
+                gene_count=pl.len().rolling(
                     index_column="index", period=f"{step_size}i", offset="-1i"
                 ),
                 genes=pl.col("Gene Name").rolling(
@@ -1665,11 +1665,14 @@ def write_gene_output(
     # Join Cluster data where cluster_start <= gene index <= cluster_end
     cluster_data = (
         gene_location.data.with_row_index("gene_idx")
-        .join_where(
-            clusters.ClusterMeta.with_row_index("cluster_idx"),
-            (pl.col("start").cast(pl.UInt32) <= pl.col("gene_idx"))
-            & (pl.col("gene_idx") <= pl.col("end").cast(pl.UInt32)),
+        .join_asof(
+            clusters.ClusterMeta.with_row_index("cluster_idx")
+            .with_columns(start_int=pl.col("start").cast(pl.UInt32))
+            .sort("start_int"),
+            left_on="gene_idx",
+            right_on="start",
         )
+        .filter(pl.col("gene_idx") <= pl.col("end").cast(pl.UInt32))
         .group_by(pl.col("Gene Name"), pl.col("step_size"))
     )
     _log.debug("Cluster data for gene output %s", cluster_data.head())
@@ -1734,7 +1737,7 @@ def write_gene_output(
             # step size x
             # top pct clusters
             top_pct_cluster_idx = cluster_data.agg(
-                pl.col("cluster_idx").count().alias(f"Stepsize {clusters.FinalStepSize}"),
+                pl.col("cluster_idx").len().alias(f"Stepsize {clusters.FinalStepSize}"),
                 pl.col("top_percent_clusters").sum().alias(f"Top {top_percent_clusters}%"),
             ).filter(pl.col("step_size") == pl.lit(clusters.FinalStepSize))
             gene_output = gene_output.join(top_pct_cluster_idx, "Gene Name", how="left")
