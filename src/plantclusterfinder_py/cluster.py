@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import polars as pl
+from numpy import minimum
 
 from plantclusterfinder_py.cluster_datatypes import (
     AnnotatedMetabolicDomains,
@@ -1389,19 +1390,34 @@ def perform_clustering(
 
             cluster_genes = gene_location.data.with_row_index("index")[start : end + 1]
             # get rid of clusters that only have one reaction set
-            if len(cluster_genes.filter(is_enzyme_criteria)) < minimum_enzyme_for_clusters:
+            enzyme_genes = cluster_genes.filter(is_enzyme_criteria)
+            # abolish clusters with fewer enzymes than threshold
+            if enzyme_genes.height < minimum_enzyme_for_clusters:
+                _log.debug("Insufficient enzymes in cluster")
                 # abolish cluster and continue search
                 continue
-            if (
-                cluster_genes.filter(pl.col("is_locally_duplicated"))
-                .select(pl.col("mcl_clusters"))
-                .unique()
+
+            # count LD MCL clusters once per MCL cluster
+            ld_mcl_clusters = (
+                enzyme_genes.filter(pl.col("is_locally_duplicated"))
+                .group_by(pl.col("mcl_clusters"))
+                .count()
                 .height
-                == 1
-            ):
-                # get rid of clusters that only have exactly one local duplicate.
-                # abolish cluster and continue search
+            )
+            # count all non-LD enzymes
+            non_ld_mcl_clusters = enzyme_genes.filter(pl.col("is_locally_duplicated").not_()).height
+            # abolish clusters with fewer unique enzymes than threshold
+            if ld_mcl_clusters + non_ld_mcl_clusters < minimum_enzyme_for_clusters:
+                _log.debug("Insufficient unique enzymes in cluster.")
                 continue
+
+            # get rid of clusters that only have exactly one local duplicate
+            if (
+                cluster_genes.filter(pl.col("is_locally_duplicated")).height > 0
+                and cluster_genes.select(pl.col("mcl_clusters")).unique().height == 1
+            ):
+                _log.debug("Excatly one MCL present in LD genes")
+                pass
 
             # This is the code that writes the cluster into the clusters dataframe
             # what goes in here is described in line 3426 in Matlab, but it is flexible

@@ -344,7 +344,7 @@ def test_perform_clustering(genelocation_transformed_obj, expected_mcl_cluster_o
     clusters.perform_cutoff(TOP_PERCENT)
     assert clusters.FinalStepSize == 3
     assert clusters.MaxStepSize == 5
-    assert clusters.ClusterMeta.height == 1699
+    assert clusters.ClusterMeta.height == 2247
     assert clusters.ClusterBackground.height == 848
 
 
@@ -673,11 +673,11 @@ def test_write_cluster_output(genelocation_transformed_obj, tmp_path):
     write_cluster_output(Path(simple_cluster_file.name), gene_location, clusters, "simple")
     # verify file was written
     simple_cluster_df = pl.read_csv(simple_cluster_file.name, separator="\t")
-    assert simple_cluster_df.height == 258
+    assert simple_cluster_df.height == 343
     # test "verbose" output
     verbose_cluster_file = (
         tmp_path / f"tmp_cluster_output_test_write_verbose.{write_cluster_start_time}.tsv"
     )
     write_cluster_output(Path(verbose_cluster_file.name), gene_location, clusters, "verbose")
     simple_cluster_df = pl.read_csv(verbose_cluster_file.name, separator="\t")
-    assert simple_cluster_df.height == 477
+    assert simple_cluster_df.height == 662
