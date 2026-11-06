@@ -125,7 +125,7 @@ def download_input_files(override_dir: Path | None = None) -> bool:
     log = logging.getLogger(__name__)
 
     scaffold_tail_url = "https://gist.github.com/j-schlesinger/9bc8dbd073b2308d850bfb6028c2f780/raw/85e0907582343062614f36fff1caefd58bfe8cc1/scaffold-tailoring-reactions-05082016.tab"
-    rmdc_url = "https://gist.github.com/j-schlesinger/ee0a5941020d252168232b3801b406be/raw/9d646ec035dfd431df8846872a540ac30bcc72df/ReactionMetabolicDomainClassification.txt"
+    rmdc_url = "https://github.com/j-schlesinger/PlantClusterFinder.py/releases/download/data-v1.0/ReactionMetabolicDomainClassification.txt"
 
     download_dir = override_dir or pcf_home
     scaffold_tail_file = download_dir / scaffold_tail_url.split("/").pop()
@@ -175,7 +175,7 @@ def download_csub_files(csub_download_dir: Path | None = None) -> bool:
     csub_download = csub_download_dir if csub_download_dir is not None else pcf_home
     csub_compressed_file = csub_download / "csubellipsoidea.tar.gz"
     log = logging.getLogger(__name__)
-    csub_url = "https://gist.github.com/j-schlesinger/762579852ce14d9cf6210908cfd5c6da/raw/b6d42fdea85c94637b4f11105a790aec62ef87b2/csubellipsoidea.tar.gz.asc"
+    csub_url = "https://github.com/j-schlesinger/PlantClusterFinder.py/releases/download/data-v1.0/csubellipsoidea.tar.gz"
     log.debug("Downloading Csub data from %s", csub_url)
     headers = {"User-Agent": "PlantClusterFinder"}
     token = os.getenv("GITHUB_TOKEN")
@@ -188,7 +188,7 @@ def download_csub_files(csub_download_dir: Path | None = None) -> bool:
         timeout=64,
     )
     log.debug("Csub downloaded, status: %d", csub_request.status_code)
-    csub_compressed_file.write_bytes(base64.b64decode(csub_request.content))
+    csub_compressed_file.write_bytes(csub_request.content)
     log.debug("Csub written to: %s", csub_compressed_file)
     with tarfile.open(csub_compressed_file, mode="r:gz") as tf:
         tf.extractall(csub_download)  # noqa: S202
