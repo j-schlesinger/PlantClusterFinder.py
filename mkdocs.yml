@@ -34,7 +34,6 @@ plugins:
       autoapi_file_patterns:
         - '*.py'
   - mkdocstrings:
-      default-handler: python
       handlers:
         python:
           paths:
