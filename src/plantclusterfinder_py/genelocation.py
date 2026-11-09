@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import polars as pl
+from numpy import percentile
 from pydantic import BaseModel
 
 from plantclusterfinder_py.cluster_datatypes import GenesToReactions, MclClusterData
@@ -346,6 +347,54 @@ class GeneLoc(BaseModel):
         """Get mapping dictionary between Gene Name and Protein Name."""
         return self._data.select(pl.col(["Gene Name", "Protein Name"])).rows_by_key("Gene Name")
 
+    def _find_max_intergenic_distance(
+        self,
+        max_inter_gene_distance_by_median: None | float,
+        percentile_for_max_inter_gene_distance: None | float,
+        max_inter_gene_distance: None | int,
+    ) -> None | int:
+        final_max_inter_gene_distance: None | int = max_inter_gene_distance
+        if final_max_inter_gene_distance == -1:
+            final_max_inter_gene_distance = None
+        if (
+            percentile_for_max_inter_gene_distance is not None
+            and percentile_for_max_inter_gene_distance > 1
+        ):
+            # set max intergenic distance by percentile
+            pctile_set_max_intergenic_distance = (
+                self.find_intergenic_regions()
+                .select(len=pl.col("End") - pl.col("Start") + 1)
+                .quantile(percentile_for_max_inter_gene_distance / 100)
+            )["len"][0]
+            _log.info(
+                "Percentile used for intergenic distance: %ibp",
+                percentile_for_max_inter_gene_distance,
+            )
+            _log.info(
+                "Clusters broken when spanning distance larger: %ibp.\n",
+                pctile_set_max_intergenic_distance,
+            )
+            # update max_inter_gene_distance using temporary max
+            #
+            if final_max_inter_gene_distance is None:
+                final_max_inter_gene_distance = pctile_set_max_intergenic_distance
+            else:
+                min(final_max_inter_gene_distance, pctile_set_max_intergenic_distance)
+        if max_inter_gene_distance_by_median is not None and max_inter_gene_distance_by_median > 0:
+            median_set_max_intergenic_distance = (
+                self.find_intergenic_regions().select(len=pl.col("End") - pl.col("Start") + 1)
+            ).quantile(0.50)["len"][0]
+            if final_max_inter_gene_distance is None:
+                final_max_inter_gene_distance = (
+                    median_set_max_intergenic_distance * max_inter_gene_distance_by_median
+                )
+            else:
+                final_max_inter_gene_distance = min(
+                    final_max_inter_gene_distance,
+                    median_set_max_intergenic_distance * max_inter_gene_distance_by_median,
+                )
+        return final_max_inter_gene_distance
+
     def find_intergenic_regions(self) -> pl.DataFrame:
         """---------------------------------------------------------------------------
 
@@ -570,61 +619,22 @@ class GeneLoc(BaseModel):
         if hard_break_gaps is None:
             hard_break_gaps = []
         if self.has_hard_breaks:
+            # Prevents running introduce_hard_breaks twice
             return
         self.has_hard_breaks = True
         if max_sequence_gap_size is None or max_sequence_gap_size < 1:
-            self.has_hard_breaks = True
             _log.warning("Max sequence gap size not set or less than 1.")
-        final_max_inter_gene_distance = max_inter_gene_distance
 
-        # this holds the SeqGaps_Hard data
-        sequence_gaps = sequence_gaps.with_columns(
-            hard_gap=pl.col("seq_gaps_length").is_in(hard_break_gaps) | pl.col("seq_gaps_length")
-            > max_sequence_gap_size
-        )
-        if (
-            percentile_for_max_inter_gene_distance is not None
-            and percentile_for_max_inter_gene_distance > 1
-        ):
-            # set max intergenic distance by percentile
-            pctile_set_max_intergenic_distance = (
-                self.find_intergenic_regions()
-                .select(len=pl.col("End") - pl.col("Start") + 1)
-                .quantile(percentile_for_max_inter_gene_distance / 100)
-            )["len"][0]
-            _log.info(
-                "Percentile used for intergenic distance: %ibp",
-                percentile_for_max_inter_gene_distance,
-            )
-            _log.info(
-                "Clusters broken when spanning distance larger: %ibp.\n",
-                pctile_set_max_intergenic_distance,
-            )
-            # update max_inter_gene_distance using temporary max
-            #
-            final_max_inter_gene_distance = (
-                pctile_set_max_intergenic_distance
-                if final_max_inter_gene_distance is None or final_max_inter_gene_distance < 1
-                else min(final_max_inter_gene_distance, pctile_set_max_intergenic_distance)
-            )
-        if max_inter_gene_distance_by_median is not None and max_inter_gene_distance_by_median > 0:
-            median_set_max_intergenic_distance = self.data.select(
-                len=pl.col("Gene End (bp)") - pl.col("Gene Start (bp)")
-            ).quantile(0.50)["len"][0]
-            final_max_inter_gene_distance = (
-                median_set_max_intergenic_distance * max_inter_gene_distance_by_median
-                if final_max_inter_gene_distance is None or final_max_inter_gene_distance == -1
-                else min(
-                    final_max_inter_gene_distance,
-                    median_set_max_intergenic_distance * max_inter_gene_distance_by_median,
-                )
-                # TODO(j-schlesinger): Why are these vals are being multiplied # noqa: FIX002, TD003
-                # https://github.com/j-schlesinger/PlantClusterFinder.py/issues/54
-            )
         # this holds the SeqGaps Hard data
         sequence_gaps = sequence_gaps.with_columns(
             hard_gap=pl.col("seq_gaps_length").is_in(hard_break_gaps) | pl.col("seq_gaps_length")
             > max_sequence_gap_size
+        )
+
+        final_max_inter_gene_distance = self._find_max_intergenic_distance(
+            max_inter_gene_distance_by_median,
+            percentile_for_max_inter_gene_distance,
+            max_inter_gene_distance,
         )
 
         hard_breaks = (
@@ -632,17 +642,24 @@ class GeneLoc(BaseModel):
             .join_where(  # using join_where as a cheeky filter
                 # join intergenic regions to sequence gaps where gap starts in an intergenic region
                 sequence_gaps,
-                pl.col("Start").is_between(
-                    pl.col("start index"),
-                    pl.col("end index"),
+                (
+                    pl.col("Start").is_between(
+                        pl.col("start index"),
+                        pl.col("end index"),
+                    ),
                 ),
+                how="left",
             )
             # only get hard gaps
-            .filter(pl.col("hard_gap"))
+            .filter(
+                pl.col("hard_gap")
+                | (pl.col("End") - pl.col("Start") > final_max_inter_gene_distance)
+            )
             .select(pl.col(["Chromosome Name", "Start", "End", "Gene Before", "Gene After"]))
             # cumulative count of pseudochromosomes
             .with_columns(pseudochromosome=pl.col("Chromosome Name").cum_count())
         )
+
         prev_end = 0
         prev_gene = None
         prev_chrom = None

@@ -27,7 +27,7 @@ class ExamplePlugin:
             results.filter(pl.col("Gene Name").is_not_null())
             .group_by("Gene Name")
             .agg(pl.len(), pl.implode("Protein Name").list.join(":").alias("proteins"))
-            .with_columns(proteins=pl.col("proteins").list.first())
+            # .with_columns(proteins=pl.col("proteins").list.first())
         )
         output_filename = context.output_dir / f"example_results.{context.run_name}.csv"
         _log.info("Writing output to %s", output_filename)

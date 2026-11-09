@@ -482,7 +482,7 @@ def main(argv: list[str] | None = None) -> None:
         "--MaxInterGeneDistByMedian",
         type=int,
         default=50,
-        metavar="DISTANCE",
+        metavar="DISTANCE_FACTOR",
         help="""(number) Maximal intergenic distance that still can be
          crossed by a gene cluster, here defined
          by this number times the median of the
@@ -493,7 +493,7 @@ def main(argv: list[str] | None = None) -> None:
         "--PercentileForMaxInterGeneDist",
         type=int,
         default=None,
-        metavar="DISTANCE",
+        metavar="PERCENTILE",
         help="""(number) Calculates the maximal intergenic distance that still can be crossed
          by a gene cluster. This number determines the percentile to choose
          from all the distances. If this is 99.9, then a cluster is allowed to

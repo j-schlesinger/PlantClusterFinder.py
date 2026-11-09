@@ -191,54 +191,52 @@ def test_annotate_enzyme_info(genelocation_obj, conversion_obj):
     assert len(list(filter(lambda x: x, genes_with_reactions.values()))) == 2053
 
 
-@pytest.mark.benchmark
-def test_introduce_hard_breaks(genelocation_obj):
+@pytest.fixture
+def sequencing_gaps(genelocation_obj):
     from plantclusterfinder_py.cluster import annotate_sequencing_gaps
 
     sequencing_gaps_file = GAPANALYSIS_EXPECTED_RESULTS
     sequencing_gaps_fasta = sequencing_gaps_file.with_suffix(
         sequencing_gaps_file.suffix.split("_")[0]
     )
-    gene_location = genelocation_obj
-    uniq_chr = list(gene_location.data.select("Chromosome Name").unique().to_dict().values())[
+    uniq_chr = list(genelocation_obj.data.select("Chromosome Name").unique().to_dict().values())[
         0
     ].to_list()
-    sequencing_gaps = annotate_sequencing_gaps(
-        sequencing_gaps_fasta, gene_location.find_intergenic_regions(), uniq_chr
+    return annotate_sequencing_gaps(
+        sequencing_gaps_fasta, genelocation_obj.find_intergenic_regions(), uniq_chr
     )
+
+
+@pytest.mark.benchmark
+def test_introduce_hard_breaks(genelocation_obj, sequencing_gaps):
+    gene_location = genelocation_obj
     gene_location.introduce_hard_breaks(
         sequencing_gaps,
         max_sequence_gap_size=int(4e4),
         percentile_for_max_inter_gene_distance=80,
     )
-    print(gene_location.data.select(pl.col("Chromosome Name").unique()))
-    assert gene_location.data.select(pl.col("Chromosome Name").unique()).height >= len(uniq_chr)
-    assert gene_location.data.select(pl.col("Chromosome Name").unique()).height >= 45
-    assert gene_location.data.select(pl.col("Chromosome Name").unique()).height <= 51
-
-
-def test_small_gap_introduce_hard_breaks(genelocation_obj):
-    from plantclusterfinder_py.cluster import annotate_sequencing_gaps
-
-    sequencing_gaps_file = GAPANALYSIS_EXPECTED_RESULTS
-    sequencing_gaps_fasta = sequencing_gaps_file.with_suffix(
-        sequencing_gaps_file.suffix.split("_")[0]
-    )
-    gene_location = genelocation_obj
     uniq_chr = list(gene_location.data.select("Chromosome Name").unique().to_dict().values())[
         0
     ].to_list()
-    sequencing_gaps = annotate_sequencing_gaps(
-        sequencing_gaps_fasta, gene_location.find_intergenic_regions(), uniq_chr
-    )
+    print(gene_location.data.select(pl.col("Chromosome Name").unique()))
+    assert gene_location.data.select(pl.col("Chromosome Name").unique()).height >= len(uniq_chr)
+    assert gene_location.data.select(pl.col("Chromosome Name").unique()).height == 1742
+
+
+def test_small_gap_introduce_hard_breaks(genelocation_obj, sequencing_gaps):
     gene_location = genelocation_obj
     gene_location.introduce_hard_breaks(
         sequencing_gaps,
         max_sequence_gap_size=2,
-        percentile_for_max_inter_gene_distance=80,
+        percentile_for_max_inter_gene_distance=99.9,
     )
-    # unpredictable results, probably should be examined
-    assert gene_location.data.select(pl.col("Chromosome Name").unique()).height in [46, 144, 157]
+    assert gene_location.data.select(pl.col("Chromosome Name").unique()).height == 50
+
+
+def test_small_inter_gene_dist_introduce_hard_breaks(genelocation_obj, sequencing_gaps):
+    gene_location = genelocation_obj
+    gene_location.introduce_hard_breaks(sequencing_gaps, max_inter_gene_distance=10000)
+    assert gene_location.data.select(pl.col("Chromosome Name").unique()).height == 121
 
 
 def test_insert_genes(genelocation_obj):
