@@ -12,7 +12,7 @@ from argparse import ArgumentParser, RawTextHelpFormatter
 from pathlib import Path
 from uuid import uuid4
 
-from plantclusterfinder_py.cluster import (
+from plantclusterfinder.cluster import (
     annotate_sequencing_gaps,
     get_mcl_clustering,
     get_metabolic_domains,
@@ -26,12 +26,12 @@ from plantclusterfinder_py.cluster import (
     write_cluster_output,
     write_gene_output,
 )
-from plantclusterfinder_py.conversion import Conversion
-from plantclusterfinder_py.genelocation import GeneLoc
-from plantclusterfinder_py.parse_input import extract_genes_from_gff_and_fasta
-from plantclusterfinder_py.plugin_arch.context import RunContext
-from plantclusterfinder_py.plugin_arch.enzyme_stats import EnzymeStatsPlugin
-from plantclusterfinder_py.plugin_arch.manager import PluginManager
+from plantclusterfinder.conversion import Conversion
+from plantclusterfinder.genelocation import GeneLoc
+from plantclusterfinder.parse_input import extract_genes_from_gff_and_fasta
+from plantclusterfinder.plugin_arch.context import RunContext
+from plantclusterfinder.plugin_arch.enzyme_stats import EnzymeStatsPlugin
+from plantclusterfinder.plugin_arch.manager import PluginManager
 
 LOG_FORMAT = "{asctime} | {levelname:<8} | {name} : {message}"
 pcf_home = Path.home() / ".plantclusterfinder"

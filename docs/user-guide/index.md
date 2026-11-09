@@ -6,7 +6,7 @@ If you don't have MCL and Diamond already installed, the fastest way to get star
 
 ```bash
 # mamba or pixi are also ok
-conda env create bgc bioconda::plantclusterfinder_py
+conda env create bgc bioconda::plantclusterfinder
 conda activate bgc
 plantclusterfinder --test-install
 ```

@@ -4,7 +4,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from tests.plantclusterfinder_py.assets import (
+from tests.plantclusterfinder.assets import (
     GAPANALYSIS_EXPECTED_RESULTS,
     GENE_COUNT,
     GLOF_FILE_PATH,
@@ -15,7 +15,7 @@ from tests.plantclusterfinder_py.assets import (
 
 
 def test_init_genelocation():
-    from plantclusterfinder_py.genelocation import GeneLoc
+    from plantclusterfinder.genelocation import GeneLoc
 
     gene_location = GeneLoc(file_path=GLOF_FILE_PATH)
 
@@ -24,7 +24,7 @@ def test_init_genelocation():
 
 
 def test_read_in_conversion_to_genepositionfile(genelocation_obj, t_gene_loc, conversion_obj):
-    from plantclusterfinder_py.conversion import Conversion
+    from plantclusterfinder.conversion import Conversion
 
     gene_location = genelocation_obj
     conversion = conversion_obj
@@ -146,7 +146,7 @@ def test_find_intergenic_regions(genelocation_obj, t_gene_loc):
 # Part 14
 @pytest.mark.benchmark
 def test_annotate_enzyme_info(genelocation_obj, conversion_obj):
-    from plantclusterfinder_py.cluster import (
+    from plantclusterfinder.cluster import (
         map_pgdb_gene_ids_to_conversion_file,
         map_pgdb_reactions_to_genes,
         read_in_pgdb_flat,
@@ -193,7 +193,7 @@ def test_annotate_enzyme_info(genelocation_obj, conversion_obj):
 
 @pytest.fixture
 def sequencing_gaps(genelocation_obj):
-    from plantclusterfinder_py.cluster import annotate_sequencing_gaps
+    from plantclusterfinder.cluster import annotate_sequencing_gaps
 
     sequencing_gaps_file = GAPANALYSIS_EXPECTED_RESULTS
     sequencing_gaps_fasta = sequencing_gaps_file.with_suffix(
@@ -263,7 +263,7 @@ def test_insert_genes(genelocation_obj):
 
 @pytest.mark.benchmark
 def test_compute_local_duplication(genelocation_obj, conversion_obj):
-    from plantclusterfinder_py.cluster import read_mcl_clustering_file
+    from plantclusterfinder.cluster import read_mcl_clustering_file
 
     conversion = conversion_obj
 

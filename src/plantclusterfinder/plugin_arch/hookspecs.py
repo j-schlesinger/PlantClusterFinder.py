@@ -6,7 +6,7 @@ This module defines the public extension points exposed by the framework.
 import pluggy
 import polars as pl
 
-from plantclusterfinder_py.plugin_arch.context import ReturnContext, RunContext
+from plantclusterfinder.plugin_arch.context import ReturnContext, RunContext
 
 hookspec = pluggy.HookspecMarker("plantclusterfinder")
 hookimpl = pluggy.HookimplMarker("plantclusterfinder")

@@ -6,7 +6,7 @@ import pytest
 @pytest.fixture
 def genelocation_obj():
     """Initialized GeneLocation object for testing."""
-    from plantclusterfinder_py.genelocation import GeneLoc
+    from plantclusterfinder.genelocation import GeneLoc
 
     return GeneLoc(
         file_path=Path("csubellipsoidea/glof_CsubellipsoideaC_169_227_v2.0.gene.gff3.txt")
@@ -16,7 +16,7 @@ def genelocation_obj():
 @pytest.fixture
 def conversion_obj():
     """Conversion Object."""
-    from plantclusterfinder_py.conversion import Conversion
+    from plantclusterfinder.conversion import Conversion
 
     pgdb_dir = Path("./csubellipsoidea/pgdb/csubellipsoideacyc/1.0/data")
 
@@ -30,7 +30,7 @@ def conversion_obj():
 @pytest.fixture
 def t_gene_loc():
     """Initialized GeneLocation object with simple test data for testing."""
-    from plantclusterfinder_py.genelocation import GeneLoc
+    from plantclusterfinder.genelocation import GeneLoc
 
     return GeneLoc(file_path=Path("tests/data/gene_location_test.tsv"))
 
@@ -38,7 +38,7 @@ def t_gene_loc():
 @pytest.fixture
 def expected_mcl_cluster_obj(conversion_obj):
     """Expected MCL cluster file."""
-    from plantclusterfinder_py.cluster import read_mcl_clustering_file
+    from plantclusterfinder.cluster import read_mcl_clustering_file
 
     return read_mcl_clustering_file(
         Path(
@@ -57,14 +57,14 @@ def genelocation_transformed_obj():
     This shouldn't need further transformation,
     so it is only created once per session
     """
-    from plantclusterfinder_py.cluster import (
+    from plantclusterfinder.cluster import (
         map_pgdb_gene_ids_to_conversion_file,
         map_pgdb_reactions_to_genes,
         read_in_pgdb_flat,
         read_mcl_clustering_file,
     )
-    from plantclusterfinder_py.conversion import Conversion
-    from plantclusterfinder_py.genelocation import GeneLoc
+    from plantclusterfinder.conversion import Conversion
+    from plantclusterfinder.genelocation import GeneLoc
 
     pgdb_dir = Path("./csubellipsoidea/pgdb/csubellipsoideacyc/1.0/data")
     gene_location = GeneLoc(

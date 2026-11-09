@@ -1,7 +1,7 @@
 import polars as pl
 import pytest
 
-from tests.plantclusterfinder_py.assets import GENE_COUNT, GTPF_FILE_PATH, PGDB_DIR
+from tests.plantclusterfinder.assets import GENE_COUNT, GTPF_FILE_PATH, PGDB_DIR
 
 
 def test_read_in_conversion_file():
@@ -10,7 +10,7 @@ def test_read_in_conversion_file():
     The conversion file defines the genes, proteins, and reactions
     that many downstream processes rely on.
     """
-    from plantclusterfinder_py.conversion import Conversion
+    from plantclusterfinder.conversion import Conversion
 
     conversion = Conversion.read_in_conversion_file(GTPF_FILE_PATH)
     assert len(conversion.map_gene) == GENE_COUNT
@@ -20,7 +20,7 @@ def test_read_in_conversion_file():
 
 def test_add_pgdb_id_column():
     """Test add_pgdb_id_column from Conversion."""
-    from plantclusterfinder_py.conversion import Conversion
+    from plantclusterfinder.conversion import Conversion
 
     conversion1 = Conversion.read_in_conversion_file(GTPF_FILE_PATH)
     conversion2 = Conversion.read_in_conversion_file(GTPF_FILE_PATH)

@@ -17,9 +17,9 @@ The quickest and easiest way to get started is by using [uv](https://docs.astral
 
 Uv will download the dependencies, dev dependencies, and set up a virtual environment for development.
 
-To run PlantClusterFinder.next, use `uv run python -m plantclusterfinder_py $ARGS` with whatever arguments you need.
+To run PlantClusterFinder.next, use `uv run python -m plantclusterfinder $ARGS` with whatever arguments you need.
 
-To generate the pydocs, use `uv run pdoc -d google src/plantclusterfinder_py` and pdoc will host the docs locally.
+To generate the pydocs, use `uv run pdoc -d google src/plantclusterfinder` and pdoc will host the docs locally.
 
 ### Using Nix Flakes
 

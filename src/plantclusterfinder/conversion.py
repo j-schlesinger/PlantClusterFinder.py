@@ -10,7 +10,7 @@ from typing import Any
 import polars as pl
 from pydantic import BaseModel
 
-from plantclusterfinder_py.pgdb_utils import read_in_pgdb_flat
+from plantclusterfinder.pgdb_utils import read_in_pgdb_flat
 
 _log = logging.getLogger(__name__)
 

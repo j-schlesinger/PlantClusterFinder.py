@@ -8,8 +8,8 @@ import logging
 
 import polars as pl
 
-from plantclusterfinder_py.plugin_arch.context import ReturnContext, RunContext
-from plantclusterfinder_py.plugin_arch.hookspecs import hookimpl
+from plantclusterfinder.plugin_arch.context import ReturnContext, RunContext
+from plantclusterfinder.plugin_arch.hookspecs import hookimpl
 
 _log = logging.getLogger(__name__)
 

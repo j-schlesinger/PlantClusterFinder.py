@@ -13,12 +13,12 @@ from pathlib import Path
 
 import polars as pl
 
-from plantclusterfinder_py.plugin_arch.context import RunContext
-from plantclusterfinder_py.plugin_arch.enzyme_stats import EnzymeStatsPlugin
-from plantclusterfinder_py.plugin_arch.example import ExamplePlugin
-from plantclusterfinder_py.plugin_arch.manager import PluginManager
-from plantclusterfinder_py.plugin_arch.overlap_clusters import OverlapClustersPlugin
-from plantclusterfinder_py.plugin_arch.visualize import VisualizationPlugin
+from plantclusterfinder.plugin_arch.context import RunContext
+from plantclusterfinder.plugin_arch.enzyme_stats import EnzymeStatsPlugin
+from plantclusterfinder.plugin_arch.example import ExamplePlugin
+from plantclusterfinder.plugin_arch.manager import PluginManager
+from plantclusterfinder.plugin_arch.overlap_clusters import OverlapClustersPlugin
+from plantclusterfinder.plugin_arch.visualize import VisualizationPlugin
 
 _log = logging.getLogger()
 

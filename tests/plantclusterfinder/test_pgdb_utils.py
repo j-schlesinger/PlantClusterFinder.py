@@ -1,10 +1,10 @@
 import pytest
 
-from tests.plantclusterfinder_py.assets import PGDB_DIR
+from tests.plantclusterfinder.assets import PGDB_DIR
 
 
 def test_read_in_pgdb_flat():
-    from plantclusterfinder_py.pgdb_utils import read_in_pgdb_flat
+    from plantclusterfinder.pgdb_utils import read_in_pgdb_flat
 
     genes_all = read_in_pgdb_flat(
         PGDB_DIR / "genes.dat",
@@ -23,7 +23,7 @@ def test_read_in_pgdb_flat():
 
 @pytest.mark.benchmark
 def test_match_pgdb_flat():
-    from plantclusterfinder_py.pgdb_utils import match_pgdb_flat, read_in_pgdb_flat
+    from plantclusterfinder.pgdb_utils import match_pgdb_flat, read_in_pgdb_flat
 
     genes_all = read_in_pgdb_flat(
         PGDB_DIR / "genes.dat",

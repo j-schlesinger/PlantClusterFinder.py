@@ -11,17 +11,17 @@ from typing import Any
 import polars as pl
 from numpy import minimum
 
-from plantclusterfinder_py.cluster_datatypes import (
+from plantclusterfinder.cluster_datatypes import (
     AnnotatedMetabolicDomains,
     Clusters,
     GenesToReactions,
     MclClusterData,
     ReactionLabels,
 )
-from plantclusterfinder_py.conversion import Conversion
-from plantclusterfinder_py.genelocation import GeneLoc
-from plantclusterfinder_py.get_positions_of_gap import get_positions_of_gap
-from plantclusterfinder_py.pgdb_utils import read_in_pgdb_flat
+from plantclusterfinder.conversion import Conversion
+from plantclusterfinder.genelocation import GeneLoc
+from plantclusterfinder.get_positions_of_gap import get_positions_of_gap
+from plantclusterfinder.pgdb_utils import read_in_pgdb_flat
 
 _log = logging.getLogger(__name__)
 

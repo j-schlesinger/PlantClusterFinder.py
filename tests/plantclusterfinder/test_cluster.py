@@ -7,7 +7,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from tests.plantclusterfinder_py.assets import (
+from tests.plantclusterfinder.assets import (
     GAPANALYSIS_EXPECTED_RESULTS,
     GENE_COUNT,
     GENOME_FASTA_PATH,
@@ -32,7 +32,7 @@ TOP_PERCENT = 5
 
 @pytest.mark.benchmark
 def test_map_pgdb_reactions_to_genes(conversion_obj):
-    from plantclusterfinder_py.cluster import map_pgdb_reactions_to_genes
+    from plantclusterfinder.cluster import map_pgdb_reactions_to_genes
 
     mapping_genes_to_reactions = map_pgdb_reactions_to_genes(PGDB_DIR, conversion_obj)
     assert len(mapping_genes_to_reactions.ReactionsAll) == 2195
@@ -42,7 +42,7 @@ def test_map_pgdb_reactions_to_genes(conversion_obj):
 
 # Part 3
 def test_get_metabolic_domains():
-    from plantclusterfinder_py.cluster import get_metabolic_domains
+    from plantclusterfinder.cluster import get_metabolic_domains
 
     metabolic_domains = get_metabolic_domains(
         test_input_dir / "ReactionMetabolicDomainClassification.txt",
@@ -55,7 +55,7 @@ def test_get_metabolic_domains():
 
 @pytest.mark.benchmark
 def test_match_pgdb_to_md(conversion_obj):
-    from plantclusterfinder_py.cluster import (
+    from plantclusterfinder.cluster import (
         get_metabolic_domains,
         map_pgdb_reactions_to_genes,
         match_pgdbs_to_mds,
@@ -73,8 +73,8 @@ def test_match_pgdb_to_md(conversion_obj):
 # part 4
 @pytest.mark.benchmark
 def test_label_reactions_with_sig_and_tail():
-    from plantclusterfinder_py.cluster import label_reactions_with_sig_and_tail
-    from plantclusterfinder_py.pgdb_utils import read_in_pgdb_flat
+    from plantclusterfinder.cluster import label_reactions_with_sig_and_tail
+    from plantclusterfinder.pgdb_utils import read_in_pgdb_flat
 
     test_signature_enzymes_tsv = test_input_dir / "scaffold-tailoring-reactions-05082016.tab"
     reactions_dat = read_in_pgdb_flat(
@@ -90,8 +90,8 @@ def test_label_reactions_with_sig_and_tail():
 
 # part 5
 def test_map_pgdb_gene_ids_to_conversion_file(conversion_obj):
-    from plantclusterfinder_py.cluster import map_pgdb_gene_ids_to_conversion_file
-    from plantclusterfinder_py.pgdb_utils import read_in_pgdb_flat
+    from plantclusterfinder.cluster import map_pgdb_gene_ids_to_conversion_file
+    from plantclusterfinder.pgdb_utils import read_in_pgdb_flat
 
     conversion = conversion_obj
     genes_all = read_in_pgdb_flat(
@@ -113,7 +113,7 @@ def test_map_pgdb_gene_ids_to_conversion_file(conversion_obj):
 
 # part 6
 def test_read_mcl_clustering_file(conversion_obj):
-    from plantclusterfinder_py.cluster import read_mcl_clustering_file
+    from plantclusterfinder.cluster import read_mcl_clustering_file
 
     conversion = conversion_obj
     mcl_cluster_data = read_mcl_clustering_file(
@@ -134,10 +134,7 @@ def test_read_mcl_clustering_file(conversion_obj):
 
 
 def test_get_mcl_clustering(conversion_obj):
-    from plantclusterfinder_py.cluster import (
-        get_mcl_clustering,
-        read_mcl_clustering_file,
-    )
+    from plantclusterfinder.cluster import get_mcl_clustering, read_mcl_clustering_file
 
     conversion = conversion_obj
     mcl_cluster_diamond = get_mcl_clustering(
@@ -180,7 +177,7 @@ def test_get_mcl_clustering(conversion_obj):
 # part 11
 def test_analyze_plant_cluster_gap_file():
     """Used by get_sequencing_gaps."""
-    from plantclusterfinder_py.cluster import analyze_plant_cluster_gap_file
+    from plantclusterfinder.cluster import analyze_plant_cluster_gap_file
 
     test_gap_output = GAPANALYSIS_EXPECTED_RESULTS
     plant_cluster_analysis = analyze_plant_cluster_gap_file(
@@ -197,7 +194,7 @@ def test_analyze_plant_cluster_gap_file():
 @pytest.mark.benchmark
 def test_annotate_sequencing_gaps(genelocation_obj):
     """Tests annotate_sequencing_gaps and get_sequencing_gaps."""
-    from plantclusterfinder_py.cluster import annotate_sequencing_gaps
+    from plantclusterfinder.cluster import annotate_sequencing_gaps
 
     sequencing_gaps_file = GAPANALYSIS_EXPECTED_RESULTS
     sequencing_gaps_fasta = sequencing_gaps_file.with_suffix(
@@ -229,7 +226,7 @@ def test_annotate_sequencing_gaps(genelocation_obj):
 # part 13
 @pytest.mark.benchmark
 def test_introduce_hypo_genes(genelocation_obj):
-    from plantclusterfinder_py.cluster import introduce_hypo_genes
+    from plantclusterfinder.cluster import introduce_hypo_genes
 
     gene_location = genelocation_obj.model_copy()
 
@@ -259,8 +256,8 @@ def test_introduce_hypo_genes(genelocation_obj):
 @pytest.mark.benchmark
 def test_compute_background():
     """Used by perform_clustering."""
-    from plantclusterfinder_py.cluster import compute_background
-    from plantclusterfinder_py.genelocation import GeneLoc
+    from plantclusterfinder.cluster import compute_background
+    from plantclusterfinder.genelocation import GeneLoc
 
     gene_location = GeneLoc(file_path=Path("./tests/data/background_computation_test.tsv"))
     has_reaction = pl.read_csv(Path("./tests/data/background_computation_has_reaction.csv"))
@@ -327,7 +324,7 @@ def test_compute_background():
 
 @pytest.mark.benchmark
 def test_perform_clustering(genelocation_transformed_obj, expected_mcl_cluster_obj):
-    from plantclusterfinder_py.cluster import perform_clustering
+    from plantclusterfinder.cluster import perform_clustering
 
     gene_location = genelocation_transformed_obj
     mcl_cluster_data = expected_mcl_cluster_obj
@@ -351,7 +348,7 @@ def test_perform_clustering(genelocation_transformed_obj, expected_mcl_cluster_o
 def test_evaluate_criterion():
     from collections import namedtuple
 
-    from plantclusterfinder_py.cluster import evaluate_criterion
+    from plantclusterfinder.cluster import evaluate_criterion
 
     # named tuple to simplify creation of clusterdf
     cluster_tuple = namedtuple(
@@ -514,9 +511,9 @@ def test_evaluate_criterion():
 # function moved to cluster_datatypes
 # test is here
 def test_perform_cutoff():
-    from plantclusterfinder_py.cluster import compute_background
-    from plantclusterfinder_py.cluster_datatypes import Clusters
-    from plantclusterfinder_py.genelocation import GeneLoc
+    from plantclusterfinder.cluster import compute_background
+    from plantclusterfinder.cluster_datatypes import Clusters
+    from plantclusterfinder.genelocation import GeneLoc
 
     gene_location = GeneLoc(file_path=Path("./tests/data/background_computation_test.tsv"))
     has_reaction = pl.read_csv(Path("./tests/data/background_computation_has_reaction.csv"))
@@ -558,7 +555,7 @@ def test_perform_cutoff():
 def test_write_gene_output(
     genelocation_transformed_obj, expected_mcl_cluster_obj, conversion_obj, tmp_path
 ):
-    from plantclusterfinder_py.cluster import (
+    from plantclusterfinder.cluster import (
         get_metabolic_domains,
         label_reactions_with_sig_and_tail,
         map_pgdb_reactions_to_genes,
@@ -566,7 +563,7 @@ def test_write_gene_output(
         perform_clustering,
         write_gene_output,
     )
-    from plantclusterfinder_py.pgdb_utils import read_in_pgdb_flat
+    from plantclusterfinder.pgdb_utils import read_in_pgdb_flat
 
     gene_location = genelocation_transformed_obj
     mcl_cluster_data = expected_mcl_cluster_obj
@@ -635,12 +632,12 @@ def test_write_gene_output(
 
 # Part 19
 def test_write_cluster_output(genelocation_transformed_obj, tmp_path):
-    from plantclusterfinder_py.cluster import (
+    from plantclusterfinder.cluster import (
         perform_clustering,
         read_mcl_clustering_file,
         write_cluster_output,
     )
-    from plantclusterfinder_py.conversion import Conversion
+    from plantclusterfinder.conversion import Conversion
 
     conversion = Conversion.read_in_conversion_file(
         Path("./csubellipsoidea/gtpf_CsubellipsoideaC_169_227_v2.0.annotation_info.txt.txt")

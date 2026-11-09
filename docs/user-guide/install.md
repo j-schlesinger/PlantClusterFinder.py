@@ -10,7 +10,7 @@ Customization: None
 ```bash
 # mamba or pixi are also ok
 # FIXME:
-conda env create bgc  bioconda::plantclusterfinder_py
+conda env create bgc  bioconda::plantclusterfinder
 ```
 
 !!! note
@@ -33,9 +33,9 @@ Customization: Minimal
 
 ```bash
 # using pip
-pip install plantclusterfinder_py
+pip install plantclusterfinder
 # OR using uv
-uv pip install plantclusterfinder_py
+uv pip install plantclusterfinder
 ```
 
 ## Build from Source

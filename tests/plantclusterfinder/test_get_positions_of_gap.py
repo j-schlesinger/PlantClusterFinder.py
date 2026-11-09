@@ -4,14 +4,14 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from tests.plantclusterfinder_py.assets import (
+from tests.plantclusterfinder.assets import (
     GAPANALYSIS_EXPECTED_RESULTS,
     GENOME_FASTA_PATH,
 )
 
 
 def test_char_run_search():
-    from plantclusterfinder_py.get_positions_of_gap import char_run_search
+    from plantclusterfinder.get_positions_of_gap import char_run_search
 
     assert list(char_run_search("A", "BANANA")) == list(zip([2, 4, 6], [1, 1, 1], strict=True))
     assert (
@@ -43,7 +43,7 @@ def test_char_run_search():
 
 @pytest.mark.benchmark
 def test_read_fasta():
-    from plantclusterfinder_py.get_positions_of_gap import read_fasta
+    from plantclusterfinder.get_positions_of_gap import read_fasta
 
     input_path = Path("tests/data/test_fasta.fa")
     with input_path.open() as fa_fh:
@@ -57,7 +57,7 @@ def test_read_fasta():
 
 @pytest.mark.benchmark
 def test_get_positions_of_gap(tmp_path):
-    from plantclusterfinder_py.get_positions_of_gap import get_positions_of_gap
+    from plantclusterfinder.get_positions_of_gap import get_positions_of_gap
 
     test_d = {}
     output_path = tmp_path / "groupbyseq.csv"  # output
@@ -81,7 +81,7 @@ def test_get_positions_of_gap(tmp_path):
 
 @pytest.mark.benchmark
 def test_get_positions_of_gap_against_expected(tmp_path):
-    from plantclusterfinder_py.get_positions_of_gap import get_positions_of_gap
+    from plantclusterfinder.get_positions_of_gap import get_positions_of_gap
 
     output_path = tmp_path / "groupbyseq.csv"  # output
     input_path = GENOME_FASTA_PATH
@@ -114,7 +114,7 @@ def test_get_positions_of_gap_against_expected(tmp_path):
 
 
 def test_groupbyseq(tmp_path):
-    from plantclusterfinder_py.get_positions_of_gap import groupbyseq
+    from plantclusterfinder.get_positions_of_gap import groupbyseq
 
     output_path = tmp_path / "groupbyseq_func.csv"  # output
 
@@ -160,7 +160,7 @@ def test_groupbyseq(tmp_path):
 
 
 def test_positions_of_gap_main(tmp_path):
-    from plantclusterfinder_py.get_positions_of_gap import main
+    from plantclusterfinder.get_positions_of_gap import main
 
     test_output = tmp_path / "test.csv"
     args = [
@@ -187,7 +187,7 @@ def test_positions_of_gap_main(tmp_path):
 
 
 def test_process_sequence_internal_function():
-    from plantclusterfinder_py.get_positions_of_gap import _process_sequence
+    from plantclusterfinder.get_positions_of_gap import _process_sequence
 
     test_seq_name = ">TEST"
     test_seq = ("A" * 4) + ("N" * 20) + ("Q" * 4) + ("N" * 19) + ("A" * 6)

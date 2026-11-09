@@ -2165,7 +2165,7 @@ wheels = [
 ]
 
 [[package]]
-name = "plantclusterfinder-py"
+name = "plantclusterfinder"
 version = "2.0.0b0"
 source = { editable = "." }
 dependencies = [
