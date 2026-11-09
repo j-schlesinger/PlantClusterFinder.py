@@ -25,7 +25,7 @@ Difficulty: Medium
 Customization: Minimal
 
 !!! important
-    To run PlantClusterFinder.py, you need the following prerequisite programs installed:
+    To run PlantClusterFinder.next, you need the following prerequisite programs installed:
     - [Diamond](https://github.com/bbuchfink/diamond/wiki/2.-Installation)
     - [MCL](https://github.com/micans/mcl#installation-mcl-versions-and-linux-packages)
     You may need to use `apt install diamond-aligner mcl` or `yum install diamond mcl` depending on your

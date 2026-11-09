@@ -6,15 +6,16 @@ theme:
 nav:
   - Introduction: 'index.md'
   - 'User Guide':
-    - Index: 'user-guide/index.md'
-    - Installing: 'user-guide/install.md'
-    - 'Running PlantClusterFinder.py': 'user-guide/arguments.md'
-    - 'Analyzing Results': 'user-guide/results.md'
-    - Troubleshooting: 'user-guide/troubleshooting.md'
+    - Index: 'user_guide/index.md'
+    - Installing: 'user_guide/install.md'
+    - 'Running PlantClusterFinder.py': 'user_guide/arguments.md'
+    - 'Analyzing Results': 'user_guide/results.md'
+    - Troubleshooting: 'user_guide/troubleshooting.md'
   - 'Plugins':
     - Introduction: 'plugins/intro.md'
     - 'Built-in Plugins': 'plugins/builtin.md'
     - Writing: 'plugins/writing.md'
+  - 'Migrating from MATLAB': 'user_guide/migrating.md'
   - License: 'license.md'
   - Contact: 'contact.md'
   - About: 'about.md'

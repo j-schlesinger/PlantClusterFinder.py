@@ -1,30 +1,44 @@
-# PlantClusterFinder.py (version 2.0)
+# PlantClusterFinder.next
 
 [![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://codspeed.io/j-schlesinger/PlantClusterFinder.py?utm_source=badge)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/j-schlesinger/PlantClusterFinder.py/python_lint_and_test.yml?branch=main&label=tests)
+![PyPI Status](https://img.shields.io/pypi/status/plantclusterfinder)
+![GitHub License](https://img.shields.io/github/license/j-schlesinger/PlantClusterFinder.py)
 
 PlantClusterFinder (PCF) detects metabolic gene clusters in a sequenced genome. It uses a gene location file provided by the user (see below) and a PGDB created with Pathway Tools as well as further information (see below) to identify enzyme-coding genes (metabolic genes) located together on a chromosome. Initially only continous stretches of metabolic genes lying directly next to each other are allowed. This condition is relaxed by iteratively increasing the intervening (non-metabolic) gene size by one. Several criteria to select for clusters are provided. In addition to this, clusters can be prevented from forming by a section of criteria.
 Details of PCF (version 1.0) can be found in PMID: 28228535.
 
 ## Installation and Usage
 
+Make sure that MCL is installed, and either DIAMOND (recommended) or BLAST.
+
+If you use `pip`, run the following:
+
+```bash
+pip install plantclusterfinder
+plantclusterfinder --test-install
+```
+
+However, if you have `uv` then you can just run `uvx plantclusterfinder --test-install` to download PlantClusterFinder.next, run it, and test the installation.
+If you want it to be part of your `$PATH` you can use `uv tool install plantclusterfinder`.
+
 ## Developing PlantClusterFinder.next
 
 The quickest and easiest way to get started is by using [uv](https://docs.astral.sh/uv/).
 
 - Clone the git repository
-- In PlantClusterFinder.next run `uv sync`
-- install **blast** and **MCL** on your local system
+- In PlantClusterFinder.py run `uv sync`
+- install **DIAMOND** and **MCL** on your local system
+  - can be done using `conda` or your package manager of choice
 
 Uv will download the dependencies, dev dependencies, and set up a virtual environment for development.
 
-To run PlantClusterFinder.next, use `uv run python -m plantclusterfinder $ARGS` with whatever arguments you need.
-
-To generate the pydocs, use `uv run pdoc -d google src/plantclusterfinder` and pdoc will host the docs locally.
+To run PlantClusterFinder.next, use `uv run plantclusterfinder $ARGS` with whatever arguments you need.
 
 ### Using Nix Flakes
 
 If you have nix installed, you can simply run `nix develop` in the repository to get everything set up.
-The flake installs LSPs as well as uv and required software, so you can start developing right away.
+The flake installs LSPs as well as `uv` and required software, so you can start developing right away.
 
 ## Previous Versions
 
