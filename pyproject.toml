@@ -1,5 +1,5 @@
 [project]
-name = "plantclusterfinder_py"
+name = "plantclusterfinder"
 version = "2.0.0b"
 description = "Tool to find biosynthetic gene clusters in plants."
 authors = [
