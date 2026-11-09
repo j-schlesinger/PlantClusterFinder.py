@@ -12,7 +12,7 @@ log = logging.getLogger()
 
 @pytest.mark.benchmark
 def test_run_main(tmp_path):
-    from plantclusterfinder_py.main import main
+    from plantclusterfinder.main import main
 
     test_start = int(time.time())
     gene_output_temp_file = tmp_path / f"gene_output_test.{test_start}.tsv"
@@ -82,7 +82,7 @@ def test_run_main(tmp_path):
 
 def test_download_input(tmp_path):
     """Download the static Input files."""
-    from plantclusterfinder_py.main import download_input_files
+    from plantclusterfinder.main import download_input_files
 
     with patch("requests.get") as mock_get:
         mock_get.return_value.status_code = 200
@@ -106,7 +106,7 @@ def test_download_csub(tmp_path):
     """Download the Csubellipsoidea data."""
     import subprocess
 
-    from plantclusterfinder_py.main import download_csub_files
+    from plantclusterfinder.main import download_csub_files
 
     temp_tgz = tmp_path / "csubellipsoidea_old.tar.gz"
     subprocess.run(["/usr/bin/env", "tar", "-czvf", temp_tgz, Path("./csubellipsoidea/")])

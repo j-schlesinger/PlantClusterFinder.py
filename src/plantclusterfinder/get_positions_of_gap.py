@@ -33,7 +33,8 @@ def char_run_search(chars: str, input_str: str) -> Iterator[tuple[int, int]]:
     test_list = [ord(x) for x in chars]
     pattern_true = np.isin(str_array, test_list)
     index_list = np.where(np.diff(pattern_true))[0]
-    run_starts: list[int] = cast(list[int], ((index_list + 1)[::2]).tolist())
+    index_list_plusone = index_list + 1
+    run_starts: list[int] = cast(list[int], ((index_list_plusone)[::2]).tolist())
     run_lens: list[int] = cast(list[int], (np.diff(index_list)[::2]).tolist())
     if len(run_lens) == len(run_starts) - 1:
         run_lens.append(1)

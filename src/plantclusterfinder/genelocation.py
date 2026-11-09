@@ -8,8 +8,8 @@ import polars as pl
 from numpy import percentile
 from pydantic import BaseModel
 
-from plantclusterfinder_py.cluster_datatypes import GenesToReactions, MclClusterData
-from plantclusterfinder_py.conversion import Conversion
+from plantclusterfinder.cluster_datatypes import GenesToReactions, MclClusterData
+from plantclusterfinder.conversion import Conversion
 
 _log = logging.getLogger(__name__)
 

@@ -2,11 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from tests.plantclusterfinder_py.assets import GENOME_FASTA_PATH
+from tests.plantclusterfinder.assets import GENOME_FASTA_PATH
 
 
 def test_plug_arch(tmp_path, request):
-    from plantclusterfinder_py.plugin_arch.plugin_main import test_plugins
+    from plantclusterfinder.plugin_arch.plugin_main import test_plugins
 
     original_root = request.config.rootpath
     cluster_filename = original_root / "tests/data/example_cluster.tsv"

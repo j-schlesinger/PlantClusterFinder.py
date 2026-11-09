@@ -20,14 +20,14 @@ PROTEIN_FASTA_PATH = Path("./csubellipsoidea/CsubellipsoideaC_169_227_v2.0.prote
 
 def test_bench_geneloc_init(benchmark):
     """Benchmark loading gene location data from TSV."""
-    from plantclusterfinder_py.genelocation import GeneLoc
+    from plantclusterfinder.genelocation import GeneLoc
 
     benchmark(GeneLoc, file_path=GLOF_FILE_PATH)
 
 
 def test_bench_geneloc_sort(benchmark):
     """Benchmark sorting genes by chromosome and position."""
-    from plantclusterfinder_py.genelocation import GeneLoc
+    from plantclusterfinder.genelocation import GeneLoc
 
     gene_loc = GeneLoc(file_path=GLOF_FILE_PATH)
 
@@ -40,7 +40,7 @@ def test_bench_geneloc_sort(benchmark):
 
 def test_bench_geneloc_find_intergenic_regions(benchmark):
     """Benchmark finding intergenic regions across the genome."""
-    from plantclusterfinder_py.genelocation import GeneLoc
+    from plantclusterfinder.genelocation import GeneLoc
 
     gene_loc = GeneLoc(file_path=GLOF_FILE_PATH)
     gene_loc.sort_genes()
@@ -54,7 +54,7 @@ def test_bench_geneloc_find_intergenic_regions(benchmark):
 
 def test_bench_geneloc_consolidate(benchmark):
     """Benchmark consolidating gene info (deduplication)."""
-    from plantclusterfinder_py.genelocation import GeneLoc
+    from plantclusterfinder.genelocation import GeneLoc
 
     gene_loc = GeneLoc(file_path=GLOF_FILE_PATH)
     benchmark(gene_loc.consolidate_gene_info)
@@ -65,14 +65,14 @@ def test_bench_geneloc_consolidate(benchmark):
 
 def test_bench_read_conversion_file(benchmark):
     """Benchmark reading the gene-transcript-protein conversion file."""
-    from plantclusterfinder_py.conversion import Conversion
+    from plantclusterfinder.conversion import Conversion
 
     benchmark(Conversion.read_in_conversion_file, GTPF_FILE_PATH)
 
 
 def test_bench_read_pgdb_flat(benchmark):
     """Benchmark parsing a PGDB flat file (genes.dat)."""
-    from plantclusterfinder_py.pgdb_utils import read_in_pgdb_flat
+    from plantclusterfinder.pgdb_utils import read_in_pgdb_flat
 
     benchmark(
         read_in_pgdb_flat,
@@ -84,7 +84,7 @@ def test_bench_read_pgdb_flat(benchmark):
 
 def test_bench_read_pgdb_flat_reactions(benchmark):
     """Benchmark parsing the reactions.dat PGDB flat file."""
-    from plantclusterfinder_py.pgdb_utils import read_in_pgdb_flat
+    from plantclusterfinder.pgdb_utils import read_in_pgdb_flat
 
     benchmark(
         read_in_pgdb_flat,
@@ -98,8 +98,8 @@ def test_bench_read_pgdb_flat_reactions(benchmark):
 
 def test_bench_compute_background(benchmark):
     """Benchmark computing background enzyme distribution for clustering."""
-    from plantclusterfinder_py.cluster import compute_background
-    from plantclusterfinder_py.genelocation import GeneLoc
+    from plantclusterfinder.cluster import compute_background
+    from plantclusterfinder.genelocation import GeneLoc
 
     gene_location = GeneLoc(file_path=Path("./tests/data/background_computation_test.tsv"))
     has_reaction = pl.read_csv(Path("./tests/data/background_computation_has_reaction.csv"))
@@ -126,7 +126,7 @@ def test_bench_compute_background(benchmark):
 
 def test_bench_evaluate_criterion(benchmark):
     """Benchmark the criterion evaluation logic for step size selection."""
-    from plantclusterfinder_py.cluster import evaluate_criterion
+    from plantclusterfinder.cluster import evaluate_criterion
 
     cluster_tuple = namedtuple(
         "cluster_tuple",
@@ -150,7 +150,7 @@ def test_bench_evaluate_criterion(benchmark):
 
 def test_bench_get_metabolic_domains(benchmark):
     """Benchmark loading and filtering metabolic domain data."""
-    from plantclusterfinder_py.cluster import get_metabolic_domains
+    from plantclusterfinder.cluster import get_metabolic_domains
 
     benchmark(
         get_metabolic_domains,

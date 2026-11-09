@@ -12,8 +12,8 @@ from pathlib import Path
 import pluggy
 import polars as pl
 
-from plantclusterfinder_py.plugin_arch.context import RunContext
-from plantclusterfinder_py.plugin_arch.hookspecs import PlantClusterSpecs
+from plantclusterfinder.plugin_arch.context import RunContext
+from plantclusterfinder.plugin_arch.hookspecs import PlantClusterSpecs
 
 
 class PluginManager(pluggy.PluginManager):
