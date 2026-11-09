@@ -6,6 +6,7 @@ and produce a derived analysis without modifying core pipeline behavior.
 
 import logging
 from collections import namedtuple
+from collections.abc import Iterable
 from pathlib import Path
 from typing import NamedTuple
 
@@ -74,7 +75,7 @@ class VisualizationPlugin:
         self,
         clusters: pl.DataFrame,
         chrom_lengths: dict[str, int],
-        categories=("Predicted BGC",),
+        categories: tuple[str] = ("Predicted BGC",),
     ) -> Figure:
         """Create a plot of the Biosynthetic Gene Clusters in the chromosomes.
 

@@ -1,4 +1,4 @@
-"""Functions used in calculating where biosynthetic gene clusters are."""
+"""Functions used for searching for biosynthetic gene clusters."""
 
 import logging
 import os
@@ -29,14 +29,14 @@ _log = logging.getLogger(__name__)
 def label_reactions_with_sig_and_tail(
     all_reactions_df: pl.DataFrame, signature_tailor_filename: Path
 ) -> ReactionLabels:
-    """---------------------------------------------------------------------------
+    """Function identifying enzyme reactions.
 
-      Function identifying whether reactions found in the pgdb are of a certain
+      Determines whether reactions found in the pgdb are of a certain
       type of enzyme and if they are either signature or tailoring enzymes.
-      Note, there have to be signature enzymes identified as 'signature' in the
-      File signature_tailor_filename.
 
-    ---------------------------------------------------------------------------
+      *Note, there have to be signature enzymes identified as 'signature' in the
+      File signature_tailor_filename.*
+
 
     Args:
         all_reactions_df: DataFrame containing all the information

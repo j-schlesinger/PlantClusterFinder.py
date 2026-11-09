@@ -20,6 +20,23 @@ dependencies = [
 ]
 readme = "README.md"
 requires-python = ">= 3.11"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+keywords = ["bioinformatics", "genomics", "plant science"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Bio-Informatics",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+]
+
+[project.urls]
+Docimentation = "https://plantclusterfinder.readthedocs.org/"
+Repository = "https://github.com/j-schlesinger/PlantClusterFinder.py"
 
 [project.scripts]
 plantclusterfinder = "plantclusterfinder:main.main"
