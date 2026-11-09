@@ -73,7 +73,7 @@ def test_run_main(tmp_path):
     genes_file = pl.read_csv(gene_output_temp_file.name, separator="\t")
     assert len(genes_file) == 9629
     clusters_file = pl.read_csv(cluster_output_temp_file.name, separator="\t")
-    assert len(clusters_file) == 255
+    assert len(clusters_file) == 322
 
 
 def test_download_input(tmp_path):

@@ -2,18 +2,20 @@
 name = "plantclusterfinder-py"
 version = "2.0.0b"
 description = "Tool to find biosynthetic gene clusters in plants."
-authors = [{ name = "Jason Schlesinger", email = "jschlesi@nig.ac.jp" }]
+authors = [
+    { name = "Jason Schlesinger", email = "jschlesi@nig.ac.jp" }
+]
 dependencies = [
-  "pydantic>=2.6.3",
-  "polars==1.26.0",
-  "pyarrow>=17.0.0",
-  "biopython>=1.86",
-  "bcbio-gff>=0.7.1",
-  "numpy>=2.2.4",
-  "gffutils>=0.13",
-  "pluggy>=1.6.0",
-  "requests>=2.32.5",
-  "matplotlib>=3.11.0",
+    "pydantic>=2.6.3",
+    "polars<2.0",
+    "pyarrow>=17.0.0",
+    "biopython>=1.86",
+    "bcbio-gff>=0.7.1",
+    "numpy>=2.2.4",
+    "gffutils>=0.13",
+    "pluggy>=1.6.0",
+    "requests>=2.32.5",
+    "matplotlib>=3.11.0",
 ]
 readme = "README.md"
 requires-python = ">= 3.11"
@@ -41,69 +43,71 @@ test.commands = [
 
 [dependency-groups]
 dev = [
-  "sphinx>=7.2.6",
-  "pdoc>=14.4.0",
-  "pytest>=8.0.1",
-  "pre-commit>=3.6.2",
-  "isort==5.13.2",
-  "black>=24.2.0",
-  "flake8>=7.0.0",
-  "mypy>=1.19.1",
-  "ruff>=0.15.5",
-  "uv>=0.6.10",
-  "pandas>=2.2.2",
-  "pyright>=1.1.404",
-  "viztracer>=1.1.1",
-  "wily>=1.25.0",
-  "radon>=5.1",
-  "pytest-pyright>=0.0.6",
-  "pytest-cov>=7.0.0",
-  "py-spy>=0.4.1",
-  "gff3tool>=2.1.0",
-  "pyperf>=2.10.0",
-  "psutil>=7.2.2",
-  "pytest-codspeed>=4.4.0",
-  "types-requests>=2.33.0.20260408",
+    "sphinx>=7.2.6",
+    "pdoc>=14.4.0",
+    "pytest>=8.0.1",
+    "pre-commit>=3.6.2",
+    "isort==5.13.2",
+    "black>=24.2.0",
+    "flake8>=7.0.0",
+    "mypy>=1.19.1",
+    "ruff>=0.15.5",
+    "uv>=0.6.10",
+    "pandas>=2.2.2",
+    "pyright>=1.1.404",
+    "viztracer>=1.1.1",
+    "wily>=1.25.0",
+    "radon>=5.1",
+    "pytest-pyright>=0.0.6",
+    "pytest-cov>=7.0.0",
+    "py-spy>=0.4.1",
+    "gff3tool>=2.1.0",
+    "pyperf>=2.10.0",
+    "psutil>=7.2.2",
+    "pytest-codspeed>=4.4.0",
+    "types-requests>=2.33.0.20260408",
 ]
-docs = ["mkdocs>=1.6.1", "mkdocs-autoapi>=0.4.1", "mkdocstrings[python]>=1.0.4"]
+docs = [
+    "mkdocs>=1.6.1",
+    "mkdocs-autoapi>=0.4.1",
+    "mkdocstrings[python]>=1.0.4",
+]
 
 [tool.ruff]
 exclude = [
-  ".git",
-  "__pycache__",
-  "csubellipsoidea",
-  "Inputs",
-  "Expected_results_for_csubellipsoidea",
-  ".venv",
-  ".pytest_cache",
-  "*.ipynb",
+    ".git",
+    "__pycache__",
+    "csubellipsoidea",
+    "Inputs",
+    "Expected_results_for_csubellipsoidea",
+    ".venv",
+    ".pytest_cache",
+    "*.ipynb"
 ]
 line-length = 101
 
 [tool.ruff.lint]
 select = [
-  "A",
-  "E",
-  "W",   # pycodestyle
-  "I",   # isort
-  "N",   # Naming
-  "C4",  # comprehensions linting
-  "UP",  # pyupgrade - stop doing things the old way
-  "B",   # bugbear - auto-catch common bugs
-  "S",   # bandit - security testing (not necessary here, but good idea)
-  "PT",  # pytest style
-  "RET", # return - prevent unpredictable returns
-  "SIM", # simplify - when there's an easier way
-  "PTH", # enforce the use of pathlib over os.path
-  #"DOC",
-  "D",   # docstring style enforcement
-  "FIX",
-  "TD",  # check todo statements
+    "A",
+    "E", "W", # pycodestyle
+    "I", # isort
+    "N", # Naming
+    "C4", # comprehensions linting
+    "UP", # pyupgrade - stop doing things the old way
+    "B", # bugbear - auto-catch common bugs
+    "S", # bandit - security testing (not necessary here, but good idea)
+    "PT", # pytest style
+    "RET", # return - prevent unpredictable returns
+    "SIM", # simplify - when there's an easier way
+    "PTH", # enforce the use of pathlib over os.path
+    #"DOC",
+    "D", # docstring style enforcement
+    "FIX", "TD", # check todo statements
 ]
 
 ignore = [
-  "S101", # assert, needed for pytest
-  "S603", # subprocess calls, used to call blast, etc.
+    "S101", # assert, needed for pytest
+    "S603", # subprocess calls, used to call blast, etc.
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -143,8 +147,8 @@ branch = true
 fail_under = 75
 show_missing = true
 exclude_lines = [
-  "pragma: no cover",
-  "def __repr__",
-  "if __name__ == .__main__.:",
-  "raise NotImplementedError",
+    "pragma: no cover",
+    "def __repr__",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError"
 ]

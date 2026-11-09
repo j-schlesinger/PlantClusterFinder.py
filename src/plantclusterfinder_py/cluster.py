@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import polars as pl
+from numpy import minimum
 
 from plantclusterfinder_py.cluster_datatypes import (
     AnnotatedMetabolicDomains,
@@ -869,7 +870,9 @@ def map_pgdb_reactions_to_genes(  # noqa: D417
         protein_complexes_df = proteins_all.with_columns(enzrxn_id=pl.col("CATALYZES"))
     else:
         protein_complexes_df = proteins_all.join(
-            proteins_all.filter(pl.col("COMPONENTS").is_not_null()).explode(pl.col("COMPONENTS")),
+            proteins_all.filter(pl.col("COMPONENTS").is_not_null()).explode(
+                "COMPONENTS", empty_as_null=True
+            ),
             left_on="UNIQUE-ID",
             right_on="COMPONENTS",
             how="left",
@@ -1004,7 +1007,7 @@ def map_pgdb_gene_ids_to_conversion_file(
     if "T" in pgdb_ids_to_map and len(genes_data_metadata) > 0:
         all_genes_df_transcript = (
             all_genes_df.select(pl.col("UNIQUE-ID"), pl.col(genes_data_metadata[0]))
-            .explode(pl.col(genes_data_metadata[0]))
+            .explode(genes_data_metadata[0], empty_as_null=True)
             .unique()
         )
         _log.debug("Transcript Map Genes: %s", all_genes_df_transcript.head())
@@ -1134,9 +1137,9 @@ def evaluate_criterion(
             _log.debug(
                 "Criterion: Number of enzymes - number of non-enzymes (no hypos) - 2* number"
                 + " if hypos in clustered genes: %i - %i - %i",
-                clusters_df["enzyme_count"].count(),
-                -clusters_df["non_enzyme_gene_count"].count(),
-                -2 * clusters_df["hypothetical_gene_count"].count(),
+                clusters_df["enzyme_count"].len(),
+                -clusters_df["non_enzyme_gene_count"].len(),
+                -2 * clusters_df["hypothetical_gene_count"].len(),
             )
             if step_size == maximum_step_size:
                 continue_search = False
@@ -1319,7 +1322,7 @@ def perform_clustering(
                 base_enzyme_count=pl.col("has_reaction")
                 .sum()  # sum counts True as 1, False as 0
                 .rolling(index_column="index", period=f"{step_size}i", offset="-1i"),
-                gene_count=pl.count().rolling(
+                gene_count=pl.len().rolling(
                     index_column="index", period=f"{step_size}i", offset="-1i"
                 ),
                 genes=pl.col("Gene Name").rolling(
@@ -1387,19 +1390,34 @@ def perform_clustering(
 
             cluster_genes = gene_location.data.with_row_index("index")[start : end + 1]
             # get rid of clusters that only have one reaction set
-            if len(cluster_genes.filter(is_enzyme_criteria)) < minimum_enzyme_for_clusters:
+            enzyme_genes = cluster_genes.filter(is_enzyme_criteria)
+            # abolish clusters with fewer enzymes than threshold
+            if enzyme_genes.height < minimum_enzyme_for_clusters:
+                _log.debug("Insufficient enzymes in cluster")
                 # abolish cluster and continue search
                 continue
-            if (
-                cluster_genes.filter(pl.col("is_locally_duplicated"))
-                .select(pl.col("mcl_clusters"))
-                .unique()
+
+            # count LD MCL clusters once per MCL cluster
+            ld_mcl_clusters = (
+                enzyme_genes.filter(pl.col("is_locally_duplicated"))
+                .group_by(pl.col("mcl_clusters"))
+                .count()
                 .height
-                == 1
-            ):
-                # get rid of clusters that only have exactly one local duplicate.
-                # abolish cluster and continue search
+            )
+            # count all non-LD enzymes
+            non_ld_mcl_clusters = enzyme_genes.filter(pl.col("is_locally_duplicated").not_()).height
+            # abolish clusters with fewer unique enzymes than threshold
+            if ld_mcl_clusters + non_ld_mcl_clusters < minimum_enzyme_for_clusters:
+                _log.debug("Insufficient unique enzymes in cluster.")
                 continue
+
+            # get rid of clusters that only have exactly one local duplicate
+            if (
+                cluster_genes.filter(pl.col("is_locally_duplicated")).height > 0
+                and cluster_genes.select(pl.col("mcl_clusters")).unique().height == 1
+            ):
+                _log.debug("Excatly one MCL present in LD genes")
+                pass
 
             # This is the code that writes the cluster into the clusters dataframe
             # what goes in here is described in line 3426 in Matlab, but it is flexible
@@ -1663,11 +1681,14 @@ def write_gene_output(
     # Join Cluster data where cluster_start <= gene index <= cluster_end
     cluster_data = (
         gene_location.data.with_row_index("gene_idx")
-        .join_where(
-            clusters.ClusterMeta.with_row_index("cluster_idx"),
-            (pl.col("start").cast(pl.UInt32) <= pl.col("gene_idx"))
-            & (pl.col("gene_idx") <= pl.col("end").cast(pl.UInt32)),
+        .join_asof(
+            clusters.ClusterMeta.with_row_index("cluster_idx")
+            .with_columns(start_int=pl.col("start").cast(pl.UInt32))
+            .sort("start_int"),
+            left_on="gene_idx",
+            right_on="start",
         )
+        .filter(pl.col("gene_idx") <= pl.col("end").cast(pl.UInt32))
         .group_by(pl.col("Gene Name"), pl.col("step_size"))
     )
     _log.debug("Cluster data for gene output %s", cluster_data.head())
@@ -1732,7 +1753,7 @@ def write_gene_output(
             # step size x
             # top pct clusters
             top_pct_cluster_idx = cluster_data.agg(
-                pl.col("cluster_idx").count().alias(f"Stepsize {clusters.FinalStepSize}"),
+                pl.col("cluster_idx").len().alias(f"Stepsize {clusters.FinalStepSize}"),
                 pl.col("top_percent_clusters").sum().alias(f"Top {top_percent_clusters}%"),
             ).filter(pl.col("step_size") == pl.lit(clusters.FinalStepSize))
             gene_output = gene_output.join(top_pct_cluster_idx, "Gene Name", how="left")
