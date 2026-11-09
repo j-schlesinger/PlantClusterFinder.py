@@ -124,13 +124,14 @@ def download_input_files(override_dir: Path | None = None) -> bool:
     """
     log = logging.getLogger(__name__)
 
-    scaffold_tail_url = "https://gist.github.com/j-schlesinger/9bc8dbd073b2308d850bfb6028c2f780/raw/85e0907582343062614f36fff1caefd58bfe8cc1/scaffold-tailoring-reactions-05082016.tab"
+    scaffold_tail_url = "https://github.com/j-schlesinger/PlantClusterFinder.py/releases/download/data-v1.0/scaffold-tailoring-reactions-05082016.tab"
     rmdc_url = "https://github.com/j-schlesinger/PlantClusterFinder.py/releases/download/data-v1.0/ReactionMetabolicDomainClassification.txt"
 
     download_dir = override_dir or pcf_home
     scaffold_tail_file = download_dir / scaffold_tail_url.split("/").pop()
     rmdc_file = download_dir / rmdc_url.split("/").pop()
     if scaffold_tail_file.is_file() and rmdc_file.is_file():
+        log.debug("Scaffold and RMDC file already downloaded")
         return True
     try:
         # requests is only needed if files need to be downloaded
@@ -147,14 +148,18 @@ def download_input_files(override_dir: Path | None = None) -> bool:
             timeout=64,
         )
         if scaffold_tail_get.status_code != 200:
-            raise Exception("Could not download Scaffold Tailoring file, please consult docs.")
+            raise Exception(
+                "Could not download Scaffold Tailoring file:"
+                + f" (HTTP code: {scaffold_tail_get.status_code}), please consult docs."
+            )
         rmdc_get = requests.get(
             rmdc_url,
             timeout=64,
         )
         if rmdc_get.status_code != 200:
             raise Exception(
-                "Could not download ReactionMetabolicDomainClassification file, please consult docs."
+                "Could not download ReactionMetabolicDomainClassification file:"
+                + f" (HTTP code: {rmdc_get.status_code}), please consult docs."
             )
         scaffold_tail_file.write_bytes(scaffold_tail_get.content)
         rmdc_file.write_bytes(rmdc_get.content)
@@ -187,6 +192,11 @@ def download_csub_files(csub_download_dir: Path | None = None) -> bool:
         headers=headers,
         timeout=64,
     )
+    if csub_request.status_code != 200:
+        raise Exception(
+            "Could not download csubellipsoidea:" + f" (HTTP code {csub_request.status_code}."
+        )
+
     log.debug("Csub downloaded, status: %d", csub_request.status_code)
     csub_compressed_file.write_bytes(csub_request.content)
     log.debug("Csub written to: %s", csub_compressed_file)
