@@ -104,9 +104,17 @@ def test_download_input(tmp_path):
 
 def test_download_csub(tmp_path):
     """Download the Csubellipsoidea data."""
+    import subprocess
+
     from plantclusterfinder_py.main import download_csub_files
 
-    with patch("requests.get") as mock_get, Path("./csubellipsoidea.tar.gz").open("rb") as csub_data:
+    temp_tgz = tmp_path / "csubellipsoidea_old.tar.gz"
+    subprocess.run(["/usr/bin/env", "tar", "-czvf", temp_tgz, Path("./csubellipsoidea/")])
+
+    with (
+        patch("requests.get") as mock_get,
+        temp_tgz.open("rb") as csub_data,
+    ):
         mock_get.return_value.status_code = 200
         mock_get.return_value.content = csub_data.read()
         assert download_csub_files(tmp_path)
