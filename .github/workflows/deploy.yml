@@ -4,9 +4,9 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 jobs:
-  test:
   publish:
     name: Build and Publish PlantClusterFinder
     needs: []
