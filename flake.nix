@@ -32,6 +32,7 @@
             stdenv.cc.cc.lib
             #linuxKernel.packages.linux_6_12.perf
             perf
+            micromamba
           ];
 
           # synchronize the environment on entry
@@ -39,8 +40,9 @@
             # Ensure the .venv is up to date with pyproject.toml
             if [ -f "pyproject.toml" ]; then
               echo "Syncing Python dependencies with uv..."
-              uv sync
+              uv sync --all-groups
             fi
+            export MAMBA_ROOT_PREFIX=`pwd`/.mambalib
           '';
         };
       });

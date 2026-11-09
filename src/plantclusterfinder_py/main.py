@@ -124,13 +124,14 @@ def download_input_files(override_dir: Path | None = None) -> bool:
     """
     log = logging.getLogger(__name__)
 
-    scaffold_tail_url = "https://gist.github.com/j-schlesinger/9bc8dbd073b2308d850bfb6028c2f780/raw/85e0907582343062614f36fff1caefd58bfe8cc1/scaffold-tailoring-reactions-05082016.tab"
-    rmdc_url = "https://gist.github.com/j-schlesinger/ee0a5941020d252168232b3801b406be/raw/9d646ec035dfd431df8846872a540ac30bcc72df/ReactionMetabolicDomainClassification.txt"
+    scaffold_tail_url = "https://github.com/j-schlesinger/PlantClusterFinder.py/releases/download/data-v1.0/scaffold-tailoring-reactions-05082016.tab"
+    rmdc_url = "https://github.com/j-schlesinger/PlantClusterFinder.py/releases/download/data-v1.0/ReactionMetabolicDomainClassification.txt"
 
     download_dir = override_dir or pcf_home
     scaffold_tail_file = download_dir / scaffold_tail_url.split("/").pop()
     rmdc_file = download_dir / rmdc_url.split("/").pop()
     if scaffold_tail_file.is_file() and rmdc_file.is_file():
+        log.debug("Scaffold and RMDC file already downloaded")
         return True
     try:
         # requests is only needed if files need to be downloaded
@@ -147,14 +148,18 @@ def download_input_files(override_dir: Path | None = None) -> bool:
             timeout=64,
         )
         if scaffold_tail_get.status_code != 200:
-            raise Exception("Could not download Scaffold Tailoring file, please consult docs.")
+            raise Exception(
+                "Could not download Scaffold Tailoring file:"
+                + f" (HTTP code: {scaffold_tail_get.status_code}), please consult docs."
+            )
         rmdc_get = requests.get(
             rmdc_url,
             timeout=64,
         )
         if rmdc_get.status_code != 200:
             raise Exception(
-                "Could not download ReactionMetabolicDomainClassification file, please consult docs."
+                "Could not download ReactionMetabolicDomainClassification file:"
+                + f" (HTTP code: {rmdc_get.status_code}), please consult docs."
             )
         scaffold_tail_file.write_bytes(scaffold_tail_get.content)
         rmdc_file.write_bytes(rmdc_get.content)
@@ -166,7 +171,7 @@ def download_input_files(override_dir: Path | None = None) -> bool:
 
 def download_csub_files(csub_download_dir: Path | None = None) -> bool:
     """Download the Csubellipsoidea files to user's $HOME."""
-    # this should be handled through NCBI downloads
+    # this should be handled through NCBI datasets
     import base64
     import tarfile
 
@@ -175,7 +180,7 @@ def download_csub_files(csub_download_dir: Path | None = None) -> bool:
     csub_download = csub_download_dir if csub_download_dir is not None else pcf_home
     csub_compressed_file = csub_download / "csubellipsoidea.tar.gz"
     log = logging.getLogger(__name__)
-    csub_url = "https://gist.github.com/j-schlesinger/762579852ce14d9cf6210908cfd5c6da/raw/b6d42fdea85c94637b4f11105a790aec62ef87b2/csubellipsoidea.tar.gz.asc"
+    csub_url = "https://github.com/j-schlesinger/PlantClusterFinder.py/releases/download/data-v1.0/csubellipsoidea.tar.gz"
     log.debug("Downloading Csub data from %s", csub_url)
     headers = {"User-Agent": "PlantClusterFinder"}
     token = os.getenv("GITHUB_TOKEN")
@@ -187,8 +192,13 @@ def download_csub_files(csub_download_dir: Path | None = None) -> bool:
         headers=headers,
         timeout=64,
     )
+    if csub_request.status_code != 200:
+        raise Exception(
+            "Could not download csubellipsoidea:" + f" (HTTP code {csub_request.status_code}."
+        )
+
     log.debug("Csub downloaded, status: %d", csub_request.status_code)
-    csub_compressed_file.write_bytes(base64.b64decode(csub_request.content))
+    csub_compressed_file.write_bytes(csub_request.content)
     log.debug("Csub written to: %s", csub_compressed_file)
     with tarfile.open(csub_compressed_file, mode="r:gz") as tf:
         tf.extractall(csub_download)  # noqa: S202

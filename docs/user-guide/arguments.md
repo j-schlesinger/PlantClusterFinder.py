@@ -1,4 +1,5 @@
-# PlantClusterFinder.py CLI Arguments
+# PlantClusterFinder.next CLI Arguments
+
 ```ascii
 usage: PlantClusterFinder [-h] --RunName RUNNAME -gout FILENAME -cout FILENAME
                           [--RunInfoFile FILENAME]
@@ -46,6 +47,7 @@ Find Metabolic Gene Clusters in Plant Genomes
 ```
 
 ## Mandatory Arguments
+
 All of these arguments must be set for every run.
 
 - `RunName`: Name of run of PlantClusterFinder. Helpful for identifying execution across different organisms/samples.
@@ -55,9 +57,13 @@ All of these arguments must be set for every run.
 - `MetabolicDomainsToAnnotate`: A list of Metabolic domains that should be analyzed. For example {'Amines and Polyamines Metabolism'; 'Amino Acids '}
 - `gout`: Path and file name to the gene-Outputfile, make sure you have access to the file and folder. This is the first results output file that will be generated.
 - `cout`: Path and file name to the cluster-Outputfile, make sure you have access to the file and folder. This is the second Results output file that will be generated.
+
 ## Input Parsing Arguments
+
 These arguments specifically deal with the parsing and processing of input.
+
 ### GFF3 Parsing Arguments
+
 When parsing the GFF3 file, certain attributes may need to be overridden to match the data in PGDB.
 If the GFF3 file structure is unclear, you may need to view it directly to determine how to set these arguments.
 
@@ -66,13 +72,16 @@ If the GFF3 file structure is unclear, you may need to view it directly to deter
 - `GFF3ProteinRegex`: Regex to find the protein ID shared with PGDB data. If the column contains jnl|GCVI|AT1G5560.1 and PGDB protein ID is AT1G5560.1, you can pass the regex "[^|]+$" to select everything after the last '|' (Default: ".*")
 
 ### Compatability Options
-By default, PlantClusterFinder.py uses Diamond for blastp-compatible alignment, and has default metabolic domains and signature/tailoring files it pulls from.
+
+By default, PlantClusterFinder.next uses Diamond for blastp-compatible alignment, and has default metabolic domains and signature/tailoring files it pulls from.
 However, if you need to override those defaults, these are the options to use.
 
 - `use_ncbi_blast`: Use NCBI Blast rather than Diamond for BlastP (Default False)
 - `ReactionMetabolicDomainFilename`: TSV file of the metabolic domains of reactions. Check if file is outdated (needs to contain all reactions that are present in the PGDB that have genes to be annotated). Defaults to $HOME/.plantclusterfinder/ReactionMetabolicDomainClassification.txt
 - `SignatureTailoringFilename`: Signature and tailoring reactions TSV file describing the classes of enzymes that should be classified as signature or tailoring enzymes to identify clusters containing such.
+
 #### GFF3 Parsing Override
+
 If you have the protein sequence fasta, a gene location TSV, and the Gene Transcript Protein file, it is possible to override the preprocessing step.
 !!! important
     All three arguments must be set to override GFF3 parsing.
@@ -82,6 +91,7 @@ If you have the protein sequence fasta, a gene location TSV, and the Gene Transc
 - `GeneTranscriptProteinFilename`: [DEPRECATED] TSV file with a header describing gene, transcript, and protein identifier and then for all the identfiers the listings (gene-ID, transcript-ID, protein-ID). This is used to map information regarding transcripts (currently not used) and proteins (used for MCL clustering, potentially also used in PGDBs) to the genes (e.g. the gene location information).
 
 ## Biosynthetic Gene Cluster Search Parameters
+
 The following arguments configure the parameters of searching for, and predicting biosynthetic gene clusters.
 The defaults are suitable for most applications, but they may need to be adjusted depending on the genome.
 
@@ -102,7 +112,8 @@ The defaults are suitable for most applications, but they may need to be adjuste
     3. sum(enzymes in clusters) - sum(non-enzymes in clusters, without hypo genes) -2*sum(hypotetical genes)
     4. sum(clusters in stepsize n) > sum(clusters in stepsize n+1).
 
-### Parameters Regarding the Insertion of Hypothetical Genes:
+### Parameters Regarding the Insertion of Hypothetical Genes
+
 In the case of sequence gaps, hypothetical genes may be introduced to act as a buffer for BGC prediction.
 These parameters should be configured based heavily on the nature of the genome being studied.
 
@@ -110,7 +121,8 @@ These parameters should be configured based heavily on the nature of the genome 
 - `InsertHypos`: Defines if the genome should be populated by hypothetical genes in sequencing gaps that are not physical breaks. (Default False)
 - `HypoAmount`: (*number*) Defines by how many hypothetical genes a sequencing gap that is not a physical break should be populated by artificial genes to punish such sequencing gaps from becoming clusters. (Default 0)
 
-## Other Optional Parameters:
+## Other Optional Parameters
+
 - `OutputType`: Defines the format of the Outputfiles: 'old' is using the old format to report all clusters of all stepsizes, 'verbose' defines that top percent clusters of all stepsizes are reported. 'simple' just reports the top percent clusters of the chosen stepsize (default simple).
 - `OutputGeneLocationParquet`: The file location of the parquet file to store the GeneLocation data. The file is only written if the argument is set.
 - `RunInfoFile`: Store information (arguments, settings, timing) for a run. (Default: STDOUT)
@@ -121,14 +133,16 @@ These parameters should be configured based heavily on the nature of the genome 
 - `OverwriteSeqGapInfo`: Force masked nucleotide analysis for finding sequencing gaps (Default False)
 - `OverwriteMCLClustering`: Forces (if set) that the MCL clustering is redone even if the result files are already present (Default False).
 - `Verbose`: Verbosity Level
-    - **0 (default)** only logs warnings and errors
-    - **1** logs info-level information
-    - **2** logs debug information
+  - **0 (default)** only logs warnings and errors
+  - **1** logs info-level information
+  - **2** logs debug information
 - `para`: How many cpus can be used by the algorithm (used for MCL clustering and Sequencing gap search). The default is 0 (auto-scale).
 - `UnmaskedDNA`: Defines if PlantClusterFinder should continue, despite a non-masked genome sequence file being used. (Default False)
 - `PGDBIdsToMap`: Can contain the Letters G and/or T and/or P. In that case (the pgdb is mapped to Gene (G) and/or Transcript (T) and/or Protein (P) Ids of the Gene conversion file. The default value is 'G'.
 - `RemoveNonProtLocation`: Defines if the protein-fasta file should be used to clean out the gene position file from sequences that do not show up on the protein fasta file, and thus do not have had a chance to be predicted to be an enzyme. (Default False)
+
 ## Test Arguments
+
 !!! important
     This argument overrides all others.
     Do not try to use it in conjunction with other arguments.

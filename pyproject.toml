@@ -1,6 +1,6 @@
 [project]
 name = "plantclusterfinder-py"
-version = "2.0.0"
+version = "2.0.0b"
 description = "Tool to find biosynthetic gene clusters in plants."
 authors = [
     { name = "Jason Schlesinger", email = "jschlesi@nig.ac.jp" }
@@ -26,12 +26,20 @@ get_positions_of_gap = "plantclusterfinder_py:get_positions_of_gap.main"
 test_plugins = "plantclusterfinder_py.plugin_arch:plugin_main.main"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-conda-build"]
 build-backend = "hatchling.build"
 
 [tool.uv]
 managed = true
 
+[tool.hatch.build.targets.conda]
+channels = ["bioconda"]
+requirements.run = ["diamond", "mcl"]
+test.commands = [
+  "plantclusterfinder --help",
+  "diamond --version",
+  "mcl --version",
+]
 
 [dependency-groups]
 dev = [
@@ -103,7 +111,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py"=["D100","D101","D102","D103","D104"]
+"tests/**/*.py" = ["D100", "D101", "D102", "D103", "D104"]
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
@@ -117,7 +125,7 @@ profile = "black"
 packages = ["src/plantclusterfinder_py"]
 
 [[tool.mypy.overrides]]
-module = ["gffutils.*","BCBio.GFF.*"]
+module = ["gffutils.*", "BCBio.GFF.*"]
 follow_untyped_imports = true
 
 [tool.pyright]
