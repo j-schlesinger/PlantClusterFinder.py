@@ -11,6 +11,7 @@ jobs:
     name: Build and Publish PlantClusterFinder
     needs: []
     runs-on: ubuntu-latest
+    environment: actions-bulid-and-deploy
     permissions:
       contents: read
       id-token: write
