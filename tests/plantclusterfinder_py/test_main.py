@@ -1,9 +1,12 @@
 import hashlib
+import logging
 import time
 from pathlib import Path
 
 import polars as pl
 import pytest
+
+log = logging.getLogger()
 
 
 @pytest.mark.benchmark
@@ -111,7 +114,10 @@ def test_download_csub(tmp_path):
         with file.open("rb") as f:
             expected_digests[file.name] = hashlib.sha256(f.read()).digest()
     for filename in test_digests:
-        if test_digests[filename] != expected_digests[filename]:
+        if filename not in expected_digests:
+            log.warning("Filename %s not in expected digests", filename)
+            print(list(expected_digests.keys())[:5])
+        elif test_digests[filename] != expected_digests[filename]:
             print(f"Hashes do not match for file {filename}")
             with (tmp_path / filename).open("rb") as file:
                 print(file.read())
